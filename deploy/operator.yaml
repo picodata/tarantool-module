@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tarantool-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: tarantool-operator
+  template:
+    metadata:
+      labels:
+        name: tarantool-operator
+    spec:
+      serviceAccountName: tarantool-operator
+      containers:
+        - name: tarantool-operator
+          # Replace this with the built image name
+          image: REPLACE_IMAGE
+          command:
+          - tarantool-operator
+          imagePullPolicy: Always
+          env:
+            - name: WATCH_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OPERATOR_NAME
+              value: "tarantool-operator"
