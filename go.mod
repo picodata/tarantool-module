@@ -1,8 +1,11 @@
 module gitlab.com/tarantool/sandbox/tarantool-operator
 
 require (
+	github.com/go-openapi/spec v0.19.0
+	github.com/google/uuid v1.1.1
 	github.com/operator-framework/operator-sdk v0.9.1-0.20190802152409-7104d8d7d0e8
 	github.com/spf13/pflag v1.0.3
+	k8s.io/api v0.0.0-20190612125737-db0771252981
 	k8s.io/apimachinery v0.0.0-20190612125636-6a5db36e93ad
 	k8s.io/client-go v11.0.0+incompatible
 	k8s.io/code-generator v0.0.0-20181203235156-f8cba74510f3

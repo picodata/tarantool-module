@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pim-router
+  labels:
+    app: pim-router
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pim-router
+  template:
+    metadata:
+      labels:
+        app: pim-router
+      annotations:
+        tarantool.io/cluster: "pim"
+      finalizers:
+        - tarantool.io/finalizable
+    spec:
+      containers:
+      - name: pim-router
+        image: registry.gitlab.com/tarantool/megafon/pim:4eb1b97a
+        args:
+        - tarantool
+        - /opt/tarantool/init.lua
+        volumeMounts:
+        - name: hostvol
+          mountPath: /var/log/tarantool
+        ports:
+          - containerPort: 3301
+          - containerPort: 8081
+          - containerPort: 8888
+        env:
+        - name: TARANTOOL_INSTANCE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: TARANTOOL_MEMTX_MEMORY
+          value: "1"
+        - name: TARANTOOL_INSTANCE_ROLE
+          value: "router"
+        - name: TARANTOOL_REPLICASET_UUID
+          value: "f46c9301-0227-45a5-97db-c3f22f39a659"
+        - name: TARANTOOL_JOIN_URL
+          value: "http://pim-dashboard:8081"
+        - name: TARANTOOL_ADVERTISE_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: TARANTOOL_ADVERTISE_URI
+          value: "$(TARANTOOL_ADVERTISE_HOST):3301"
+        - name: TARANTOOL_API_PORT
+          value: "8888"
+        - name: TARANTOOL_API_HOST
+          value: 0.0.0.0
+      volumes:
+      - name: hostvol
+        hostPath:
+          path: /home/docker/tarantool
+      imagePullSecrets:
+      - name: gl-regcred
+
