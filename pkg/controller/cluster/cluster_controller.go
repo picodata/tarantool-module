@@ -11,9 +11,9 @@ import (
 
 	"github.com/google/uuid"
 	tarantoolv1alpha1 "gitlab.com/tarantool/sandbox/tarantool-operator/pkg/apis/tarantool/v1alpha1"
+	tntutils "gitlab.com/tarantool/sandbox/tarantool-operator/pkg/tarantool/utils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
@@ -141,31 +141,31 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 	reqLogger.Info("Reconciling Cluster")
 
 	// Fetch the Cluster instance
-	instance := &tarantoolv1alpha1.Cluster{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
+	cluster := &tarantoolv1alpha1.Cluster{}
+	err := r.client.Get(context.TODO(), request.NamespacedName, cluster)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			// Request object not found, could have been deleted after reconcile request.
-			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
-			// Return and don't requeue
 			return reconcile.Result{}, nil
 		}
-		// Error reading the object - requeue the request.
+
 		return reconcile.Result{}, err
 	}
 
-	for _, role := range instance.Spec.Roles {
+	for _, role := range cluster.Spec.Roles {
 		roleInstance := &tarantoolv1alpha1.Role{}
 		err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: request.Namespace, Name: role.GetObjectMeta().GetName()}, roleInstance)
 		if err != nil {
 			if errors.IsNotFound(err) {
-				if err := SetPartOf(&role, instance.GetName()); err != nil {
+				if err := tntutils.SetTarantoolClusterID(&role, cluster.GetName()); err != nil {
 					return reconcile.Result{}, err
 				}
-				if err := SetComponent(&role, role.GetName()); err != nil {
+				if err := tntutils.SetPartOf(&role, cluster.GetName()); err != nil {
 					return reconcile.Result{}, err
 				}
-				if err := controllerutil.SetControllerReference(instance, &role, r.scheme); err != nil {
+				if err := tntutils.SetComponent(&role, role.GetName()); err != nil {
+					return reconcile.Result{}, err
+				}
+				if err := controllerutil.SetControllerReference(cluster, &role, r.scheme); err != nil {
 					return reconcile.Result{}, err
 				}
 				if err := r.client.Create(context.TODO(), &role); err != nil {
@@ -179,7 +179,7 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	list := corev1.PodList{}
 	selector := labels.NewSelector()
-	requirement, err := labels.NewRequirement("app.kubernetes.io/name", selection.Equals, []string{instance.Name})
+	requirement, err := labels.NewRequirement("app.kubernetes.io/name", selection.Equals, []string{cluster.Name})
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -254,26 +254,4 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	return reconcile.Result{}, nil
-}
-
-func SetComponent(o metav1.Object, componentName string) error {
-	labels := o.GetLabels()
-	if labels == nil {
-		labels = make(map[string]string)
-	}
-	labels["app.kubernetes.io/component"] = componentName
-	o.SetLabels(labels)
-
-	return nil
-}
-
-func SetPartOf(o metav1.Object, appName string) error {
-	labels := o.GetLabels()
-	if labels == nil {
-		labels = make(map[string]string)
-	}
-	labels["app.kubernetes.io/part-of"] = appName
-	o.SetLabels(labels)
-
-	return nil
 }

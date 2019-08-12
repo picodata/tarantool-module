@@ -90,8 +90,8 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 	reqLogger.Info("Reconciling Role")
 
 	// Fetch the Role instance
-	instance := &tarantoolv1alpha1.Role{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
+	role := &tarantoolv1alpha1.Role{}
+	err := r.client.Get(context.TODO(), request.NamespacedName, role)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -104,20 +104,20 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 	}
 
 	var i int32
-	for i = 0; i < *instance.Spec.Replicas; i++ {
+	for i = 0; i < *role.Spec.Replicas; i++ {
 		sts := &appsv1.StatefulSet{}
-		sts.Name = fmt.Sprintf("%s-%d", instance.Name, i)
+		sts.Name = fmt.Sprintf("%s-%d", role.Name, i)
 		sts.Namespace = request.Namespace
 		if err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: sts.Namespace, Name: sts.Name}, sts); err != nil {
 			if errors.IsNotFound(err) {
-				sts.Spec = instance.Spec.StorageTemplate
+				sts.Spec = role.Spec.StorageTemplate
 				if err := SetReplicasetUUID(sts); err != nil {
 					return reconcile.Result{}, err
 				}
 				sts.Spec.Template.ObjectMeta.Labels["tarantool.io/replicaset-uuid"] = sts.Labels["tarantool.io/replicaset-uuid"]
-				sts.Spec.Template.ObjectMeta.Labels["app.kubernetes.io/component"] = instance.Labels["app.kubernetes.io/component"]
-				sts.Spec.Template.ObjectMeta.Labels["app.kubernetes.io/name"] = instance.Labels["app.kubernetes.io/part-of"]
-				if err := controllerutil.SetControllerReference(instance, sts, r.scheme); err != nil {
+				sts.Spec.Template.ObjectMeta.Labels["app.kubernetes.io/component"] = role.Labels["app.kubernetes.io/component"]
+				sts.Spec.Template.ObjectMeta.Labels["app.kubernetes.io/name"] = role.Labels["app.kubernetes.io/part-of"]
+				if err := controllerutil.SetControllerReference(role, sts, r.scheme); err != nil {
 					return reconcile.Result{}, err
 				}
 				if err := r.client.Create(context.TODO(), sts); err != nil {
@@ -126,13 +126,13 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 			}
 		}
 	}
-	if len(instance.Spec.ServiceTemplate.Ports) > 0 {
+	if len(role.Spec.ServiceTemplate.Ports) > 0 {
 		svc := &corev1.Service{}
-		svc.Name = fmt.Sprintf("%s", instance.Name)
+		svc.Name = fmt.Sprintf("%s", role.Name)
 		svc.Namespace = request.Namespace
 		if err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: svc.Namespace, Name: svc.Name}, svc); err != nil {
 			if errors.IsNotFound(err) {
-				svc.Spec = instance.Spec.ServiceTemplate
+				svc.Spec = role.Spec.ServiceTemplate
 				if err := r.client.Create(context.TODO(), svc); err != nil {
 					return reconcile.Result{}, err
 				}
