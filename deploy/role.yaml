@@ -46,6 +46,5 @@ rules:
   - '*'
   - clusters
   - roles
-  - topologies
   verbs:
   - '*'

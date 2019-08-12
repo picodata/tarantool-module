@@ -135,7 +135,7 @@ spec:
         labels:
           app.kubernetes.io/component: "storage"
       spec:
-        replicas: 3
+        replicas: 1
         serviceTemplate:
           ports:
           - port: 8081
