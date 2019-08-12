@@ -51,14 +51,17 @@ func HasInstanceUUID(o *corev1.Pod) bool {
 }
 
 func SetInstanceUUID(o *corev1.Pod) *corev1.Pod {
-	oldAnnotations := o.Labels
-	instanceUUID, _ := uuid.NewUUID()
-	if oldAnnotations == nil {
-		oldAnnotations = make(map[string]string)
+	labels := o.Labels
+	if len(o.GetName()) == 0 {
+		return o
 	}
-	oldAnnotations["tarantool.io/instance-uuid"] = instanceUUID.String()
+	instanceUUID, _ := uuid.NewUUID()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	labels["tarantool.io/instance-uuid"] = instanceUUID.String()
 
-	o.SetLabels(oldAnnotations)
+	o.SetLabels(labels)
 	return o
 }
 
@@ -160,9 +163,6 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 					return reconcile.Result{}, err
 				}
 				if err := tntutils.SetPartOf(&role, cluster.GetName()); err != nil {
-					return reconcile.Result{}, err
-				}
-				if err := tntutils.SetComponent(&role, role.GetName()); err != nil {
 					return reconcile.Result{}, err
 				}
 				if err := controllerutil.SetControllerReference(cluster, &role, r.scheme); err != nil {
