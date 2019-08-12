@@ -1,14 +1,14 @@
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
-  name: tarantoolclusters.tarantool.io
+  name: roles.tarantool.io
 spec:
   group: tarantool.io
   names:
-    kind: TarantoolCluster
-    listKind: TarantoolClusterList
-    plural: tarantoolclusters
-    singular: tarantoolcluster
+    kind: Role
+    listKind: RoleList
+    plural: roles
+    singular: role
   scope: Namespaced
   subresources:
     status: {}
@@ -29,13 +29,19 @@ spec:
           type: object
         spec:
           properties:
-            selector:
-              description: "INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-                Important: Run \"operator-sdk generate k8s\" to regenerate code after
+            replicas:
+              description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                Important: Run "operator-sdk generate k8s" to regenerate code after
                 modifying this file Add custom validation using kubebuilder tags:
-                https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
-                \tReplicasetTemplate appsv1.StatefulSetSpec `json:\"template,omitempty\"`"
+                https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
+              format: int32
+              type: integer
+            serviceTemplate:
               type: object
+            storageTemplate:
+              type: object
+          required:
+          - serviceTemplate
           type: object
         status:
           type: object

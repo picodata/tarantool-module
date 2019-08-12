@@ -1,25 +1,28 @@
 package v1alpha1
 
 import (
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// TarantoolClusterSpec defines the desired state of TarantoolCluster
+// RoleSpec defines the desired state of Role
 // +k8s:openapi-gen=true
-type TarantoolClusterSpec struct {
+type RoleSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
-	//	ReplicasetTemplate appsv1.StatefulSetSpec `json:"template,omitempty"`
-	Selector metav1.LabelSelector `json:"selector,omitempty"`
+	Replicas        *int32                 `json:"replicas,omitempty"`
+	ServiceTemplate corev1.ServiceSpec     `json:"serviceTemplate"`
+	StorageTemplate appsv1.StatefulSetSpec `json:"storageTemplate,omitempty"`
 }
 
-// TarantoolClusterStatus defines the observed state of TarantoolCluster
+// RoleStatus defines the observed state of Role
 // +k8s:openapi-gen=true
-type TarantoolClusterStatus struct {
+type RoleStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
@@ -27,26 +30,26 @@ type TarantoolClusterStatus struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// TarantoolCluster is the Schema for the tarantoolclusters API
+// Role is the Schema for the roles API
 // +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
-type TarantoolCluster struct {
+type Role struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   TarantoolClusterSpec   `json:"spec,omitempty"`
-	Status TarantoolClusterStatus `json:"status,omitempty"`
+	Spec   RoleSpec   `json:"spec,omitempty"`
+	Status RoleStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// TarantoolClusterList contains a list of TarantoolCluster
-type TarantoolClusterList struct {
+// RoleList contains a list of Role
+type RoleList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []TarantoolCluster `json:"items"`
+	Items           []Role `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&TarantoolCluster{}, &TarantoolClusterList{})
+	SchemeBuilder.Register(&Role{}, &RoleList{})
 }

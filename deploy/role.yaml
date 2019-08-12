@@ -44,5 +44,8 @@ rules:
   - tarantool.io
   resources:
   - '*'
+  - clusters
+  - roles
+  - topologies
   verbs:
   - '*'

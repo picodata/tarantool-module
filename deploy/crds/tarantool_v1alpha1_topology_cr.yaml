@@ -1,0 +1,7 @@
+apiVersion: tarantool.io/v1alpha1
+kind: Topology
+metadata:
+  name: example-topology
+spec:
+  # Add fields here
+  size: 3
