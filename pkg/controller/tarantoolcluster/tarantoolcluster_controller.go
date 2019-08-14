@@ -349,56 +349,56 @@ func (r *ReconcileTarantoolCluster) Reconcile(request reconcile.Request) (reconc
 
 // 		reqLogger.Info("Join response", "resp", resp)
 // 	} else {
-// 		if ShouldFinalize(instance) {
-// 			reqLogger.Info("DO FINALIZE", "pod", instance.Name)
-// 			req := fmt.Sprintf("mutation {expel_instance:expel_server(uuid:\\\"%s\\\")}", instance.GetAnnotations()["tarantool.io/instance_uuid"])
-// 			j := fmt.Sprintf("{\"query\": \"%s\"}", req)
-// 			rawResp, err := http.Post("http://127.0.0.1:8081/admin/api", "application/json", strings.NewReader(j))
-// 			if err != nil {
-// 				reqLogger.Error(err, "expel err")
-// 				return reconcile.Result{}, err
-// 			}
-// 			defer rawResp.Body.Close()
+		if ShouldFinalize(instance) {
+			reqLogger.Info("DO FINALIZE", "pod", instance.Name)
+			req := fmt.Sprintf("mutation {expel_instance:expel_server(uuid:\\\"%s\\\")}", instance.GetAnnotations()["tarantool.io/instance_uuid"])
+			j := fmt.Sprintf("{\"query\": \"%s\"}", req)
+			rawResp, err := http.Post("http://127.0.0.1:8081/admin/api", "application/json", strings.NewReader(j))
+			if err != nil {
+				reqLogger.Error(err, "expel err")
+				return reconcile.Result{}, err
+			}
+			defer rawResp.Body.Close()
 
-// 			resp := &ExpelResponse{Errors: []*ResponseError{}, Data: &ExpelResponseData{}}
-// 			if err := json.NewDecoder(rawResp.Body).Decode(resp); err != nil {
-// 				return reconcile.Result{}, err
-// 			}
+			resp := &ExpelResponse{Errors: []*ResponseError{}, Data: &ExpelResponseData{}}
+			if err := json.NewDecoder(rawResp.Body).Decode(resp); err != nil {
+				return reconcile.Result{}, err
+			}
 
-// 			if resp.Data.ExpelInstance == false && (resp.Errors == nil || len(resp.Errors) == 0) {
-// 				return reconcile.Result{}, goerrors.New("Shit happened")
-// 			}
+			if resp.Data.ExpelInstance == false && (resp.Errors == nil || len(resp.Errors) == 0) {
+				return reconcile.Result{}, goerrors.New("Shit happened")
+			}
 
-// 			if len(resp.Errors) > 0 && strings.Contains(resp.Errors[0].Message, "dead") {
-// 				instance.ObjectMeta.Finalizers = RemoveFinalizer(instance.GetObjectMeta().GetFinalizers())
+			if len(resp.Errors) > 0 && strings.Contains(resp.Errors[0].Message, "dead") {
+				instance.ObjectMeta.Finalizers = RemoveFinalizer(instance.GetObjectMeta().GetFinalizers())
 
-// 				if err = r.client.Update(context.TODO(), instance); err != nil {
-// 					return reconcile.Result{}, err
-// 				}
+				if err = r.client.Update(context.TODO(), instance); err != nil {
+					return reconcile.Result{}, err
+				}
 
-// 				return reconcile.Result{}, goerrors.New(resp.Errors[0].Message)
-// 			}
+				return reconcile.Result{}, goerrors.New(resp.Errors[0].Message)
+			}
 
-// 			if len(resp.Errors) > 0 && strings.Contains(resp.Errors[0].Message, "already expelled") {
-// 				instance.ObjectMeta.Finalizers = RemoveFinalizer(instance.GetObjectMeta().GetFinalizers())
+			if len(resp.Errors) > 0 && strings.Contains(resp.Errors[0].Message, "already expelled") {
+				instance.ObjectMeta.Finalizers = RemoveFinalizer(instance.GetObjectMeta().GetFinalizers())
 
-// 				if err = r.client.Update(context.TODO(), instance); err != nil {
-// 					return reconcile.Result{}, err
-// 				}
+				if err = r.client.Update(context.TODO(), instance); err != nil {
+					return reconcile.Result{}, err
+				}
 
-// 				return reconcile.Result{}, goerrors.New(resp.Errors[0].Message)
-// 			}
+				return reconcile.Result{}, goerrors.New(resp.Errors[0].Message)
+			}
 
-// 			if len(resp.Errors) > 0 {
-// 				return reconcile.Result{}, goerrors.New(resp.Errors[0].Message)
-// 			}
+			if len(resp.Errors) > 0 {
+				return reconcile.Result{}, goerrors.New(resp.Errors[0].Message)
+			}
 
-// 			instance.ObjectMeta.Finalizers = RemoveFinalizer(instance.GetObjectMeta().GetFinalizers())
+			instance.ObjectMeta.Finalizers = RemoveFinalizer(instance.GetObjectMeta().GetFinalizers())
 
-// 			if err = r.client.Update(context.TODO(), instance); err != nil {
-// 				return reconcile.Result{}, err
-// 			}
-// 		}
+			if err = r.client.Update(context.TODO(), instance); err != nil {
+				return reconcile.Result{}, err
+			}
+		}
 // 	}
 
 // 	// Pod already exists - don't requeue

@@ -41,6 +41,14 @@ type JoinResponse struct {
 	Data   *JoinResponseData `json:"data,omitempty"`
 }
 
+type ExpelResponseData struct {
+	ExpelInstance bool `json:"expel_instance"`
+}
+type ExpelResponse struct {
+	Errors []*ResponseError   `json:"errors,omitempty"`
+	Data   *ExpelResponseData `json:"data,omitempty"`
+}
+
 func HasInstanceUUID(o *corev1.Pod) bool {
 	annotations := o.Labels
 	if _, ok := annotations["tarantool.io/instance-uuid"]; ok {
@@ -64,11 +72,6 @@ func SetInstanceUUID(o *corev1.Pod) *corev1.Pod {
 	o.SetLabels(labels)
 	return o
 }
-
-/**
-* USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
-* business logic.  Delete these comments after modifying this file.*
- */
 
 // Add creates a new Cluster Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
@@ -171,6 +174,7 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 				if err := r.client.Create(context.TODO(), &role); err != nil {
 					return reconcile.Result{}, err
 				}
+				return reconcile.Result{Requeue: true}, nil
 			}
 
 			return reconcile.Result{}, err
@@ -196,20 +200,24 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	for _, pod := range list.Items {
+		podLogger := reqLogger.WithValues("Pod.Name", pod.GetName())
 		if !HasInstanceUUID(&pod) {
+			podLogger.Info("starting: set instance uuid")
 			pod = *SetInstanceUUID(&pod)
 
 			if err := r.client.Update(context.TODO(), &pod); err != nil {
 				return reconcile.Result{}, err
 			}
 
+			podLogger.Info("success: set instance uuid", "UUID", pod.GetLabels()["tarantool.io/instance-uuid"])
 			return reconcile.Result{Requeue: true}, nil
 		}
-		reqLogger.Info("reconcile Pod", "podName", pod.Name)
+
+		podLogger.Info("starting: instance join")
 
 		podIP := pod.Status.PodIP
 		if len(podIP) == 0 {
-			return reconcile.Result{}, goerrors.New("Waiting for pod")
+			return reconcile.Result{}, goerrors.New("Pod.IP is not set yet, skip and wait")
 		}
 		advURI := fmt.Sprintf("%s:3301", podIP)
 
@@ -240,16 +248,14 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-		if resp.Errors != nil && len(resp.Errors) > 0 && !strings.Contains(resp.Errors[0].Message, "already joined") {
-			return reconcile.Result{}, goerrors.New(resp.Errors[0].Message)
+		// skip joined instances
+		if resp.Data.JoinInstance == false && resp.Errors != nil && len(resp.Errors) > 0 && strings.Contains(resp.Errors[0].Message, "already joined") {
+			podLogger.Info("Instance already joined")
+			continue
 		}
 
-		if resp.Data.JoinInstance == false {
-			if resp.Errors != nil && len(resp.Errors) > 0 && strings.Contains(resp.Errors[0].Message, "already joined") {
-				// return reconcile.Result{Requeue: true}, nil
-				continue
-			}
-			return reconcile.Result{}, goerrors.New("JoinInstance == false")
+		if resp.Errors != nil && len(resp.Errors) > 0 && !strings.Contains(resp.Errors[0].Message, "already joined") {
+			return reconcile.Result{}, goerrors.New(resp.Errors[0].Message)
 		}
 	}
 
