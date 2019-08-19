@@ -2,21 +2,17 @@ package cluster
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"strings"
+	"time"
 
 	goerrors "errors"
 
 	"github.com/google/uuid"
 	tarantoolv1alpha1 "gitlab.com/tarantool/sandbox/tarantool-operator/pkg/apis/tarantool/v1alpha1"
-	tntutils "gitlab.com/tarantool/sandbox/tarantool-operator/pkg/tarantool/utils"
+	"gitlab.com/tarantool/sandbox/tarantool-operator/pkg/topology"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -105,14 +101,10 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 			if a.Meta.GetLabels() == nil {
 				return []reconcile.Request{}
 			}
-			if val, ok := a.Meta.GetLabels()["tarantool.io/replicaset-uuid"]; !ok || len(val) == 0 {
-				return []reconcile.Request{}
-			}
-
 			return []reconcile.Request{
 				{NamespacedName: types.NamespacedName{
 					Namespace: a.Meta.GetNamespace(),
-					Name:      a.Meta.GetLabels()["app.kubernetes.io/name"],
+					Name:      a.Meta.GetLabels()["tarantool.io/cluster-id"],
 				}},
 			}
 		}),
@@ -157,106 +149,90 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
-	for _, role := range cluster.Spec.Roles {
-		roleInstance := &tarantoolv1alpha1.Role{}
-		err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: request.Namespace, Name: role.GetObjectMeta().GetName()}, roleInstance)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				if err := tntutils.SetTarantoolClusterID(&role, cluster.GetName()); err != nil {
-					return reconcile.Result{}, err
-				}
-				if err := tntutils.SetPartOf(&role, cluster.GetName()); err != nil {
-					return reconcile.Result{}, err
-				}
-				if err := controllerutil.SetControllerReference(cluster, &role, r.scheme); err != nil {
-					return reconcile.Result{}, err
-				}
-				if err := r.client.Create(context.TODO(), &role); err != nil {
-					return reconcile.Result{}, err
-				}
-				return reconcile.Result{Requeue: true}, nil
-			}
-
-			return reconcile.Result{}, err
-		}
-	}
-
-	list := corev1.PodList{}
-	selector := labels.NewSelector()
-	requirement, err := labels.NewRequirement("app.kubernetes.io/name", selection.Equals, []string{cluster.Name})
+	selector, err := metav1.LabelSelectorAsSelector(cluster.Spec.Selector)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
-	selector = selector.Add(*requirement)
-	err = r.client.List(context.TODO(), &client.ListOptions{LabelSelector: selector}, &list)
-	if err != nil {
+
+	roleList := &tarantoolv1alpha1.RoleList{}
+	if err := r.client.List(context.TODO(), &client.ListOptions{LabelSelector: selector}, roleList); err != nil {
 		if errors.IsNotFound(err) {
-			return reconcile.Result{}, err
+			return reconcile.Result{}, nil
 		}
+
+		return reconcile.Result{}, err
 	}
 
-	if len(list.Items) == 0 {
-		return reconcile.Result{}, goerrors.New("no pods to reconcile")
+	if len(roleList.Items) == 0 {
+		reqLogger.Info("no roles to reconcile")
+		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
 	}
 
-	for _, pod := range list.Items {
-		podLogger := reqLogger.WithValues("Pod.Name", pod.GetName())
-		if !HasInstanceUUID(&pod) {
-			podLogger.Info("starting: set instance uuid")
-			pod = *SetInstanceUUID(&pod)
-
-			if err := r.client.Update(context.TODO(), &pod); err != nil {
-				return reconcile.Result{}, err
-			}
-
-			podLogger.Info("success: set instance uuid", "UUID", pod.GetLabels()["tarantool.io/instance-uuid"])
-			return reconcile.Result{Requeue: true}, nil
-		}
-
-		podLogger.Info("starting: instance join")
-
-		podIP := pod.Status.PodIP
-		if len(podIP) == 0 {
-			return reconcile.Result{}, goerrors.New("Pod.IP is not set yet, skip and wait")
-		}
-		advURI := fmt.Sprintf("%s:3301", podIP)
-
-		replicasetUUID, ok := pod.GetLabels()["tarantool.io/replicaset-uuid"]
-		if !ok {
-			return reconcile.Result{}, goerrors.New("replicaset uuid empty")
-		}
-		instanceUUID, ok := pod.GetLabels()["tarantool.io/instance-uuid"]
-		if !ok {
-			return reconcile.Result{}, goerrors.New("instance uuid empty")
-		}
-		role, ok := pod.GetLabels()["app.kubernetes.io/component"]
-		if !ok {
-			return reconcile.Result{}, goerrors.New("role undefined")
-		}
-		req := fmt.Sprintf("mutation {join_instance: join_server(uri: \\\"%s\\\",instance_uuid: \\\"%s\\\",replicaset_uuid: \\\"%s\\\",roles: [\\\"%s\\\"],timeout: 10)}", advURI, instanceUUID, replicasetUUID, role)
-
-		j := fmt.Sprintf("{\"query\": \"%s\"}", req)
-
-		rawResp, err := http.Post("http://127.0.0.1:8081/admin/api", "application/json", strings.NewReader(j))
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-		defer rawResp.Body.Close()
-
-		resp := &JoinResponse{Errors: []*ResponseError{}, Data: &JoinResponseData{}}
-		if err := json.NewDecoder(rawResp.Body).Decode(resp); err != nil {
-			return reconcile.Result{}, err
-		}
-
-		// skip joined instances
-		if resp.Data.JoinInstance == false && resp.Errors != nil && len(resp.Errors) > 0 && strings.Contains(resp.Errors[0].Message, "already joined") {
-			podLogger.Info("Instance already joined")
+	for _, role := range roleList.Items {
+		if metav1.IsControlledBy(&role, cluster) {
+			reqLogger.Info("Already owned", "Role.Name", role.Name)
 			continue
 		}
-
-		if resp.Errors != nil && len(resp.Errors) > 0 && !strings.Contains(resp.Errors[0].Message, "already joined") {
-			return reconcile.Result{}, goerrors.New(resp.Errors[0].Message)
+		if err := controllerutil.SetControllerReference(cluster, &role, r.scheme); err != nil {
+			return reconcile.Result{}, err
 		}
+		if err := r.client.Update(context.TODO(), &role); err != nil {
+			return reconcile.Result{}, err
+		}
+
+		reqLogger.Info("Set role ownership", "Role.Name", role.GetName(), "Cluster.Name", cluster.GetName())
+	}
+
+	reqLogger.Info("Roles reconciled, moving to pod reconcile")
+
+	podList := &corev1.PodList{}
+	if err := r.client.List(context.TODO(), &client.ListOptions{LabelSelector: selector}, podList); err != nil {
+		if errors.IsNotFound(err) {
+			return reconcile.Result{}, nil
+		}
+
+		return reconcile.Result{}, err
+	}
+
+	for _, pod := range podList.Items {
+		podLogger := reqLogger.WithValues("Pod.Name", pod.GetName())
+		if HasInstanceUUID(&pod) {
+			continue
+		}
+		podLogger.Info("starting: set instance uuid")
+		pod = *SetInstanceUUID(&pod)
+
+		if err := r.client.Update(context.TODO(), &pod); err != nil {
+			return reconcile.Result{}, err
+		}
+
+		podLogger.Info("success: set instance uuid", "UUID", pod.GetLabels()["tarantool.io/instance-uuid"])
+		return reconcile.Result{Requeue: true}, nil
+	}
+
+	topologyClient := topology.NewBuiltInTopologyService()
+	for _, pod := range podList.Items {
+		if err := topologyClient.Join(&pod); err != nil {
+			if topology.IsAlreadyJoined(err) {
+				reqLogger.Info("Already joined", "Pod.Name", pod.Name)
+				continue
+			}
+
+			if topology.IsTopologyDown(err) {
+				reqLogger.Info("Topology is down", "Pod.Name", pod.Name)
+				continue
+			}
+
+			reqLogger.Info("unknown error")
+
+			return reconcile.Result{}, err
+		}
+
+		return reconcile.Result{Requeue: true}, goerrors.New("Not all pods joined, requeue")
+	}
+
+	if err := topologyClient.BootstrapVshard(); err != nil {
+		return reconcile.Result{}, err
 	}
 
 	return reconcile.Result{}, nil

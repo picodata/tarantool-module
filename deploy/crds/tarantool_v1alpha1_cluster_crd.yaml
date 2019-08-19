@@ -59,9 +59,10 @@ spec:
                           using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
                         format: int32
                         type: integer
-                      serviceTemplate:
+                      selector:
+                        description: StorageTemplate *StatefulSetTemplateSpec `json:"storageTemplate,omitempty"`
                         type: object
-                      storageTemplate:
+                      serviceTemplate:
                         type: object
                     required:
                     - serviceTemplate
@@ -70,6 +71,12 @@ spec:
                     type: object
                 type: object
               type: array
+            selector:
+              type: object
+            topologyService:
+              type: string
+            topologyServiceType:
+              type: string
           type: object
         status:
           type: object

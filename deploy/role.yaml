@@ -46,5 +46,7 @@ rules:
   - '*'
   - clusters
   - roles
+  - statefulsettemplatespecs
+  - replicasettemplates
   verbs:
   - '*'

@@ -3,208 +3,161 @@ kind: Cluster
 metadata:
   name: example-tarantoolcluster
 spec:
+  selector:
+    matchLabels:
+      tarantool.io/cluster-id: "example-tarantoolcluster"
   topologyService: "http://pim-topology:8081"
   topologyServiceType: "builtin"
-  roles:
-    - metadata: 
-        name: "topology"
-        namespace: default
-        labels:
-          app.kubernetes.io/component: "vshard-router"
-      spec:
-        replicas: 1
-        serviceTemplate:
-          ports:
-          - port: 8081
-            name: web
-            protocol: TCP
-          - port: 3301
-            name: bin
-            protocol: TCP
-          selector:
-            app: pim-topology
-        storageTemplate:
-          replicas: 1
-          selector:
-            matchLabels:
-              app: pim-topology
-          template:
-            metadata:
-              labels:
-                app: pim-topology
-            spec:
-              containers:
-              - name: pim
-                image: registry.gitlab.com/tarantool/megafon/pim:4eb1b97a
-                args:
-                - tarantool
-                - /opt/tarantool/init.lua
-                ports:
-                  - containerPort: 3301
-                  - containerPort: 8081
-                  - containerPort: 8888
-                volumeMounts:
-                - name: hostvol
-                  mountPath: /var/log/tarantool
-                env:
-                - name: TARANTOOL_INSTANCE_NAME
-                  valueFrom:
-                    fieldRef:
-                      fieldPath: metadata.name
-                - name: TARANTOOL_MEMTX_MEMORY
-                  value: "1"
-                - name: TARANTOOL_LOG
-                  value: "/tarantool/data/leader.log"
-                - name: TARANTOOL_INSTANCE_ROLE
-                  value: "vshard-router"
-                - name: TARANTOOL_JOIN_URL
-                  value: "http://127.0.0.1:8081"
-                - name: TARANTOOL_ADVERTISE_HOST
-                  valueFrom:
-                    fieldRef:
-                      fieldPath: status.podIP
-                - name: TARANTOOL_ADVERTISE_URI
-                  value: "$(TARANTOOL_ADVERTISE_HOST):3301"
-              volumes:
-              - name: hostvol
-                hostPath:
-                  path: /home/docker/tarantool
-              imagePullSecrets:
-              - name: gl-regcred
-    - metadata: 
-        name: routers
-        namespace: default
-        labels:
-          app.kubernetes.io/component: "router"
-      spec:
-        replicas: 1
-        serviceTemplate:
-          ports:
-          - port: 8081
-            name: web
-            protocol: TCP
-          - port: 3301
-            name: bin
-            protocol: TCP
-          selector:
-            app: pim-router
-        storageTemplate:
-          replicas: 1
-          selector:
-            matchLabels:
-              app: pim-router
-          template:
-            metadata:
-              labels:
-                app: pim-router
-            spec:
-              containers:
-              - name: pim-router
-                image: registry.gitlab.com/tarantool/megafon/pim:4eb1b97a
-                args:
-                - tarantool
-                - /opt/tarantool/init.lua
-                ports:
-                  - containerPort: 3301
-                  - containerPort: 8081
-                  - containerPort: 8888
-                env:
-                - name: TARANTOOL_INSTANCE_NAME
-                  valueFrom:
-                    fieldRef:
-                      fieldPath: metadata.name
-                - name: TARANTOOL_MEMTX_MEMORY
-                  value: "1"
-                - name: TARANTOOL_INSTANCE_ROLE
-                  value: "router"
-                - name: TARANTOOL_ADVERTISE_HOST
-                  valueFrom:
-                    fieldRef:
-                      fieldPath: status.podIP
-                - name: TARANTOOL_ADVERTISE_URI
-                  value: "$(TARANTOOL_ADVERTISE_HOST):3301"
-                - name: TARANTOOL_API_PORT
-                  value: "8888"
-                - name: TARANTOOL_API_HOST
-                  value: 0.0.0.0
-              imagePullSecrets:
-              - name: gl-regcred
-    - metadata:
-        name: storages
-        namespace: default
-        labels:
-          app.kubernetes.io/component: "storage"
-      spec:
-        replicas: 1
-        serviceTemplate:
-          ports:
-          - port: 8081
-            name: web
-            protocol: TCP
-          - port: 3301
-            name: bin
-            protocol: TCP
-          selector:
-            app: pim-storage
-        serviceTemplate:
-          ports:
-          - port: 80
-            name: web
-          clusterIP: None
-          selector:
-            app: pim-storage
-        storageTemplate:
-          replicas: 1
-          selector:
-            matchLabels:
-              app: pim-storage
-          volumeClaimTemplates:
-          - metadata:
-              name: www
-            spec:
-              accessModes: [ "ReadWriteOnce" ]
-              resources:
-                requests:
-                  storage: 1Gi
-          template:
-            metadata:
-              labels:
-                app: pim-storage
-            spec:
-              terminationGracePeriodSeconds: 10
-              containers:
-              - name: pim-storage
-                image: registry.gitlab.com/tarantool/megafon/pim:4eb1b97a
-                args:
-                  - tarantool
-                  - /opt/tarantool/init.lua
-                volumeMounts:
-                  - mountPath: "/tarantool/data"
-                    name: www
-                ports:
-                  - containerPort: 3301
-                  - containerPort: 8081
-                  - containerPort: 8888
-                env:
-                  - name: TARANTOOL_INSTANCE_NAME
-                    valueFrom:
-                      fieldRef:
-                        fieldPath: metadata.name
-                  - name: TARANTOOL_MEMTX_MEMORY
-                    value: "1"
-                  - name: TARANTOOL_INSTANCE_ROLE
-                    value: "storage"
-                  - name: TARANTOOL_WORK_DIR
-                    value: "/tarantool/data"
-                  - name: TARANTOOL_LOG
-                    value: "/tarantool/data/storage.log"
-                  - name: TARANTOOL_ADVERTISE_HOST
-                    valueFrom:
-                      fieldRef:
-                        fieldPath: status.podIP
-                  - name: TARANTOOL_ADVERTISE_URI
-                    value: "$(TARANTOOL_ADVERTISE_HOST):3301"
-              imagePullSecrets:
-              - name: gl-regcred
-  # Add fields here
-  size: 3
+---
+apiVersion: tarantool.io/v1alpha1
+kind: Role
+metadata:
+  name: topology
+  namespace: default
+  labels:
+    tarantool.io/cluster-id: "example-tarantoolcluster"
+    tarantool.io/role: "vshard-router"
+spec:
+  selector:
+    matchLabels:
+      tarantool.io/role: "storage"
+  replicas: 1
+  serviceTemplate:
+    ports:
+    - port: 8081
+      name: web
+      protocol: TCP
+    - port: 3301
+      name: bin
+      protocol: TCP
+    selector:
+      app: pim-storage
+---
+apiVersion: tarantool.io/v1alpha1
+kind: Role
+metadata:
+  name: storage
+  namespace: default
+  labels:
+    tarantool.io/cluster-id: "example-tarantoolcluster"
+    tarantool.io/role: "storage"
+spec:
+  selector:
+    matchLabels:
+      tarantool.io/role: "storage"
+  replicas: 1
+  serviceTemplate:
+    ports:
+    - port: 8081
+      name: web
+      protocol: TCP
+    - port: 3301
+      name: bin
+      protocol: TCP
+    selector:
+      app: pim-storage
+---
+apiVersion: tarantool.io/v1alpha1
+kind: Role
+metadata:
+  name: routers
+  namespace: default
+  labels:
+    tarantool.io/cluster-id: "example-tarantoolcluster"
+    tarantool.io/role: "router"
+spec:
+  selector:
+    matchLabels:
+      tarantool.io/role: "storage"
+  replicas: 1
+  serviceTemplate:
+    ports:
+    - port: 8081
+      name: web
+      protocol: TCP
+    - port: 3301
+      name: bin
+      protocol: TCP
+    selector:
+      app: pim-storage
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: topology
+spec:
+  ports:
+    - port: 8081
+      name: web
+      protocol: TCP
+    - port: 3301
+      name: bin
+      protocol: TCP
+  selector:
+    tarantool.io/role: "vshard-router"
+---
+apiVersion: tarantool.io/v1alpha1
+kind: ReplicasetTemplate
+metadata:
+  name: storage-template
+  labels:
+    tarantool.io/cluster-id: "example-tarantoolcluster"
+    tarantool.io/role: "storage"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: pim-storage
+  volumeClaimTemplates:
+  - metadata:
+      name: www 
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+  template:
+    metadata:
+      labels:
+        tarantool.io/cluster-id: "example-tarantoolcluster"
+        app: pim-storage
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: pim-storage
+        image: registry.gitlab.com/tarantool/megafon/pim:4eb1b97a
+        args:
+          - tarantool
+          - /opt/tarantool/init.lua
+        volumeMounts:
+          - mountPath: "/tarantool/data"
+            name: www
+        ports:
+          - containerPort: 3301
+          - containerPort: 8081
+          - containerPort: 8888
+        env:
+          - name: TARANTOOL_INSTANCE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: TARANTOOL_MEMTX_MEMORY
+            value: "1"
+          - name: TARANTOOL_INSTANCE_ROLE
+            value: "storage"
+          - name: TARANTOOL_WORK_DIR
+            value: "/tarantool/data"
+          - name: TARANTOOL_LOG
+            value: "/tarantool/data/storage.log"
+          - name: TARANTOOL_API_PORT
+            value: "8888"
+          - name: TARANTOOL_API_HOST
+            value: 0.0.0.0
+          - name: TARANTOOL_ADVERTISE_HOST
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: TARANTOOL_ADVERTISE_URI
+            value: "$(TARANTOOL_ADVERTISE_HOST):3301"
+      imagePullSecrets:
+      - name: gl-regcred

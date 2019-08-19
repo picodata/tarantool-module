@@ -1,27 +1,24 @@
 package v1alpha1
 
 import (
+	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// ClusterSpec defines the desired state of Cluster
+// ReplicasetTemplateSpec defines the desired state of ReplicasetTemplate
 // +k8s:openapi-gen=true
-type ClusterSpec struct {
-	TopologyService     string `json:"topologyService,omitempty"`
-	TopologyServiceType string `json:"topologyServiceType,omitempty"`
+type ReplicasetTemplateSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
-	Roles    []Role                `json:"roles,omitempty"`
-	Selector *metav1.LabelSelector `json:"selector,omitempty"`
 }
 
-// ClusterStatus defines the observed state of Cluster
+// ReplicasetTemplateStatus defines the observed state of ReplicasetTemplate
 // +k8s:openapi-gen=true
-type ClusterStatus struct {
+type ReplicasetTemplateStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
@@ -29,26 +26,26 @@ type ClusterStatus struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// Cluster is the Schema for the clusters API
+// ReplicasetTemplate is the Schema for the replicasettemplates API
 // +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
-type Cluster struct {
+type ReplicasetTemplate struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ClusterSpec   `json:"spec,omitempty"`
-	Status ClusterStatus `json:"status,omitempty"`
+	Spec   *appsv1.StatefulSetSpec  `json:"spec,omitempty"`
+	Status ReplicasetTemplateStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// ClusterList contains a list of Cluster
-type ClusterList struct {
+// ReplicasetTemplateList contains a list of ReplicasetTemplate
+type ReplicasetTemplateList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Cluster `json:"items"`
+	Items           []ReplicasetTemplate `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&Cluster{}, &ClusterList{})
+	SchemeBuilder.Register(&ReplicasetTemplate{}, &ReplicasetTemplateList{})
 }
