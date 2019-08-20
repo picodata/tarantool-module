@@ -57,26 +57,29 @@ local kv_storage = {
     end,
 }
 
-local function init()
-    local kv_store = box.schema.space.create(
-        'kv_store',
-        { if_not_exists = true }
-    )
-
-    kv_store:format({
-        { name = 'key',   type = 'string' },
-        { name = 'value', type = '*' },
-    })
-
-    kv_store:create_index('primary',
-        { type = 'hash', parts = {1, 'string'}, if_not_exists = true }
-    )
-
+local function init(opts)
     rawset(_G, 'kv_storage', kv_storage)
-    for name, _ in pairs(kv_storage) do
-        box.schema.func.create('kv_storage.' .. name, { setuid = true, if_not_exists = true })
-        box.schema.user.grant('cluster', 'execute', 'function', 'kv_storage.' .. name, { if_not_exists = true })
+    if opts.is_master then
+        local kv_store = box.schema.space.create(
+            'kv_store',
+            { if_not_exists = true }
+        )
+
+        kv_store:format({
+            { name = 'key',   type = 'string' },
+            { name = 'value', type = '*' },
+        })
+
+        kv_store:create_index('primary',
+            { type = 'hash', parts = {1, 'string'}, if_not_exists = true }
+        )
+
+        for name, _ in pairs(kv_storage) do
+            box.schema.func.create('kv_storage.' .. name, { setuid = true, if_not_exists = true })
+            box.schema.user.grant('cluster', 'execute', 'function', 'kv_storage.' .. name, { if_not_exists = true })
+        end
     end
+    return true
 end
 
 return {
