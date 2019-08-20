@@ -1,0 +1,4 @@
+graphqlclient
+requests 
+simplejson
+termcolor
