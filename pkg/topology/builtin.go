@@ -33,14 +33,18 @@ type BootstrapVshardData struct {
 	BootstrapVshard bool `json:"bootstrapVshardResponse"`
 }
 type BootstrapVshardResponse struct {
-	Data *BootstrapVshardData `json:"data,omitempty"`
+	Data   *BootstrapVshardData `json:"data,omitempty"`
+	Errors []*ResponseError     `json:"errors,omitempty"`
 }
 
-type BuiltInTopologyService struct{}
+type BuiltInTopologyService struct {
+	serviceHost string
+}
 
 var (
-	topologyIsDown = errors.New("topology service is down")
-	alreadyJoined  = errors.New("already joined")
+	topologyIsDown      = errors.New("topology service is down")
+	alreadyJoined       = errors.New("already joined")
+	alreadyBootstrapped = errors.New("already bootstrapped")
 )
 
 func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
@@ -65,7 +69,7 @@ func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
 
 	j := fmt.Sprintf("{\"query\": \"%s\"}", req)
 
-	rawResp, err := http.Post("http://127.0.0.1:8081/admin/api", "application/json", strings.NewReader(j))
+	rawResp, err := http.Post(s.serviceHost, "application/json", strings.NewReader(j))
 	if err != nil {
 		return err
 	}
@@ -97,7 +101,7 @@ func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
 func (s *BuiltInTopologyService) Expel(pod *corev1.Pod) error {
 	req := fmt.Sprintf("mutation {expel_instance:expel_server(uuid:\\\"%s\\\")}", pod.GetAnnotations()["tarantool.io/instance_uuid"])
 	j := fmt.Sprintf("{\"query\": \"%s\"}", req)
-	rawResp, err := http.Post("http://127.0.0.1:8081/admin/api", "application/json", strings.NewReader(j))
+	rawResp, err := http.Post(s.serviceHost, "application/json", strings.NewReader(j))
 	if err != nil {
 		return err
 	}
@@ -118,7 +122,7 @@ func (s *BuiltInTopologyService) Expel(pod *corev1.Pod) error {
 func (s *BuiltInTopologyService) BootstrapVshard() error {
 	req := fmt.Sprint("mutation bootstrap {bootstrapVshardResponse: bootstrap_vshard}")
 	j := fmt.Sprintf("{\"query\": \"%s\"}", req)
-	rawResp, err := http.Post("http://127.0.0.1:8081/admin/api", "application/json", strings.NewReader(j))
+	rawResp, err := http.Post(s.serviceHost, "application/json", strings.NewReader(j))
 	if err != nil {
 		return err
 	}
@@ -132,8 +136,15 @@ func (s *BuiltInTopologyService) BootstrapVshard() error {
 	if resp.Data.BootstrapVshard {
 		return nil
 	}
+	if resp.Errors != nil && len(resp.Errors) > 0 {
+		if strings.Contains(resp.Errors[0].Message, "already bootstrapped") {
+			return alreadyBootstrapped
+		}
 
-	return errors.New("bootstrap failed")
+		return errors.New(resp.Errors[0].Message)
+	}
+
+	return errors.New("unknown error")
 }
 
 func IsTopologyDown(err error) bool {
@@ -144,7 +155,17 @@ func IsAlreadyJoined(err error) bool {
 	return err == alreadyJoined
 }
 
+func IsAlreadyBootstrapped(err error) bool {
+	return err == alreadyBootstrapped
+}
+
 type Option func(s *BuiltInTopologyService)
+
+func WithTopologyEndpoint(url string) Option {
+	return func(s *BuiltInTopologyService) {
+		s.serviceHost = url
+	}
+}
 
 func NewBuiltInTopologyService(opts ...Option) *BuiltInTopologyService {
 	s := &BuiltInTopologyService{}

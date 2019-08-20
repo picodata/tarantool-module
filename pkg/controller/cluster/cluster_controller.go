@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"context"
+	"time"
 
 	goerrors "errors"
 
@@ -203,7 +204,7 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{Requeue: true}, nil
 	}
 
-	topologyClient := topology.NewBuiltInTopologyService()
+	topologyClient := topology.NewBuiltInTopologyService(topology.WithTopologyEndpoint(cluster.Spec.TopologyService))
 	for _, pod := range podList.Items {
 		if err := topologyClient.Join(&pod); err != nil {
 			if topology.IsAlreadyJoined(err) {
@@ -221,10 +222,14 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-		return reconcile.Result{Requeue: true}, goerrors.New("Not all pods joined, requeue")
+		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, goerrors.New("Not all pods joined, requeue")
 	}
 
 	if err := topologyClient.BootstrapVshard(); err != nil {
+		if topology.IsAlreadyBootstrapped(err) {
+			return reconcile.Result{}, nil
+		}
+
 		return reconcile.Result{}, err
 	}
 
