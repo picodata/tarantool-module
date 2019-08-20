@@ -2,7 +2,6 @@ package cluster
 
 import (
 	"context"
-	"time"
 
 	goerrors "errors"
 
@@ -138,7 +137,6 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger.Info("Reconciling Cluster")
 
-	// Fetch the Cluster instance
 	cluster := &tarantoolv1alpha1.Cluster{}
 	err := r.client.Get(context.TODO(), request.NamespacedName, cluster)
 	if err != nil {
@@ -149,23 +147,18 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
-	selector, err := metav1.LabelSelectorAsSelector(cluster.Spec.Selector)
+	clusterSelector, err := metav1.LabelSelectorAsSelector(cluster.Spec.Selector)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
 	roleList := &tarantoolv1alpha1.RoleList{}
-	if err := r.client.List(context.TODO(), &client.ListOptions{LabelSelector: selector}, roleList); err != nil {
+	if err := r.client.List(context.TODO(), &client.ListOptions{LabelSelector: clusterSelector}, roleList); err != nil {
 		if errors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
 
 		return reconcile.Result{}, err
-	}
-
-	if len(roleList.Items) == 0 {
-		reqLogger.Info("no roles to reconcile")
-		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
 	}
 
 	for _, role := range roleList.Items {
@@ -186,7 +179,7 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 	reqLogger.Info("Roles reconciled, moving to pod reconcile")
 
 	podList := &corev1.PodList{}
-	if err := r.client.List(context.TODO(), &client.ListOptions{LabelSelector: selector}, podList); err != nil {
+	if err := r.client.List(context.TODO(), &client.ListOptions{LabelSelector: clusterSelector}, podList); err != nil {
 		if errors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}

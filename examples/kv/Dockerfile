@@ -12,6 +12,12 @@ RUN tarantoolctl rocks make key-value-store/key-value-scm-1.rockspec
 
 FROM centos:7 as release
 
+# Tarantool binary protocol port
+EXPOSE 3301
+
+# Application HTTP API
+EXPOSE 8081
+
 ENV TARANTOOL_WORK_DIR=/tarantool/data \
     TARANTOOL_RUN_DIR=/tarantool/run
 
