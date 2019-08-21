@@ -6,7 +6,7 @@ spec:
   selector:
     matchLabels:
       tarantool.io/cluster-id: "example-tarantoolcluster"
-  topologyService: "http://127.0.0.1:8081/admin/api"
+  topologyService: "http://topology:8081/admin/api"
   topologyServiceType: "builtin"
 ---
 apiVersion: tarantool.io/v1alpha1

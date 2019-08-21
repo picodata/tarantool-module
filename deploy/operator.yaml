@@ -15,8 +15,7 @@ spec:
       serviceAccountName: tarantool-operator
       containers:
         - name: tarantool-operator
-          # Replace this with the built image name
-          image: REPLACE_IMAGE
+          image: registry.gitlab.com/tarantool/sandbox/tarantool-operator:latest
           command:
           - tarantool-operator
           imagePullPolicy: Always
@@ -29,5 +28,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            - name: OPERATOR_NAME
+            - name: tarantool-operator
               value: "tarantool-operator"
+      imagePullSecrets:
+      - name: gl-regcred
