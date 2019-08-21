@@ -4,10 +4,9 @@ import (
 	"context"
 	"time"
 
-	goerrors "errors"
-
 	"github.com/google/uuid"
 	tarantoolv1alpha1 "gitlab.com/tarantool/sandbox/tarantool-operator/pkg/apis/tarantool/v1alpha1"
+	"gitlab.com/tarantool/sandbox/tarantool-operator/pkg/tarantool"
 	"gitlab.com/tarantool/sandbox/tarantool-operator/pkg/topology"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -206,8 +205,16 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	topologyClient := topology.NewBuiltInTopologyService(topology.WithTopologyEndpoint(cluster.Spec.TopologyService))
 	for _, pod := range podList.Items {
+		if tarantool.IsJoined(&pod) {
+			continue
+		}
+
 		if err := topologyClient.Join(&pod); err != nil {
 			if topology.IsAlreadyJoined(err) {
+				tarantool.MarkJoined(&pod)
+				if err := r.client.Update(context.TODO(), &pod); err != nil {
+					return reconcile.Result{}, err
+				}
 				reqLogger.Info("Already joined", "Pod.Name", pod.Name)
 				continue
 			}
@@ -220,9 +227,14 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 			reqLogger.Info("unknown error")
 
 			return reconcile.Result{}, err
+		} else {
+			tarantool.MarkJoined(&pod)
+			if err := r.client.Update(context.TODO(), &pod); err != nil {
+				return reconcile.Result{}, err
+			}
 		}
 
-		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, goerrors.New("Not all pods joined, requeue")
+		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
 	}
 
 	if err := topologyClient.BootstrapVshard(); err != nil {

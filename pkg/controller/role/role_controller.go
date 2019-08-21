@@ -222,6 +222,7 @@ func CreateStatefulSetFromTemplate(name string, role *tarantoolv1alpha1.Role, rs
 	replicasetUUID, _ := uuid.NewUUID()
 	sts.ObjectMeta.Labels["tarantool.io/replicaset-uuid"] = replicasetUUID.String()
 	sts.Spec.Template.Labels["tarantool.io/replicaset-uuid"] = replicasetUUID.String()
+
 	return sts
 }
 

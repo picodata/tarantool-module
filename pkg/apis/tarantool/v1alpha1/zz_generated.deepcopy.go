@@ -282,6 +282,11 @@ func (in *RoleSpec) DeepCopyInto(out *RoleSpec) {
 		**out = **in
 	}
 	in.ServiceTemplate.DeepCopyInto(&out.ServiceTemplate)
+	if in.StorageTemplate != nil {
+		in, out := &in.StorageTemplate, &out.StorageTemplate
+		*out = new(ReplicasetTemplate)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.Selector != nil {
 		in, out := &in.Selector, &out.Selector
 		*out = new(v1.LabelSelector)
