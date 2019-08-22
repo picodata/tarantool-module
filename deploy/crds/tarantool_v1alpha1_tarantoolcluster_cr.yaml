@@ -125,7 +125,7 @@ spec:
       terminationGracePeriodSeconds: 10
       containers:
       - name: pim-storage
-        image: registry.gitlab.com/tarantool/sandbox/tarantool-operator/examples/kv:latest
+        image: vasiliyt/tarantool-example-kv:latest
         volumeMounts:
           - mountPath: "/tarantool/data"
             name: www
@@ -147,5 +147,3 @@ spec:
                 fieldPath: status.podIP
           - name: TARANTOOL_ADVERTISE_URI
             value: "$(TARANTOOL_ADVERTISE_HOST):3301"
-      imagePullSecrets:
-      - name: gl-regcred

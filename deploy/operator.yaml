@@ -15,7 +15,7 @@ spec:
       serviceAccountName: tarantool-operator
       containers:
         - name: tarantool-operator
-          image: registry.gitlab.com/tarantool/sandbox/tarantool-operator:latest
+          image: vasiliyt/tarantool-operator:latest
           command:
           - tarantool-operator
           imagePullPolicy: Always
@@ -30,5 +30,3 @@ spec:
                   fieldPath: metadata.name
             - name: tarantool-operator
               value: "tarantool-operator"
-      imagePullSecrets:
-      - name: gl-regcred
