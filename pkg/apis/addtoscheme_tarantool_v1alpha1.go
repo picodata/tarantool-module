@@ -1,7 +1,7 @@
 package apis
 
 import (
-	"gitlab.com/tarantool/sandbox/tarantool-operator/pkg/apis/tarantool/v1alpha1"
+	"github.com/tarantool/tarantool-operator/pkg/apis/tarantool/v1alpha1"
 )
 
 func init() {
