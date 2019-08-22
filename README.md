@@ -1,27 +1,29 @@
 # Tarantool Kubernetes Operator
 
-### Как запустить оператор и exapmles/kv приложение на minikube
+### Running Operator on Minikube
 
-1. Установить kubectl и minikube
+1. Install required software:
 
     - [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl)
 
     - [minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/)
 
 
-1. Создать кластер k8s на minikube
+1. Create minikube cluster
 
     ```shell
-    minikube start
+    minikube start --memory=4096
     ```
 
-    Проверить, что все запустилось:
+    You will need 4Gb of RAM allocated to minikube cluster to run examples
+
+    Ensure Minikube is up and running:
 
     ```shell
     minikube status
     ```
 
-    если все хорошо то увидим нечто подобное
+    in case of success you will see output
 
     ```shell
     host: Running
@@ -29,7 +31,7 @@
     apiserver: Running
     ```
 
-1. Создать необходимые оператору для работы ресурсы:
+1. Create operator resources
 
     ```shell
     kubectl create -f deploy/service_account.yaml
@@ -37,7 +39,7 @@
     kubectl create -f deploy/role_binding.yaml
     ```
 
-1. Создать CRD 
+1. Create Tarantool Operator CRD's
 
     ```shell
     kubectl create -f deploy/crds/tarantool_v1alpha1_cluster_crd.yaml
@@ -45,38 +47,20 @@
     kubectl create -f deploy/crds/tarantool_v1alpha1_replicasettemplate_crd.yaml
     ```
 
-1. Запустить оператор 
+1. Start operator
 
     ```shell
     kubectl create -f deploy/operator.yaml
     ```
 
-    дождаться запуска pod'a с оператором
+    ensure operator is up 
 
     ```shell
     kubectl get pods --watch
     ```
 
-    ждем пока STATUS pod'a tarantool-operator-xxxxxx-xx не перейдет в Runnning
+    wait for tarantool-operator-xxxxxx-xx Pod's STATUS became Runnning
 
-1. Запустить examples/kv приложение
+### Examples
 
-    ```shell
-    kubectl create -f deploy/crds/tarantool_v1alpha1_tarantoolcluster_cr.yaml
-    ```
-
-    ждем пока все pod'ы перейдут в STATUS=Running
-
-    ```shell
-    kubectl get pods --watch
-    ```
-
-1. Пробросить порты, чтобы можно было в админку смотреть
-
-    ```shell
-    kubectl port-forward service/topology 8081:8081
-    ```
-
-    эту команду может потребоваться выполнить несколько раз, пока не отработает
-
-1. Зайти браузером на [http://127.0.0.1:8081](http://127.0.0.1:8081)
+[Distributed key value storage](/examples/kv)
