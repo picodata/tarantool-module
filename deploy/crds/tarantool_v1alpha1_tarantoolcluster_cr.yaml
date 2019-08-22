@@ -68,7 +68,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      tarantool.io/role: "storage"
+      tarantool.io/role: "router"
   replicas: 1
   serviceTemplate:
     ports:
@@ -95,6 +95,18 @@ spec:
       protocol: TCP
   selector:
     tarantool.io/role: "vshard-router"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: router
+spec:
+  ports:
+    - port: 8081
+      name: web
+      protocol: TCP
+  selector:
+    tarantool.io/role: "router"
 ---
 apiVersion: tarantool.io/v1alpha1
 kind: ReplicasetTemplate
@@ -125,6 +137,58 @@ spec:
       terminationGracePeriodSeconds: 10
       containers:
       - name: pim-storage
+        image: vasiliyt/tarantool-example-kv:latest
+        volumeMounts:
+          - mountPath: "/tarantool/data"
+            name: www
+        ports:
+          - containerPort: 3301
+          - containerPort: 8081
+        env:
+          - name: TARANTOOL_INSTANCE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: TARANTOOL_WORK_DIR
+            value: "/tarantool/data"
+          - name: TARANTOOL_LOG
+            value: "/tarantool/data/storage.log"
+          - name: TARANTOOL_ADVERTISE_HOST
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: TARANTOOL_ADVERTISE_URI
+            value: "$(TARANTOOL_ADVERTISE_HOST):3301"
+---
+apiVersion: tarantool.io/v1alpha1
+kind: ReplicasetTemplate
+metadata:
+  name: router-template
+  labels:
+    tarantool.io/cluster-id: "example-tarantoolcluster"
+    tarantool.io/role: "router"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pim-router
+  volumeClaimTemplates:
+  - metadata:
+      name: www 
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+  template:
+    metadata:
+      labels:
+        tarantool.io/cluster-id: "example-tarantoolcluster"
+        app: pim-router
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: pim-router
         image: vasiliyt/tarantool-example-kv:latest
         volumeMounts:
           - mountPath: "/tarantool/data"

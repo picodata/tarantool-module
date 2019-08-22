@@ -1,4 +1,4 @@
-module gitlab.com/tarantool/sandbox/tarantool-operator
+module github.com/tarantool/tarantool-operator
 
 require (
 	github.com/go-openapi/spec v0.19.0

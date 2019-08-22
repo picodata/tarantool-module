@@ -10,7 +10,7 @@ RUN tarantoolctl rocks make key-value-store/key-value-scm-1.rockspec
 
 #############
 
-FROM centos:7 as release
+FROM registry.access.redhat.com/ubi7/ubi-minimal:latest as release
 
 # Tarantool binary protocol port
 EXPOSE 3301
