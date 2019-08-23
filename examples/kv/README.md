@@ -47,7 +47,7 @@ Assuming commands executed from repository root and Tarantool Operator is up and
 1. Increase number of replicasets in Storages Role:
 
     ```shell
-    kubectl scale roles.tarantool.io storage --replicas=4
+    kubectl scale roles.tarantool.io storage --replicas=3
     ```
 
     This will result in addition of one more replicaset to existing cluster.
@@ -57,7 +57,7 @@ Assuming commands executed from repository root and Tarantool Operator is up and
 1. Increase number of replicas across all Storages Role replicasets:
 
     ```shell 
-    kuebctl edit replicasettemplates.tarantool.io storage-template
+    kubectl edit replicasettemplates.tarantool.io storage-template
     ```
 
     This will open text editor. Change spec.replicas field value to 3 then save and exit editor.
