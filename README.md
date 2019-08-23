@@ -1,6 +1,27 @@
 # Tarantool Kubernetes Operator
 
-### Running Operator on Minikube
+The Tarantool Operator provides automation that simplifies the administration of Tarantool Cartridge based clusters on Kubernetes.
+
+The Operator instroduces new API version tarantool.io/v1alpha1 and installs custom resources to for objects of custom types Cluster, Role, ReplicasetTemplate.
+
+
+### Resources
+
+**Cluster** - represents single Tarantool Cartridge cluster
+
+**Role** - represents Tarantool Cartridge user role
+
+**ReplicasetTemplate** - is a template for StatefulSet's created as a members of Role
+
+### Resource ownerhip
+
+Resources managed by Operator being deployed forms resource ownership hierarchy:
+
+![Resource ownership](./assets/resource_ownership.jpg)
+
+Resource ownership directly affects how k8s garbage collector works. If you execute delete command on parent resource then all it's dependants will be removed.
+
+### Deploying Tarantool Operator on Minikube
 
 1. Install required software:
 
