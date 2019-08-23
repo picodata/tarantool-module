@@ -34,7 +34,7 @@ local ok, err = cluster.cfg({
         'key-value.storage',
         'key-value.topology'
     },
-})
+}, {memtx_memory = 128 * 1024 * 1024})
 
 assert(ok, tostring(err))
 
