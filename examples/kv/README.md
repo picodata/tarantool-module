@@ -2,6 +2,8 @@
 
 examples/kv is a Tarantool based distributed key value storage. Data accessed via HTTP REST API.
 
+![App topology](/resources/topology.jpg)
+
 ### Running example
 
 Assuming commands executed from repository root and Tarantool Operator is up and running.
