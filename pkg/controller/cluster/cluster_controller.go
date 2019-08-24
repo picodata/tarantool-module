@@ -2,7 +2,10 @@ package cluster
 
 import (
 	"context"
+	"fmt"
 	"time"
+
+	goerrors "errors"
 
 	"github.com/google/uuid"
 	tarantoolv1alpha1 "github.com/tarantool/tarantool-operator/pkg/apis/tarantool/v1alpha1"
@@ -135,14 +138,58 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger.Info("Reconciling Cluster")
 
+	// do nothing if no Cluster
 	cluster := &tarantoolv1alpha1.Cluster{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, cluster)
-	if err != nil {
+	if err := r.client.Get(context.TODO(), request.NamespacedName, cluster); err != nil {
 		if errors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
 
 		return reconcile.Result{}, err
+	}
+
+	// ensure cluster wide Service exists
+	svc := &corev1.Service{}
+	if err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: cluster.GetNamespace(), Name: cluster.GetName()}, svc); err != nil {
+		if errors.IsNotFound(err) {
+			svc.Name = cluster.GetName()
+			svc.Namespace = cluster.GetNamespace()
+			svc.Spec = corev1.ServiceSpec{
+				Selector:  cluster.Spec.Selector.MatchLabels,
+				ClusterIP: "None",
+				Ports: []corev1.ServicePort{
+					{
+						Name:     "admin",
+						Port:     8081,
+						Protocol: "TCP",
+					},
+				},
+			}
+			if err := controllerutil.SetControllerReference(cluster, svc, r.scheme); err != nil {
+				return reconcile.Result{}, err
+			}
+
+			if err := r.client.Create(context.TODO(), svc); err != nil {
+				return reconcile.Result{}, err
+			}
+		}
+	}
+	// ensure Cluster leader elected
+	ep := &corev1.Endpoints{}
+	//	leaderIP := &corev1.EndpointAddress{}
+	if err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: cluster.GetNamespace(), Name: cluster.GetName()}, ep); err != nil {
+		return reconcile.Result{}, err
+	}
+	if len(ep.Subsets) == 0 || len(ep.Subsets[0].Addresses) == 0 {
+		return reconcile.Result{}, goerrors.New("no available Endpoints in Cluster")
+	}
+	leader, ok := ep.Annotations["tarantool.io/leader"]
+	if !ok {
+		leader = fmt.Sprintf("%s:%s", ep.Subsets[0].Addresses[0].IP, "3301")
+		ep.Annotations["tarantool.io/leader"] = leader
+		if err := r.client.Update(context.TODO(), ep); err != nil {
+			return reconcile.Result{}, err
+		}
 	}
 
 	clusterSelector, err := metav1.LabelSelectorAsSelector(cluster.Spec.Selector)
@@ -201,7 +248,7 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{Requeue: true}, nil
 	}
 
-	topologyClient := topology.NewBuiltInTopologyService(topology.WithTopologyEndpoint(cluster.Spec.TopologyService))
+	topologyClient := topology.NewBuiltInTopologyService(topology.WithTopologyEndpoint(fmt.Sprintf("http://%s/admin/api", leader)))
 	for _, pod := range podList.Items {
 		if tarantool.IsJoined(&pod) {
 			continue

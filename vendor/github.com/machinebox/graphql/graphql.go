@@ -38,7 +38,6 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"net/http/httputil"
 
 	"github.com/pkg/errors"
 )
@@ -124,12 +123,6 @@ func (c *Client) runWithJSON(ctx context.Context, req *Request, resp interface{}
 	}
 	c.logf(">> headers: %v", r.Header)
 	r = r.WithContext(ctx)
-	dump, err := httputil.DumpRequest(r, true)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("%q", dump)
 	res, err := c.httpClient.Do(r)
 	if err != nil {
 		return err

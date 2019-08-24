@@ -6,22 +6,8 @@ spec:
   selector:
     matchLabels:
       tarantool.io/cluster-id: "examples-kv-cluster"
-  topologyService: "http://topology:8081/admin/api"
+  topologyService: "http://127.0.0.1:8081/admin/api"
   topologyServiceType: "builtin"
----
-apiVersion: tarantool.io/v1alpha1
-kind: Role
-metadata:
-  name: topology
-  namespace: default
-  labels:
-    tarantool.io/cluster-id: "examples-kv-cluster"
-    tarantool.io/role: "vshard-router"
-spec:
-  selector:
-    matchLabels:
-      tarantool.io/replicaset-template: "topology-template"
-  replicas: 1
 ---
 apiVersion: tarantool.io/v1alpha1
 kind: Role
@@ -161,60 +147,6 @@ spec:
           - name: TARANTOOL_ADVERTISE_URI
             value: "$(TARANTOOL_ADVERTISE_HOST):3301"
 ---
-apiVersion: tarantool.io/v1alpha1
-kind: ReplicasetTemplate
-metadata:
-  name: topology-template
-  labels:
-    tarantool.io/cluster-id: "examples-kv-cluster"
-    tarantool.io/replicaset-template: "topology-template"
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      tarantool.io/pod-template: "topology-pod-template"
-  volumeClaimTemplates:
-  - metadata:
-      name: www 
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      resources:
-        requests:
-          storage: 1Gi
-  template:
-    metadata:
-      labels:
-        tarantool.io/cluster-id: "examples-kv-cluster"
-        tarantool.io/pod-template: "topology-pod-template"
-    spec:
-      terminationGracePeriodSeconds: 10
-      containers:
-      - name: pim-router
-        image: vasiliyt/tarantool-example-kv:latest
-        volumeMounts:
-          - mountPath: "/tarantool/data"
-            name: www
-        ports:
-          - containerPort: 3301
-          - containerPort: 8081
-        env:
-          - name: TARANTOOL_INSTANCE_NAME
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.name
-          - name: TARANTOOL_WORK_DIR
-            value: "/tarantool/data"
-          - name: TARANTOOL_MEMTX_MEMORY
-            value: "33554432"
-          - name: TARANTOOL_LOG
-            value: "/tarantool/data/storage.log"
-          - name: TARANTOOL_ADVERTISE_HOST
-            valueFrom:
-              fieldRef:
-                fieldPath: status.podIP
-          - name: TARANTOOL_ADVERTISE_URI
-            value: "$(TARANTOOL_ADVERTISE_HOST):3301"
----
 apiVersion: networking.k8s.io/v1beta1
 kind: Ingress
 metadata:
@@ -234,29 +166,16 @@ spec:
           servicePort: 8081
         path: /kv_dump
       - backend:
-          serviceName: topology
+          serviceName: router
           servicePort: 8081
         path: /
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: topology
-spec:
-  ports:
-    - port: 8081
-      name: web
-      protocol: TCP
-    - port: 3301
-      name: bin
-      protocol: TCP
-  selector:
-    tarantool.io/role: "vshard-router"
----
-apiVersion: v1
-kind: Service
-metadata:
   name: router
+  labels:
+    tarantool.io/role: "router"
 spec:
   ports:
     - port: 8081
