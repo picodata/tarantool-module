@@ -29,49 +29,11 @@ spec:
           type: object
         spec:
           properties:
-            roles:
+            selector:
               description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                 Important: Run "operator-sdk generate k8s" to regenerate code after
                 modifying this file Add custom validation using kubebuilder tags:
                 https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
-              items:
-                properties:
-                  apiVersion:
-                    description: 'APIVersion defines the versioned schema of this
-                      representation of an object. Servers should convert recognized
-                      schemas to the latest internal value, and may reject unrecognized
-                      values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources'
-                    type: string
-                  kind:
-                    description: 'Kind is a string value representing the REST resource
-                      this object represents. Servers may infer this from the endpoint
-                      the client submits requests to. Cannot be updated. In CamelCase.
-                      More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds'
-                    type: string
-                  metadata:
-                    type: object
-                  spec:
-                    properties:
-                      replicas:
-                        description: 'INSERT ADDITIONAL SPEC FIELDS - desired state
-                          of cluster Important: Run "operator-sdk generate k8s" to
-                          regenerate code after modifying this file Add custom validation
-                          using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
-                        format: int32
-                        type: integer
-                      selector:
-                        description: StorageTemplate *StatefulSetTemplateSpec `json:"storageTemplate,omitempty"`
-                        type: object
-                      serviceTemplate:
-                        type: object
-                    required:
-                    - serviceTemplate
-                    type: object
-                  status:
-                    type: object
-                type: object
-              type: array
-            selector:
               type: object
             topologyService:
               type: string

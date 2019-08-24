@@ -19,7 +19,8 @@ EXPOSE 3301
 EXPOSE 8081
 
 ENV TARANTOOL_WORK_DIR=/tarantool/data \
-    TARANTOOL_RUN_DIR=/tarantool/run
+    TARANTOOL_RUN_DIR=/tarantool/run \
+    TARANTOOL_MEMTX_MEMORY=134217728
 
 WORKDIR /home/tarantool
 COPY --from=key-value-build /home/tarantool .

@@ -17,6 +17,7 @@ local work_dir = os.getenv("TARANTOOL_WORK_DIR") or '.'
 local instance_name = os.getenv("TARANTOOL_INSTANCE_NAME")
 local console_sock = os.getenv("TARANTOOL_CONSOLE_SOCK")
 local advertise_uri = os.getenv("TARANTOOL_ADVERTISE_URI")
+local memtx_memory = tonumber(os.getenv("TARANTOOL_MEMTX_MEMORY")) or (128 * 1024 * 1024)
 
 local http_port = os.getenv("TARANTOOL_HTTP_PORT") or 8081
 
@@ -34,7 +35,7 @@ local ok, err = cluster.cfg({
         'key-value.storage',
         'key-value.topology'
     },
-}, {memtx_memory = 128 * 1024 * 1024})
+}, {memtx_memory = memtx_memory})
 
 assert(ok, tostring(err))
 

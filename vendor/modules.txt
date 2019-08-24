@@ -101,6 +101,8 @@ github.com/imdario/mergo
 github.com/joho/godotenv
 # github.com/json-iterator/go v1.1.6
 github.com/json-iterator/go
+# github.com/machinebox/graphql v0.2.2
+github.com/machinebox/graphql
 # github.com/mailru/easyjson v0.0.0-20190403194419-1ea4449da983
 github.com/mailru/easyjson/jlexer
 github.com/mailru/easyjson/jwriter

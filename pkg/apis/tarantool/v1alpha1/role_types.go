@@ -1,7 +1,6 @@
 package v1alpha1
 
 import (
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -12,7 +11,6 @@ type RoleSpec struct {
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
 	Replicas        *int32                `json:"replicas,omitempty"`
-	ServiceTemplate corev1.ServiceSpec    `json:"serviceTemplate"`
 	StorageTemplate *ReplicasetTemplate   `json:"storageTemplate,omitempty"`
 	Selector        *metav1.LabelSelector `json:"selector,omitempty"`
 }

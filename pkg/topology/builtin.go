@@ -1,12 +1,14 @@
 package topology
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
+	"github.com/machinebox/graphql"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -47,55 +49,57 @@ var (
 	alreadyBootstrapped = errors.New("already bootstrapped")
 )
 
+var join_mutation = `mutation do_join_server($uri: String!, $instance_uuid: String!, $replicaset_uuid: String!, $roles: [String!]) {
+	join_instance: join_server(uri: $uri, instance_uuid: $instance_uuid, replicaset_uuid: $replicaset_uuid, roles: $roles, timeout: 10)
+}`
+
 func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
 	podIP := pod.Status.PodIP
 	if len(podIP) == 0 {
 		return errors.New("Pod.IP is not set yet, skip and wait")
 	}
+
 	advURI := fmt.Sprintf("%s:3301", podIP)
 	replicasetUUID, ok := pod.GetLabels()["tarantool.io/replicaset-uuid"]
 	if !ok {
 		return errors.New("replicaset uuid empty")
 	}
+
 	instanceUUID, ok := pod.GetLabels()["tarantool.io/instance-uuid"]
 	if !ok {
 		return errors.New("instance uuid empty")
 	}
+
 	role, ok := pod.GetLabels()["tarantool.io/role"]
 	if !ok {
 		return errors.New("role undefined")
 	}
-	req := fmt.Sprintf("mutation {join_instance: join_server(uri: \\\"%s\\\",instance_uuid: \\\"%s\\\",replicaset_uuid: \\\"%s\\\",roles: [\\\"%s\\\"],timeout: 10)}", advURI, instanceUUID, replicasetUUID, role)
 
-	j := fmt.Sprintf("{\"query\": \"%s\"}", req)
+	client := graphql.NewClient(s.serviceHost)
+	req := graphql.NewRequest(join_mutation)
 
-	rawResp, err := http.Post(s.serviceHost, "application/json", strings.NewReader(j))
-	if err != nil {
-		return err
-	}
-	defer rawResp.Body.Close()
+	req.Var("uri", advURI)
+	req.Var("instance_uuid", instanceUUID)
+	req.Var("replicaset_uuid", replicasetUUID)
+	req.Var("roles", []string{role})
 
 	resp := &JoinResponse{Errors: []*ResponseError{}, Data: &JoinResponseData{}}
-	if err := json.NewDecoder(rawResp.Body).Decode(resp); err != nil {
-		return err
-	}
-
-	if resp.Errors != nil && len(resp.Errors) > 0 {
-		if strings.Contains(resp.Errors[0].Message, "already joined") {
+	if err := client.Run(context.TODO(), req, resp); err != nil {
+		if strings.Contains(err.Error(), "already joined") {
 			return alreadyJoined
 		}
-		if strings.Contains(resp.Errors[0].Message, "This instance isn't bootstrapped yet") {
+		if strings.Contains(err.Error(), "This instance isn't bootstrapped yet") {
 			return topologyIsDown
 		}
 
-		return errors.New(resp.Errors[0].Message)
+		return err
 	}
 
 	if resp.Data.JoinInstance == true {
 		return nil
 	}
 
-	return errors.New("Undefined error")
+	return nil
 }
 
 func (s *BuiltInTopologyService) Expel(pod *corev1.Pod) error {

@@ -3,6 +3,8 @@ module github.com/tarantool/tarantool-operator
 require (
 	github.com/go-openapi/spec v0.19.0
 	github.com/google/uuid v1.1.1
+	github.com/machinebox/graphql v0.2.2
+	github.com/matryer/is v1.2.0 // indirect
 	github.com/operator-framework/operator-sdk v0.9.1-0.20190802152409-7104d8d7d0e8
 	github.com/spf13/pflag v1.0.3
 	k8s.io/api v0.0.0-20190612125737-db0771252981
