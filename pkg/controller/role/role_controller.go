@@ -24,6 +24,7 @@ import (
 )
 
 var log = logf.Log.WithName("controller_role")
+var space = uuid.MustParse("C4FA9F56-A49A-4384-8BEE-9A476725973F")
 
 type ResponseError struct {
 	Message string `json:"message"`
@@ -219,7 +220,7 @@ func CreateStatefulSetFromTemplate(name string, role *tarantoolv1alpha1.Role, rs
 	for k, v := range role.GetLabels() {
 		sts.Spec.Template.Labels[k] = v
 	}
-	replicasetUUID, _ := uuid.NewUUID()
+	replicasetUUID := uuid.NewSHA1(space, []byte(sts.GetName()))
 	sts.ObjectMeta.Labels["tarantool.io/replicaset-uuid"] = replicasetUUID.String()
 	sts.Spec.Template.Labels["tarantool.io/replicaset-uuid"] = replicasetUUID.String()
 
