@@ -24,6 +24,7 @@ import (
 )
 
 var log = logf.Log.WithName("controller_cluster")
+var space = uuid.MustParse("73692FF6-EB42-46C2-92B6-65C45191368D")
 
 type ResponseError struct {
 	Message string `json:"message"`
@@ -58,10 +59,7 @@ func SetInstanceUUID(o *corev1.Pod) *corev1.Pod {
 	if len(o.GetName()) == 0 {
 		return o
 	}
-	instanceUUID, _ := uuid.NewUUID()
-	if labels == nil {
-		labels = make(map[string]string)
-	}
+	instanceUUID := uuid.NewSHA1(space, []byte(o.GetName()))
 	labels["tarantool.io/instance-uuid"] = instanceUUID.String()
 
 	o.SetLabels(labels)
