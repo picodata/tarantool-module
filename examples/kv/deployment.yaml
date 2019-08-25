@@ -6,8 +6,6 @@ spec:
   selector:
     matchLabels:
       tarantool.io/cluster-id: "examples-kv-cluster"
-  topologyService: "http://127.0.0.1:8081/admin/api"
-  topologyServiceType: "builtin"
 ---
 apiVersion: tarantool.io/v1alpha1
 kind: Role
