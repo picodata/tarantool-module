@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	goerrors "errors"
-
 	"github.com/google/uuid"
 	tarantoolv1alpha1 "github.com/tarantool/tarantool-operator/pkg/apis/tarantool/v1alpha1"
 	"github.com/tarantool/tarantool-operator/pkg/tarantool"
@@ -142,11 +140,48 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 	cluster := &tarantoolv1alpha1.Cluster{}
 	if err := r.client.Get(context.TODO(), request.NamespacedName, cluster); err != nil {
 		if errors.IsNotFound(err) {
-			return reconcile.Result{}, nil
+			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
 		}
 
-		return reconcile.Result{}, err
+		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 	}
+
+	clusterSelector, err := metav1.LabelSelectorAsSelector(cluster.Spec.Selector)
+	if err != nil {
+		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+	}
+
+	roleList := &tarantoolv1alpha1.RoleList{}
+	if err := r.client.List(context.TODO(), &client.ListOptions{LabelSelector: clusterSelector}, roleList); err != nil {
+		if errors.IsNotFound(err) {
+			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
+		}
+
+		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+	}
+
+	for _, role := range roleList.Items {
+		if metav1.IsControlledBy(&role, cluster) {
+			reqLogger.Info("Already owned", "Role.Name", role.Name)
+			continue
+		}
+		annotations := role.GetAnnotations()
+		if annotations == nil {
+			annotations = make(map[string]string)
+		}
+		annotations["tarantool.io/cluster-id"] = cluster.GetName()
+		role.SetAnnotations(annotations)
+		if err := controllerutil.SetControllerReference(cluster, &role, r.scheme); err != nil {
+			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+		}
+		if err := r.client.Update(context.TODO(), &role); err != nil {
+			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+		}
+
+		reqLogger.Info("Set role ownership", "Role.Name", role.GetName(), "Cluster.Name", cluster.GetName())
+	}
+
+	reqLogger.Info("Roles reconciled, moving to pod reconcile")
 
 	// ensure cluster wide Service exists
 	svc := &corev1.Service{}
@@ -159,77 +194,48 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 				ClusterIP: "None",
 				Ports: []corev1.ServicePort{
 					{
-						Name:     "admin",
-						Port:     8081,
-						Protocol: "TCP",
+						Name:     "bin-udp",
+						Port:     3301,
+						Protocol: "UDP",
 					},
 				},
 			}
 			if err := controllerutil.SetControllerReference(cluster, svc, r.scheme); err != nil {
-				return reconcile.Result{}, err
+				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 			}
 
 			if err := r.client.Create(context.TODO(), svc); err != nil {
-				return reconcile.Result{}, err
+				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 			}
 		}
 	}
+
 	// ensure Cluster leader elected
 	ep := &corev1.Endpoints{}
-	//	leaderIP := &corev1.EndpointAddress{}
 	if err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: cluster.GetNamespace(), Name: cluster.GetName()}, ep); err != nil {
-		return reconcile.Result{}, err
+		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 	}
 	if len(ep.Subsets) == 0 || len(ep.Subsets[0].Addresses) == 0 {
-		return reconcile.Result{}, goerrors.New("no available Endpoints in Cluster")
+		reqLogger.Info("No available Endpoint resource configured for Cluster, waiting")
+		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
 	}
+
 	leader, ok := ep.Annotations["tarantool.io/leader"]
 	if !ok {
-		leader = fmt.Sprintf("%s:%s", ep.Subsets[0].Addresses[0].IP, "3301")
+		leader = fmt.Sprintf("%s:%s", ep.Subsets[0].Addresses[0].IP, "8081")
 		ep.Annotations["tarantool.io/leader"] = leader
 		if err := r.client.Update(context.TODO(), ep); err != nil {
-			return reconcile.Result{}, err
+			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 		}
 	}
-
-	clusterSelector, err := metav1.LabelSelectorAsSelector(cluster.Spec.Selector)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	roleList := &tarantoolv1alpha1.RoleList{}
-	if err := r.client.List(context.TODO(), &client.ListOptions{LabelSelector: clusterSelector}, roleList); err != nil {
-		if errors.IsNotFound(err) {
-			return reconcile.Result{}, nil
-		}
-
-		return reconcile.Result{}, err
-	}
-
-	for _, role := range roleList.Items {
-		if metav1.IsControlledBy(&role, cluster) {
-			reqLogger.Info("Already owned", "Role.Name", role.Name)
-			continue
-		}
-		if err := controllerutil.SetControllerReference(cluster, &role, r.scheme); err != nil {
-			return reconcile.Result{}, err
-		}
-		if err := r.client.Update(context.TODO(), &role); err != nil {
-			return reconcile.Result{}, err
-		}
-
-		reqLogger.Info("Set role ownership", "Role.Name", role.GetName(), "Cluster.Name", cluster.GetName())
-	}
-
-	reqLogger.Info("Roles reconciled, moving to pod reconcile")
 
 	podList := &corev1.PodList{}
 	if err := r.client.List(context.TODO(), &client.ListOptions{LabelSelector: clusterSelector}, podList); err != nil {
 		if errors.IsNotFound(err) {
-			return reconcile.Result{}, nil
+			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
 		}
 
-		return reconcile.Result{}, err
+		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 	}
 
 	for _, pod := range podList.Items {
@@ -241,7 +247,7 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 		pod = *SetInstanceUUID(&pod)
 
 		if err := r.client.Update(context.TODO(), &pod); err != nil {
-			return reconcile.Result{}, err
+			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 		}
 
 		podLogger.Info("success: set instance uuid", "UUID", pod.GetLabels()["tarantool.io/instance-uuid"])
@@ -258,7 +264,7 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 			if topology.IsAlreadyJoined(err) {
 				tarantool.MarkJoined(&pod)
 				if err := r.client.Update(context.TODO(), &pod); err != nil {
-					return reconcile.Result{}, err
+					return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 				}
 				reqLogger.Info("Already joined", "Pod.Name", pod.Name)
 				continue
@@ -269,13 +275,12 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 				continue
 			}
 
-			reqLogger.Info("unknown error")
-
-			return reconcile.Result{}, err
+			reqLogger.Error(err, "Join error")
+			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
 		} else {
 			tarantool.MarkJoined(&pod)
 			if err := r.client.Update(context.TODO(), &pod); err != nil {
-				return reconcile.Result{}, err
+				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 			}
 		}
 
@@ -284,11 +289,11 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	if err := topologyClient.BootstrapVshard(); err != nil {
 		if topology.IsAlreadyBootstrapped(err) {
-			return reconcile.Result{}, nil
+			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
 		}
 
-		return reconcile.Result{}, err
+		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 	}
 
-	return reconcile.Result{}, nil
+	return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
 }

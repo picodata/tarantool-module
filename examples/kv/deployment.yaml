@@ -88,9 +88,9 @@ spec:
           - name: TARANTOOL_ADVERTISE_HOST
             valueFrom:
               fieldRef:
-                fieldPath: status.podIP
+                fieldPath: metadata.name
           - name: TARANTOOL_ADVERTISE_URI
-            value: "$(TARANTOOL_ADVERTISE_HOST):3301"
+            value: "$(TARANTOOL_ADVERTISE_HOST).examples-kv-cluster:3301"
 ---
 apiVersion: tarantool.io/v1alpha1
 kind: ReplicasetTemplate
@@ -143,9 +143,9 @@ spec:
           - name: TARANTOOL_ADVERTISE_HOST
             valueFrom:
               fieldRef:
-                fieldPath: status.podIP
+                fieldPath: metadata.name
           - name: TARANTOOL_ADVERTISE_URI
-            value: "$(TARANTOOL_ADVERTISE_HOST):3301"
+            value: "$(TARANTOOL_ADVERTISE_HOST).examples-kv-cluster:3301"
 ---
 apiVersion: networking.k8s.io/v1beta1
 kind: Ingress

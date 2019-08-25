@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/machinebox/graphql"
 	corev1 "k8s.io/api/core/v1"
@@ -54,12 +55,7 @@ var join_mutation = `mutation do_join_server($uri: String!, $instance_uuid: Stri
 }`
 
 func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
-	podIP := pod.Status.PodIP
-	if len(podIP) == 0 {
-		return errors.New("Pod.IP is not set yet, skip and wait")
-	}
-
-	advURI := fmt.Sprintf("%s:3301", podIP)
+	advURI := fmt.Sprintf("%s.examples-kv-cluster:3301", pod.GetObjectMeta().GetName())
 	replicasetUUID, ok := pod.GetLabels()["tarantool.io/replicaset-uuid"]
 	if !ok {
 		return errors.New("replicaset uuid empty")
@@ -75,7 +71,7 @@ func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
 		return errors.New("role undefined")
 	}
 
-	client := graphql.NewClient(s.serviceHost)
+	client := graphql.NewClient(s.serviceHost, graphql.WithHTTPClient(&http.Client{Timeout: time.Duration(time.Second * 5)}))
 	req := graphql.NewRequest(join_mutation)
 
 	req.Var("uri", advURI)
@@ -83,7 +79,7 @@ func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
 	req.Var("replicaset_uuid", replicasetUUID)
 	req.Var("roles", []string{role})
 
-	resp := &JoinResponse{Errors: []*ResponseError{}, Data: &JoinResponseData{}}
+	resp := &JoinResponseData{}
 	if err := client.Run(context.TODO(), req, resp); err != nil {
 		if strings.Contains(err.Error(), "already joined") {
 			return alreadyJoined
@@ -95,11 +91,11 @@ func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
 		return err
 	}
 
-	if resp.Data.JoinInstance == true {
+	if resp.JoinInstance == true {
 		return nil
 	}
 
-	return nil
+	return errors.New("something really bad happened")
 }
 
 func (s *BuiltInTopologyService) Expel(pod *corev1.Pod) error {
