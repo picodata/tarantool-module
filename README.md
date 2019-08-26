@@ -9,7 +9,7 @@ The Tarantool Operator provides automation that simplifies the administration of
 
 The Operator introduces new API version `tarantool.io/v1alpha1` and installs custom resources for objects of three custom types: Cluster, Role, and ReplicasetTemplate.
 
-##Table of contents
+## Table of contents
 
 * [Resources](#resources)
 * [Resource ownership](#resource-ownership)
