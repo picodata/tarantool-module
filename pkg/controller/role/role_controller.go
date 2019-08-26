@@ -131,6 +131,10 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 		return reconcile.Result{}, err
 	}
 
+	if len(role.GetOwnerReferences()) == 0 {
+		return reconcile.Result{}, goerrors.New(fmt.Sprintf("Orphan role %s", role.GetName()))
+	}
+
 	templateSelector, err := metav1.LabelSelectorAsSelector(role.Spec.Selector)
 	if err != nil {
 		return reconcile.Result{}, err
@@ -220,25 +224,12 @@ func CreateStatefulSetFromTemplate(name string, role *tarantoolv1alpha1.Role, rs
 	for k, v := range role.GetLabels() {
 		sts.Spec.Template.Labels[k] = v
 	}
+	sts.Spec.ServiceName = role.GetAnnotations()["tarantool.io/cluster-id"]
 	replicasetUUID := uuid.NewSHA1(space, []byte(sts.GetName()))
 	sts.ObjectMeta.Labels["tarantool.io/replicaset-uuid"] = replicasetUUID.String()
 	sts.Spec.Template.Labels["tarantool.io/replicaset-uuid"] = replicasetUUID.String()
 
 	return sts
-}
-
-func SetReplicasetUUID(o metav1.Object) error {
-	labels := o.GetLabels()
-	replicasetUUID, err := uuid.NewUUID()
-	if err != nil {
-		return err
-	}
-	if labels == nil {
-		labels = make(map[string]string)
-	}
-	labels["tarantool.io/replicaset-uuid"] = replicasetUUID.String()
-	o.SetLabels(labels)
-	return nil
 }
 
 func RemoveFinalizer(finalizers []string) []string {

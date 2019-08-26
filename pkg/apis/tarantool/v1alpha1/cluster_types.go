@@ -10,8 +10,6 @@ import (
 // ClusterSpec defines the desired state of Cluster
 // +k8s:openapi-gen=true
 type ClusterSpec struct {
-	TopologyService     string `json:"topologyService,omitempty"`
-	TopologyServiceType string `json:"topologyServiceType,omitempty"`
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
@@ -24,6 +22,7 @@ type ClusterStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
+	Bootrapped bool `json:"bootrapped,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
