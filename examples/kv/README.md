@@ -34,7 +34,7 @@ Assuming commands executed from repository root and Tarantool Operator is up and
 
 1. Access KV API:
 
-    store some value 
+    store some value
 
     ```shell
     curl -XPOST http://MINIKUBE_IP/kv -d '{"key":"key_1", "value": "value_1"}'
@@ -60,7 +60,7 @@ Assuming commands executed from repository root and Tarantool Operator is up and
 
 1. Increase number of replicas across all Storages Role replicasets:
 
-    ```shell 
+    ```shell
     kubectl edit replicasettemplates.tarantool.io storage-template
     ```
 
@@ -69,3 +69,12 @@ Assuming commands executed from repository root and Tarantool Operator is up and
     This will result in addition of one more replica to each replicaset consisting Storages Role.
 
     View cluster topology changing via cluster web ui
+
+### Running tests
+
+```shell
+make build
+make start
+./bootstrap.sh
+make test
+```

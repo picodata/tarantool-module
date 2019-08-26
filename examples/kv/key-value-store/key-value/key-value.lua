@@ -1,13 +1,13 @@
 #!/usr/bin/env tarantool
 
-local cluster = require('cluster')
+local cartridge = require('cartridge')
 local kv_api = require('key-value.api')
 
 local function init(_)
     return true
 end
 
-local httpd = cluster.service_get('httpd')
+local httpd = cartridge.service_get('httpd')
 if httpd ~= nil then
     httpd:route({ path = '/kv', method = 'POST', public = true }, kv_api.create)
     httpd:route({ path = '/kv_dump/', method = 'GET', public = true }, kv_api.get_all)
@@ -42,5 +42,5 @@ return {
     stop = stop,
     validate_config = validate_config,
     apply_config = apply_config,
-    dependencies = {'cluster.roles.vshard-router'}
+    dependencies = {'cartridge.roles.vshard-router'}
 }

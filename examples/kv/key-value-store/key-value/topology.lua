@@ -39,5 +39,5 @@ return {
     stop = stop,
     validate_config = validate_config,
     apply_config = apply_config,
-    dependencies = {'cluster.roles.vshard-router'}
+    dependencies = {'cartridge.roles.vshard-router'}
 }

@@ -76,7 +76,7 @@ local function init(opts)
 
         for name, _ in pairs(kv_storage) do
             box.schema.func.create('kv_storage.' .. name, { setuid = true, if_not_exists = true })
-            box.schema.user.grant('cluster', 'execute', 'function', 'kv_storage.' .. name, { if_not_exists = true })
+            box.schema.user.grant('admin', 'execute', 'function', 'kv_storage.' .. name, { if_not_exists = true })
         end
     end
     return true
@@ -88,5 +88,5 @@ return {
     stop = stop,
     validate_config = validate_config,
     apply_config = apply_config,
-    dependencies = {'cluster.roles.vshard-storage'}
+    dependencies = {'cartridge.roles.vshard-storage'}
 }

@@ -10,7 +10,7 @@ local script_dir = debug.getinfo(1, "S").source:sub(2):match("(.*/)") or './'
 dofile(script_dir ..'/env.lua')
 
 local log = require('log')
-local cluster = require('cluster')
+local cartridge = require('cartridge')
 local console = require('console')
 local fiber = require('fiber')
 
@@ -23,7 +23,7 @@ local memtx_memory = tonumber(os.getenv("TARANTOOL_MEMTX_MEMORY")) or (128 * 102
 local http_port = os.getenv("TARANTOOL_HTTP_PORT") or 8081
 
 fiber.sleep(10)
-local ok, err = cluster.cfg({
+local ok, err = cartridge.cfg({
     alias = instance_name,
     workdir = work_dir,
     advertise_uri = advertise_uri,
@@ -31,8 +31,8 @@ local ok, err = cluster.cfg({
     bucket_count = 30000,
     http_port = http_port,
     roles = {
-        'cluster.roles.vshard-router',
-        'cluster.roles.vshard-storage',
+        'cartridge.roles.vshard-router',
+        'cartridge.roles.vshard-storage',
         'key-value.key-value',
         'key-value.storage',
         'key-value.topology'
