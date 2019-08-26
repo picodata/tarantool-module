@@ -17,7 +17,7 @@ The Operator instroduces new API version tarantool.io/v1alpha1 and installs cust
 
 Resources managed by Operator being deployed forms resource ownership hierarchy:
 
-![Resource ownership](./assets/resource_ownership.jpg)
+![Resource ownership](./assets/resource_map.png)
 
 Resource ownership directly affects how k8s garbage collector works. If you execute delete command on parent resource then all it's dependants will be removed.
 
