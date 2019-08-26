@@ -289,7 +289,7 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	if err := topologyClient.BootstrapVshard(); err != nil {
 		if topology.IsAlreadyBootstrapped(err) {
-			cluster.Status.Bootrapped = true
+			cluster.Status.State = "Ready"
 			r.client.Status().Update(context.TODO(), cluster)
 			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
 		}

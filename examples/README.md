@@ -1,3 +1,3 @@
 # Tarantool Operator Examples
 
-### KV storage 
+[KV storage](./kv) - distributed key value storage

@@ -1,6 +1,6 @@
 # Tarantool Kubernetes Operator
 
-The Tarantool Operator provides automation that simplifies the administration of Tarantool Cartridge based clusters on Kubernetes.
+The Tarantool Operator provides automation that simplifies the administration of [Tarantool Cartridge](https://github.com/tarantool/cartridge) based clusters on Kubernetes.
 
 The Operator instroduces new API version tarantool.io/v1alpha1 and installs custom resources to for objects of custom types Cluster, Role, ReplicasetTemplate.
 
