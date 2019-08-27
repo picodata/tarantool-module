@@ -5,19 +5,23 @@ align="right">
 
 # Tarantool Kubernetes operator
 
-The Tarantool Operator provides automation that simplifies the administration of [Tarantool Cartridge](https://github.com/tarantool/cartridge)-based clusters on Kubernetes.
+The Tarantool Operator provides automation that simplifies the administration
+of [Tarantool Cartridge](https://github.com/tarantool/cartridge)-based clusters
+on Kubernetes.
 
-The Operator introduces new API version `tarantool.io/v1alpha1` and installs custom resources for objects of three custom types: Cluster, Role, and ReplicasetTemplate.
+The Operator introduces new API version `tarantool.io/v1alpha1` and installs
+custom resources for objects of three custom types: Cluster, Role, and
+ReplicasetTemplate.
 
 ## Table of contents
 
 * [Resources](#resources)
 * [Resource ownership](#resource-ownership)
 * [Deploying the Tarantool operator on minikube](#deploying-the-tarantool-operator-on-minikube)
-* [Example: key value storage](#example-key-value-storage)
-  * [Application topology overview](#application-topology-overview)
-  * [Running the example](#running-the-example)
-  * [Scaling the example application](#scaling-the-example-application)
+* [Example: key-value storage](#example-key-value-storage)
+  * [Application topology](#application-topology)
+  * [Running the application](#running-the-application)
+  * [Scaling the application](#scaling-the-application)
   * [Running tests](#running-tests)
 
 ## Resources
@@ -30,11 +34,14 @@ The Operator introduces new API version `tarantool.io/v1alpha1` and installs cus
 
 ## Resource ownership
 
-Resources managed by the Operator being deployed have the following resource ownership hierarchy:
+Resources managed by the Operator being deployed have the following resource
+ownership hierarchy:
 
 ![Resource ownership](./assets/resource_map.png)
 
-Resource ownership directly affects how Kubernetes garbage collector works. If you execute a delete command on a parent resource, then all its dependants will be removed.
+Resource ownership directly affects how Kubernetes garbage collector works.
+If you execute a delete command on a parent resource, then all its dependants
+will be removed.
 
 ## Deploying the Tarantool operator on minikube
 
@@ -66,6 +73,12 @@ Resource ownership directly affects how Kubernetes garbage collector works. If y
     apiserver: Running
     ```
 
+1. Enable Ingress add-on:
+
+    ```shell
+    minikube addons enable ingress
+    ```
+
 1. Create operator resources:
 
     ```shell
@@ -74,7 +87,7 @@ Resource ownership directly affects how Kubernetes garbage collector works. If y
     kubectl create -f deploy/role_binding.yaml
     ```
 
-1. Create Tarantool Operator CRD's;
+1. Create Tarantool Operator CRD's (Custom Resource Definitions):
 
     ```shell
     kubectl create -f deploy/crds/tarantool_v1alpha1_cluster_crd.yaml
@@ -94,19 +107,21 @@ Resource ownership directly affects how Kubernetes garbage collector works. If y
     kubectl get pods --watch
     ```
 
-    Wait for `tarantool-operator-xxxxxx-xx` Pod's STATUS to become `Running`.
+    Wait for `tarantool-operator-xxxxxx-xx` Pod's status to become `Running`.
 
-## Example: key value storage
+## Example: key-value storage
 
-`examples/kv` contains a Tarantool-based distributed key value storage. Data are accessed via HTTP REST API.
+`examples/kv` contains a Tarantool-based distributed key-value storage.
+Data are accessed via HTTP REST API.
 
-### Application topology overview
+### Application topology
 
 ![App topology](./examples/kv/assets/topology.png)
 
-### Running the example
+### Running the application
 
-We assume that commands are executed from the repository root and Tarantool Operator is up and running.
+We assume that commands are executed from the repository root and
+Tarantool Operator is up and running.
 
 1. Create a cluster:
 
@@ -114,7 +129,7 @@ We assume that commands are executed from the repository root and Tarantool Oper
     kubectl create -f examples/kv/deployment.yaml
     ```
 
-1. Wait until the cluster Pods are up:
+   Wait until all the cluster Pods are up (status becomes `Running`):
 
      ```shell
      kubectl get pods --watch
@@ -122,15 +137,18 @@ We assume that commands are executed from the repository root and Tarantool Oper
 
 1. Access the cluster web UI:
 
-   1. Get `minikube` vm ip-address:
+   1. Get `minikube` vm IP-address:
 
        ```shell
        minikube ip
        ```
 
-   1. Navigate to **http://MINIKUBE_IP** with your browser. Replace MINIKUBE_IP with the IP-address reported by the previous command.
+   1. Open **http://MINIKUBE_IP** in your browser.
+      Replace MINIKUBE_IP with the IP-address reported by the previous command.
 
-1. Access KV API:
+      ![Web UI](./assets/kv_web_ui.png)
+
+1. Access the key-value API:
 
    1. Store some value:
 
@@ -144,7 +162,7 @@ We assume that commands are executed from the repository root and Tarantool Oper
        curl http://MINIKUBE_IP/kv_dump
        ```
 
-### Scaling the example application
+### Scaling the application
 
 1. Increase the number of replica sets in Storages Role:
 
@@ -152,7 +170,7 @@ We assume that commands are executed from the repository root and Tarantool Oper
     kubectl scale roles.tarantool.io storage --replicas=3
     ```
 
-    This will add one or more replica sets to the existing cluster.
+    This will add new replica sets to the existing cluster.
 
     View the new cluster topology via the cluster web UI.
 
@@ -162,7 +180,8 @@ We assume that commands are executed from the repository root and Tarantool Oper
     kubectl edit replicasettemplates.tarantool.io storage-template
     ```
 
-    This will open a text editor. Change `spec.replicas` field value to 3, then save and exit the editor.
+    This will open a text editor. Change `spec.replicas` field value to 3,
+    then save and exit the editor.
 
     This will add one more replica to each Storages Role replica set.
 
