@@ -198,6 +198,11 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 						Port:     3301,
 						Protocol: "UDP",
 					},
+					{
+						Name:     "bin-tcp",
+						Port:     3302,
+						Protocol: "TCP",
+					},
 				},
 			}
 			if err := controllerutil.SetControllerReference(cluster, svc, r.scheme); err != nil {

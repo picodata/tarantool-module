@@ -7,12 +7,11 @@ import (
 // RoleSpec defines the desired state of Role
 // +k8s:openapi-gen=true
 type RoleSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
-	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
-	Replicas        *int32                `json:"replicas,omitempty"`
-	StorageTemplate *ReplicasetTemplate   `json:"storageTemplate,omitempty"`
-	Selector        *metav1.LabelSelector `json:"selector,omitempty"`
+	// Replicas is a number of StatefulSets (Tarantol replicasets) created under this Role
+	Replicas        *int32              `json:"replicas,omitempty"`
+	StorageTemplate *ReplicasetTemplate `json:"storageTemplate,omitempty"`
+	// Selector is a LabelSelector to find ReplicasetTemplate resources from which StatefulSet created
+	Selector *metav1.LabelSelector `json:"selector,omitempty"`
 }
 
 // RoleStatus defines the observed state of Role

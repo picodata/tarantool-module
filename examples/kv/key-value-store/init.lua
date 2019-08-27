@@ -22,8 +22,53 @@ local memtx_memory = tonumber(os.getenv("TARANTOOL_MEMTX_MEMORY")) or (128 * 102
 
 local http_port = os.getenv("TARANTOOL_HTTP_PORT") or 8081
 
-fiber.sleep(10)
-local ok, err = cartridge.cfg({
+local fiber = require('fiber')
+local log = require('log')
+
+local http_client = require('http.client')
+local http_server = require('http.server')
+
+local function resolve_uri(uri, timeout)
+    if not uri then
+        return nil, "Pass URI in the next format: uri:port"
+    end
+
+    timeout = timeout or 10
+    -- local uri, port = uri:match("(^.*)%:(.*)")
+    local resolved = false
+
+    local server_options = {
+        log_errors = true,
+        log_requests = log.debug
+    }
+
+    local srv = http_server.new("0.0.0.0", "3301", server_options)
+    srv:route({ path = '/dns_resolver', method = 'GET' }, function(_) return { status = 200, text = 'Success' } end)
+    srv:start()
+
+    local time = 0
+    while time < timeout do
+        local resp = http_client.get(uri .. '/dns_resolver')
+        if resp.status ~= nil and resp.status == 200 then
+            resolved = true
+            break
+        else
+            print('Not resolved yet')
+        end
+
+        fiber.sleep(1)
+        time = time + 1
+    end
+    srv:stop()
+
+    return resolved
+end
+
+local t = resolve_uri(advertise_uri, 50)
+if not t then os.exit(1) end
+fiber.sleep(5)
+
+local ok, err = cluster.cfg({
     alias = instance_name,
     workdir = work_dir,
     advertise_uri = advertise_uri,

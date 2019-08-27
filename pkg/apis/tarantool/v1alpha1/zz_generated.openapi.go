@@ -226,7 +226,7 @@ func schema_pkg_apis_tarantool_v1alpha1_RoleSpec(ref common.ReferenceCallback) c
 				Properties: map[string]spec.Schema{
 					"replicas": {
 						SchemaProps: spec.SchemaProps{
-							Description: "INSERT ADDITIONAL SPEC FIELDS - desired state of cluster Important: Run \"operator-sdk generate k8s\" to regenerate code after modifying this file Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html",
+							Description: "Replicas is a number of StatefulSets (Tarantol replicasets) created under this Role",
 							Type:        []string{"integer"},
 							Format:      "int32",
 						},
@@ -238,7 +238,8 @@ func schema_pkg_apis_tarantool_v1alpha1_RoleSpec(ref common.ReferenceCallback) c
 					},
 					"selector": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("k8s.io/apimachinery/pkg/apis/meta/v1.LabelSelector"),
+							Description: "Selector is a LabelSelector to find ReplicasetTemplate resources from which StatefulSet created",
+							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.LabelSelector"),
 						},
 					},
 				},

@@ -63,9 +63,13 @@ spec:
         tarantool.io/pod-template: "storage-pod-template"
     spec:
       terminationGracePeriodSeconds: 10
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
       containers:
       - name: pim-storage
-        image: vasiliyt/tarantool-example-kv:latest
+        image: vasiliyt/tarantool-operator-example-kv:devel
         volumeMounts:
           - mountPath: "/tarantool/data"
             name: www
@@ -118,9 +122,13 @@ spec:
         tarantool.io/pod-template: "router-pod-template"
     spec:
       terminationGracePeriodSeconds: 10
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
       containers:
       - name: pim-router
-        image: vasiliyt/tarantool-example-kv:latest
+        image: vasiliyt/tarantool-operator-example-kv:devel
         volumeMounts:
           - mountPath: "/tarantool/data"
             name: www

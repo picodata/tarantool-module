@@ -15,7 +15,7 @@ spec:
       serviceAccountName: tarantool-operator
       containers:
         - name: tarantool-operator
-          image: vasiliyt/tarantool-operator:latest
+          image: vasiliyt/tarantool-operator:dev
           command:
           - tarantool-operator
           imagePullPolicy: Always
