@@ -35,7 +35,6 @@ local ok, err = cartridge.cfg({
         'cartridge.roles.vshard-storage',
         'key-value.key-value',
         'key-value.storage',
-        'key-value.topology'
     },
 }, {memtx_memory = memtx_memory})
 

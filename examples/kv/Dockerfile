@@ -7,8 +7,8 @@ RUN yum install -y epel-release && \
 	curl --silent --location https://rpm.nodesource.com/setup_8.x | bash - && \
 	yum install -y git make nodejs cmake gcc tarantool tarantool-devel
 
-COPY key-value-store /home/tarantool/key-value-store
 RUN tarantoolctl rocks install https://raw.githubusercontent.com/rosik/cartridge/master/cartridge-scm-1.rockspec
+COPY key-value-store /home/tarantool/key-value-store
 
 # Tarantool binary protocol port
 EXPOSE 3301

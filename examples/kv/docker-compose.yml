@@ -1,19 +1,5 @@
 version: '3'
 services:
-  topology:
-    build:
-      context: ./
-      dockerfile: Dockerfile
-    ports:
-      - "8081:8081"
-    networks:
-      kv:
-    environment:
-      - TARANTOOL_HTTP_PORT=8081
-      - TARANTOOL_ADVERTISE_URI=topology:3301
-      - TARANTOOL_WORK_DIR=/data/tarantool
-      - TARANTOOL_INSTANCE_NAME=topology
-
   router:
     build:
       context: ./
@@ -38,8 +24,6 @@ services:
       - TARANTOOL_ADVERTISE_URI=storage:3301
       - TARANTOOL_WORK_DIR=/data/tarantool
       - TARANTOOL_INSTANCE_NAME=storage
-    depends_on:
-      - topology
 
 networks:
   kv:
