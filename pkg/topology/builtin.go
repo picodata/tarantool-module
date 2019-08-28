@@ -42,6 +42,7 @@ type BootstrapVshardResponse struct {
 
 type BuiltInTopologyService struct {
 	serviceHost string
+	clusterID   string
 }
 
 type EditReplicasetResponse struct {
@@ -62,7 +63,7 @@ var edit_rs_mutation = `mutation editReplicaset($uuid: String!, $weight: Float) 
 }`
 
 func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
-	advURI := fmt.Sprintf("%s.examples-kv-cluster:3301", pod.GetObjectMeta().GetName())
+	advURI := fmt.Sprintf("%s.%s:3301", pod.GetObjectMeta().GetName(), s.clusterID)
 	replicasetUUID, ok := pod.GetLabels()["tarantool.io/replicaset-uuid"]
 	if !ok {
 		return errors.New("replicaset uuid empty")
@@ -189,6 +190,12 @@ type Option func(s *BuiltInTopologyService)
 func WithTopologyEndpoint(url string) Option {
 	return func(s *BuiltInTopologyService) {
 		s.serviceHost = url
+	}
+}
+
+func WithClusterID(id string) Option {
+	return func(s *BuiltInTopologyService) {
+		s.clusterID = id
 	}
 }
 
