@@ -163,6 +163,11 @@ Tarantool Operator is up and running.
 
       ![Web UI](./assets/kv_web_ui.png)
 
+> **_NOTE:_** Due to a recent
+> [bug in Ingress](https://github.com/kubernetes/minikube/issues/2840),
+> web UI may be inaccessible. If needed, you can try this
+> [workaround](https://github.com/kubernetes/minikube/issues/2840#issuecomment-492454708).
+
 1. Access the key-value API:
 
    1. Store some value:
@@ -171,10 +176,22 @@ Tarantool Operator is up and running.
        curl -XPOST http://MINIKUBE_IP/kv -d '{"key":"key_1", "value": "value_1"}'
        ```
 
+       In case of success you will see this output:
+
+       ```shell
+       {"info":"Successfully created"}
+       ```
+
    1. Access stored values:
 
        ```shell
        curl http://MINIKUBE_IP/kv_dump
+       ```
+
+       In case of success you will see this output:
+
+       ```shell
+       {"store":[{"key":"key_1","value":"value_1"}]}
        ```
 
 ### Scaling the application
@@ -182,8 +199,18 @@ Tarantool Operator is up and running.
 1. Increase the number of replica sets in Storages Role:
 
     ```shell
-    kubectl scale roles.tarantool.io storage --replicas=3
+    kubectl edit roles.tarantool.io storage
     ```
+
+    This will open the resource in a text editor.
+    Change `spec.replicas` field value to 3:
+
+    ```shell
+    spec:
+      replicas: 3
+    ```
+
+    Save your changes and exit the editor.
 
     This will add new replica sets to the existing cluster.
 
@@ -195,12 +222,25 @@ Tarantool Operator is up and running.
     kubectl edit replicasettemplates.tarantool.io storage-template
     ```
 
-    This will open a text editor. Change `spec.replicas` field value to 3,
-    then save and exit the editor.
+    This will open the resource in a text editor.
+    Change `spec.replicas` field value to 3:
+
+    ```shell
+    spec:
+      replicas: 3
+    ```
+
+    Save your changes and exit the editor.
 
     This will add one more replica to each Storages Role replica set.
 
     View the new cluster topology via the cluster web UI.
+
+> **_NOTE:_** When `kubectl` 1.16 is out, you will be able to scale the
+> application with a single `kubectl scale` command, for example
+> `kubectl scale roles.tarantool.io storage --replicas=3`.
+> With younger versions of `kubectl` this is impossible due to
+> [this bug](https://github.com/kubernetes/kubernetes/issues/80515).
 
 ### Running tests
 

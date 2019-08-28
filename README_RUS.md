@@ -129,20 +129,19 @@ Kubernetes-оператор реализует API версии `tarantool.io/v1
     kubectl create -f examples/kv/deployment.yaml
     ```
 
-   Дождитесь, пока все Pod-ы кластера перейдут в статус Running:
+   Дождитесь, пока все Pod-ы кластера перейдут в статус `Running`:
 
      ```shell
      kubectl get pods --watch
      ```
 
-
-1.  Удостоверьтесь, что Cluster готов к работе:
+1.  Удостоверьтесь, что кластер готов к работе:
 
     ```shell
     kubectl describe clusters.tarantool.io examples-kv-cluster
     ```
 
-    ожидаем, когда поле Status.State примет значение Ready:
+    Дождитесь, пока поле `Status.State` примет значение `Ready`:
 
     ```shell
     ...
@@ -164,6 +163,12 @@ Kubernetes-оператор реализует API версии `tarantool.io/v1
 
       ![Web UI](./assets/kv_web_ui.png)
 
+> **_ПРИМЕЧАНИЕ:_** В силу недавно появившегося
+> [дефекта в Ingress](https://github.com/kubernetes/minikube/issues/2840)
+> веб-интерфейс может быть недоступен. Для обхода дефекта вы можете
+> воспользоваться этим
+> [рецептом](https://github.com/kubernetes/minikube/issues/2840#issuecomment-492454708).
+
 1. Выполните API-запросы к хранилищу:
 
    1. Запишите в базу тестовые данные:
@@ -172,10 +177,22 @@ Kubernetes-оператор реализует API версии `tarantool.io/v1
        curl -XPOST http://MINIKUBE_IP/kv -d '{"key":"key_1", "value": "value_1"}'
        ```
 
+       В случае успеха вывод в консоли будет выглядеть так:
+
+       ```shell
+       {"info":"Successfully created"}
+       ```
+
    1. Запросите данные из базы:
 
        ```shell
        curl http://MINIKUBE_IP/kv_dump
+       ```
+
+       В случае успеха вывод в консоли будет выглядеть так:
+
+       ```shell
+       {"store":[{"key":"key_1","value":"value_1"}]}
        ```
 
 ### Масштабирование приложения
@@ -183,8 +200,18 @@ Kubernetes-оператор реализует API версии `tarantool.io/v1
 1. Увеличьте количество репликасетов-хранилищ:
 
     ```shell
-    kubectl scale roles.tarantool.io storage --replicas=3
+    kubectl edit roles.tarantool.io storage
     ```
+
+    В открывшемся текстовом редакторе поменяйте значение поля `spec.replicas`
+    на 3:
+
+    ```shell
+    spec:
+      replicas: 3
+    ```
+
+    Сохраните изменения и закройте редактор.
 
     В результате к существующему кластеру добавятся новые репликасеты.
 
@@ -197,11 +224,24 @@ Kubernetes-оператор реализует API версии `tarantool.io/v1
     ```
 
     В открывшемся текстовом редакторе поменяйте значение поля `spec.replicas`
-    на 3, сохраните изменения и закройте редактор.
+    на 3:
+
+    ```shell
+    spec:
+      replicas: 3
+    ```
+
+    Сохраните изменения и закройте редактор.
 
     В результате к каждому репликасету-хранилищу добавятся новые реплики.
 
     Проверьте в веб-интерфейсе, что топология изменилась.
+
+> **_ПРИМЕЧАНИЕ:_** С выходом `kubectl` 1.16 вы также сможете масштабировать
+> приложение с помощью команды `kubectl scale`, например
+> `kubectl scale roles.tarantool.io storage --replicas=3`.
+> На более ранних версиях `kubectl` данная возможность не поддерживается в силу
+> [этого дефекта](https://github.com/kubernetes/kubernetes/issues/80515).
 
 ### Запуск тестов
 
