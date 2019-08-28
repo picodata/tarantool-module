@@ -9,6 +9,7 @@ import (
 	tarantoolv1alpha1 "github.com/tarantool/tarantool-operator/pkg/apis/tarantool/v1alpha1"
 	"github.com/tarantool/tarantool-operator/pkg/tarantool"
 	"github.com/tarantool/tarantool-operator/pkg/topology"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -234,8 +235,8 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 	}
 
-	podList := &corev1.PodList{}
-	if err := r.client.List(context.TODO(), &client.ListOptions{LabelSelector: clusterSelector}, podList); err != nil {
+	stsList := &appsv1.StatefulSetList{}
+	if err := r.client.List(context.TODO(), &client.ListOptions{LabelSelector: clusterSelector}, stsList); err != nil {
 		if errors.IsNotFound(err) {
 			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
 		}
@@ -243,53 +244,81 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 	}
 
-	for _, pod := range podList.Items {
-		podLogger := reqLogger.WithValues("Pod.Name", pod.GetName())
-		if HasInstanceUUID(&pod) {
-			continue
-		}
-		podLogger.Info("starting: set instance uuid")
-		pod = *SetInstanceUUID(&pod)
-
-		if err := r.client.Update(context.TODO(), &pod); err != nil {
-			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
-		}
-
-		podLogger.Info("success: set instance uuid", "UUID", pod.GetLabels()["tarantool.io/instance-uuid"])
-		return reconcile.Result{Requeue: true}, nil
-	}
-
 	topologyClient := topology.NewBuiltInTopologyService(topology.WithTopologyEndpoint(fmt.Sprintf("http://%s/admin/api", leader)))
-	for _, pod := range podList.Items {
-		if tarantool.IsJoined(&pod) {
-			continue
-		}
-
-		if err := topologyClient.Join(&pod); err != nil {
-			if topology.IsAlreadyJoined(err) {
-				tarantool.MarkJoined(&pod)
-				if err := r.client.Update(context.TODO(), &pod); err != nil {
-					return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+	for _, sts := range stsList.Items {
+		for i := 0; i < int(*sts.Spec.Replicas); i++ {
+			pod := &corev1.Pod{}
+			name := types.NamespacedName{
+				Namespace: request.Namespace,
+				Name:      fmt.Sprintf("%s-%d", sts.GetName(), i),
+			}
+			if err := r.client.Get(context.TODO(), name, pod); err != nil {
+				if errors.IsNotFound(err) {
+					return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
 				}
-				reqLogger.Info("Already joined", "Pod.Name", pod.Name)
-				continue
-			}
 
-			if topology.IsTopologyDown(err) {
-				reqLogger.Info("Topology is down", "Pod.Name", pod.Name)
-				continue
-			}
-
-			reqLogger.Error(err, "Join error")
-			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
-		} else {
-			tarantool.MarkJoined(&pod)
-			if err := r.client.Update(context.TODO(), &pod); err != nil {
 				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 			}
+
+			podLogger := reqLogger.WithValues("Pod.Name", pod.GetName())
+			if HasInstanceUUID(pod) {
+				continue
+			}
+			podLogger.Info("starting: set instance uuid")
+			pod = SetInstanceUUID(pod)
+
+			if err := r.client.Update(context.TODO(), pod); err != nil {
+				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+			}
+
+			podLogger.Info("success: set instance uuid", "UUID", pod.GetLabels()["tarantool.io/instance-uuid"])
+			return reconcile.Result{Requeue: true}, nil
 		}
 
-		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
+		for i := 0; i < int(*sts.Spec.Replicas); i++ {
+			pod := &corev1.Pod{}
+			name := types.NamespacedName{
+				Namespace: request.Namespace,
+				Name:      fmt.Sprintf("%s-%d", sts.GetName(), i),
+			}
+			if err := r.client.Get(context.TODO(), name, pod); err != nil {
+				if errors.IsNotFound(err) {
+					return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
+				}
+
+				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+			}
+
+			if tarantool.IsJoined(pod) {
+				continue
+			}
+
+			if err := topologyClient.Join(pod); err != nil {
+				if topology.IsAlreadyJoined(err) {
+					tarantool.MarkJoined(pod)
+					if err := r.client.Update(context.TODO(), pod); err != nil {
+						return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+					}
+					reqLogger.Info("Already joined", "Pod.Name", pod.Name)
+					continue
+				}
+
+				if topology.IsTopologyDown(err) {
+					reqLogger.Info("Topology is down", "Pod.Name", pod.Name)
+					continue
+				}
+
+				reqLogger.Error(err, "Join error")
+				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
+			} else {
+				tarantool.MarkJoined(pod)
+				if err := r.client.Update(context.TODO(), pod); err != nil {
+					return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+				}
+			}
+
+			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
+		}
 	}
 
 	if err := topologyClient.BootstrapVshard(); err != nil {
