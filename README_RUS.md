@@ -5,7 +5,7 @@ align="right">
 
 # Tarantool Kubernetes-оператор
 
-Tarantool Kubernetes-оператор -- это средство автоматизации, позволяющее
+Tarantool Kubernetes-оператор &mdash; это средство автоматизации, позволяющее
 упростить администрирование Tarantool-кластеров, разработанных на фреймворке
 [Tarantool Cartridge](https://github.com/tarantool/cartridge) и развернутых
 под управлением Kubernetes.
@@ -26,11 +26,11 @@ Kubernetes-оператор реализует API версии `tarantool.io/v1
 
 ## Ресурсы
 
-**Cluster** -- это кластер, разработанный с помощью Tarantool Cartridge.
+**Cluster** &mdash; это кластер, разработанный с помощью Tarantool Cartridge.
 
-**Role** -- это пользовательская роль, разработанная с помощью Tarantool Cartridge.
+**Role** &mdash; это пользовательская роль, разработанная с помощью Tarantool Cartridge.
 
-**ReplicasetTemplate** -- это шаблон StatefulSet-ов, которые являются членами Role.
+**ReplicasetTemplate** &mdash; это шаблон StatefulSet-ов, которые являются членами Role.
 
 ## Владение ресурсами
 
