@@ -321,6 +321,50 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 	}
 
+	for _, sts := range stsList.Items {
+		stsAnnotations := sts.GetAnnotations()
+		weight, ok := stsAnnotations["tarantool.io/replicaset-weight"]
+		if ok {
+			continue
+		}
+
+		if weight == "1" {
+			continue
+		}
+
+		for i := 0; i < int(*sts.Spec.Replicas); i++ {
+			pod := &corev1.Pod{}
+			name := types.NamespacedName{
+				Namespace: request.Namespace,
+				Name:      fmt.Sprintf("%s-%d", sts.GetName(), i),
+			}
+			if err := r.client.Get(context.TODO(), name, pod); err != nil {
+				if errors.IsNotFound(err) {
+					return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
+				}
+
+				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+			}
+			if tarantool.IsJoined(pod) == false {
+				reqLogger.Info("Not all instances joined, skip weight change", "StatefulSet.Name", sts.GetName())
+				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
+			}
+		}
+
+		if err := topologyClient.SetWeight(sts.GetLabels()["tarantool.io/replicaset-uuid"]); err != nil {
+			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+		}
+		if stsAnnotations == nil {
+			stsAnnotations = make(map[string]string)
+		}
+
+		stsAnnotations["tarantool.io/replicaset-weight"] = "1"
+		sts.SetAnnotations(stsAnnotations)
+		if err := r.client.Update(context.TODO(), &sts); err != nil {
+			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+		}
+	}
+
 	if err := topologyClient.BootstrapVshard(); err != nil {
 		if topology.IsAlreadyBootstrapped(err) {
 			cluster.Status.State = "Ready"

@@ -17,7 +17,7 @@ type ResponseError struct {
 	Message string `json:"message"`
 }
 type JoinResponseData struct {
-	JoinInstance bool `json:"join_instance"`
+	JoinInstance bool `json:"joinInstanceResponse"`
 }
 type JoinResponse struct {
 	Errors []*ResponseError  `json:"errors,omitempty"`
@@ -44,6 +44,10 @@ type BuiltInTopologyService struct {
 	serviceHost string
 }
 
+type EditReplicasetResponse struct {
+	Response bool `json:"editReplicasetResponse"`
+}
+
 var (
 	topologyIsDown      = errors.New("topology service is down")
 	alreadyJoined       = errors.New("already joined")
@@ -51,7 +55,10 @@ var (
 )
 
 var join_mutation = `mutation do_join_server($uri: String!, $instance_uuid: String!, $replicaset_uuid: String!, $roles: [String!]) {
-	join_instance: join_server(uri: $uri, instance_uuid: $instance_uuid, replicaset_uuid: $replicaset_uuid, roles: $roles, timeout: 10)
+	joinInstanceResponse: join_server(uri: $uri, instance_uuid: $instance_uuid, replicaset_uuid: $replicaset_uuid, roles: $roles, timeout: 10)
+}`
+var edit_rs_mutation = `mutation editReplicaset($uuid: String!, $weight: Float) {
+	editReplicasetResponse: edit_replicaset(uuid: $uuid, weight: $weight)
 }`
 
 func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
@@ -113,10 +120,28 @@ func (s *BuiltInTopologyService) Expel(pod *corev1.Pod) error {
 	}
 
 	if resp.Data.ExpelInstance == false && (resp.Errors == nil || len(resp.Errors) == 0) {
-		return errors.New("Shit happened")
+		return errors.New("something really bad happened")
 	}
 
 	return nil
+}
+
+func (s *BuiltInTopologyService) SetWeight(replicasetUUID string) error {
+	client := graphql.NewClient(s.serviceHost, graphql.WithHTTPClient(&http.Client{Timeout: time.Duration(time.Second * 5)}))
+	req := graphql.NewRequest(edit_rs_mutation)
+
+	req.Var("uuid", replicasetUUID)
+	req.Var("weight", 1)
+
+	resp := &EditReplicasetResponse{}
+	if err := client.Run(context.TODO(), req, resp); err != nil {
+		return err
+	}
+	if resp.Response == true {
+		return nil
+	}
+
+	return errors.New("something really bad happened")
 }
 
 func (s *BuiltInTopologyService) BootstrapVshard() error {

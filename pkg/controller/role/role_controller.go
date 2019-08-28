@@ -155,6 +155,7 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 		return reconcile.Result{}, err
 	}
 
+	// ensure num of statefulsets matches user expectations
 	if len(stsList.Items) > int(*role.Spec.Replicas) {
 		reqLogger.Info("Role", "more instances", *role.Spec.Replicas)
 		for i := len(stsList.Items); i > int(*role.Spec.Replicas); i-- {
