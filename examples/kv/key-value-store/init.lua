@@ -68,7 +68,7 @@ local t = resolve_uri(advertise_uri, 50)
 if not t then os.exit(1) end
 fiber.sleep(5)
 
-local ok, err = cluster.cfg({
+local ok, err = cartridge.cfg({
     alias = instance_name,
     workdir = work_dir,
     advertise_uri = advertise_uri,

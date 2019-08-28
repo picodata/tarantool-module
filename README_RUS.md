@@ -135,6 +135,22 @@ Kubernetes-оператор реализует API версии `tarantool.io/v1
      kubectl get pods --watch
      ```
 
+
+1.  Удостоверьтесь, что Cluster готов к работе:
+
+    ```shell
+    kubectl describe clusters.tarantool.io examples-kv-cluster
+    ```
+
+    ожидаем, когда поле Status.State примет значение Ready:
+
+    ```shell
+    ...
+    Status:
+      State:  Ready
+    ...
+    ```
+
 1. Откройте веб-интерфейс администратора кластера:
 
    1. Узнайте IP-адрес виртуальной машины `minikube`:

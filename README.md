@@ -135,6 +135,21 @@ Tarantool Operator is up and running.
      kubectl get pods --watch
      ```
 
+1.  Ensure cluster became operational:
+
+    ```shell
+    kubectl describe clusters.tarantool.io examples-kv-cluster
+    ```
+
+    wait until Status.State is Ready:
+
+    ```shell
+    ...
+    Status:
+      State:  Ready
+    ...
+    ```
+
 1. Access the cluster web UI:
 
    1. Get `minikube` vm IP-address:
