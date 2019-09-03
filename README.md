@@ -203,11 +203,11 @@ Tarantool Operator is up and running.
     ```
 
     This will open the resource in a text editor.
-    Change `spec.replicas` field value to 3:
+    Change `spec.numReplicasets` field value to 3:
 
     ```shell
     spec:
-      replicas: 3
+      numReplicasets: 3
     ```
 
     Save your changes and exit the editor.

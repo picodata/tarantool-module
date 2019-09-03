@@ -224,9 +224,9 @@ func schema_pkg_apis_tarantool_v1alpha1_RoleSpec(ref common.ReferenceCallback) c
 			SchemaProps: spec.SchemaProps{
 				Description: "RoleSpec defines the desired state of Role",
 				Properties: map[string]spec.Schema{
-					"replicas": {
+					"numReplicasets": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Replicas is a number of StatefulSets (Tarantol replicasets) created under this Role",
+							Description: "NumReplicasets is a number of StatefulSets (Tarantol replicasets) created under this Role",
 							Type:        []string{"integer"},
 							Format:      "int32",
 						},

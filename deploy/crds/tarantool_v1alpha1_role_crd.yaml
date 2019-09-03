@@ -12,8 +12,8 @@ spec:
   scope: Namespaced
   subresources:
     scale:
-      specReplicasPath: .spec.replicas
-      statusReplicasPath: .status.replicas
+      specReplicasPath: .spec.numReplicasets
+      statusReplicasPath: .status.numReplicasets
     status: {}
   validation:
     openAPIV3Schema:
@@ -32,8 +32,8 @@ spec:
           type: object
         spec:
           properties:
-            replicas:
-              description: Replicas is a number of StatefulSets (Tarantol replicasets)
+            numReplicasets:
+              description: NumReplicasets is a number of StatefulSets (Tarantol replicasets)
                 created under this Role
               format: int32
               type: integer

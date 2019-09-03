@@ -19,7 +19,7 @@ spec:
   selector:
     matchLabels:
       tarantool.io/replicaset-template: "storage-template"
-  replicas: 1
+  numReplicasets: 1
 ---
 apiVersion: tarantool.io/v1alpha1
 kind: Role
@@ -33,7 +33,7 @@ spec:
   selector:
     matchLabels:
       tarantool.io/replicaset-template: "router-template"
-  replicas: 1
+  numReplicasets: 1
 ---
 apiVersion: tarantool.io/v1alpha1
 kind: ReplicasetTemplate

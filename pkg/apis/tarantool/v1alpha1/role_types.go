@@ -7,8 +7,8 @@ import (
 // RoleSpec defines the desired state of Role
 // +k8s:openapi-gen=true
 type RoleSpec struct {
-	// Replicas is a number of StatefulSets (Tarantol replicasets) created under this Role
-	Replicas        *int32              `json:"replicas,omitempty"`
+	// NumReplicasets is a number of StatefulSets (Tarantol replicasets) created under this Role
+	NumReplicasets  *int32              `json:"numReplicasets,omitempty"`
 	StorageTemplate *ReplicasetTemplate `json:"storageTemplate,omitempty"`
 	// Selector is a LabelSelector to find ReplicasetTemplate resources from which StatefulSet created
 	Selector *metav1.LabelSelector `json:"selector,omitempty"`
@@ -27,7 +27,7 @@ type RoleStatus struct {
 // Role is the Schema for the roles API
 // +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
-// +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.replicas
+// +kubebuilder:subresource:scale:specpath=.spec.numReplicasets,statuspath=.status.numReplicasets
 type Role struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

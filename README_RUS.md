@@ -203,12 +203,12 @@ Kubernetes-оператор реализует API версии `tarantool.io/v1
     kubectl edit roles.tarantool.io storage
     ```
 
-    В открывшемся текстовом редакторе поменяйте значение поля `spec.replicas`
+    В открывшемся текстовом редакторе поменяйте значение поля `spec.numReplicasets`
     на 3:
 
     ```shell
     spec:
-      replicas: 3
+      numReplicasets: 3
     ```
 
     Сохраните изменения и закройте редактор.

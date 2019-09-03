@@ -156,9 +156,9 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 	}
 
 	// ensure num of statefulsets matches user expectations
-	if len(stsList.Items) > int(*role.Spec.Replicas) {
-		reqLogger.Info("Role", "more instances", *role.Spec.Replicas)
-		for i := len(stsList.Items); i > int(*role.Spec.Replicas); i-- {
+	if len(stsList.Items) > int(*role.Spec.NumReplicasets) {
+		reqLogger.Info("Role", "more instances", *role.Spec.NumReplicasets)
+		for i := len(stsList.Items); i > int(*role.Spec.NumReplicasets); i-- {
 			sts := &appsv1.StatefulSet{}
 			sts.Name = fmt.Sprintf("%s-%d", role.Name, i-1)
 			sts.Namespace = request.Namespace
@@ -185,8 +185,8 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 	}
 	template := templateList.Items[0]
 
-	if len(stsList.Items) < int(*role.Spec.Replicas) {
-		for i := 0; i < int(*role.Spec.Replicas); i++ {
+	if len(stsList.Items) < int(*role.Spec.NumReplicasets) {
+		for i := 0; i < int(*role.Spec.NumReplicasets); i++ {
 			sts := &appsv1.StatefulSet{}
 			sts.Name = fmt.Sprintf("%s-%d", role.Name, i)
 			sts.Namespace = request.Namespace
