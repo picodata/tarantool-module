@@ -22,51 +22,53 @@ local memtx_memory = tonumber(os.getenv("TARANTOOL_MEMTX_MEMORY")) or (128 * 102
 
 local http_port = os.getenv("TARANTOOL_HTTP_PORT") or 8081
 
-local fiber = require('fiber')
 local log = require('log')
 
-local http_client = require('http.client')
-local http_server = require('http.server')
+--- [HACK] Probing node via membership
+local function dns_resolver(opts)
+    opts = opts or {}
+    opts.timeout = opts.timeout or 100
 
-local function resolve_uri(uri, timeout)
-    if not uri then
-        return nil, "Pass URI in the next format: uri:port"
+    local membership = require('membership')
+
+    local hostname, port = advertise_uri:match("^(.*)%:(.*)")
+    local ok, err = membership.init(hostname, tonumber(port))
+    if not ok then
+        log.error("[dns_resolver] Can't init a membership. Error: %s", err)
+        os.exit(1)
     end
 
-    timeout = timeout or 10
-    -- local uri, port = uri:match("(^.*)%:(.*)")
-    local resolved = false
-
-    local server_options = {
-        log_errors = true,
-        log_requests = log.debug
-    }
-
-    local srv = http_server.new("0.0.0.0", "3301", server_options)
-    srv:route({ path = '/dns_resolver', method = 'GET' }, function(_) return { status = 200, text = 'Success' } end)
-    srv:start()
+    membership.set_encryption_key('test')
+    membership.set_payload('alias', '__' .. advertise_uri)
 
     local time = 0
-    while time < timeout do
-        local resp = http_client.get(uri .. '/dns_resolver')
-        if resp.status ~= nil and resp.status == 200 then
+    local resolved = false
+    while time < opts.timeout do
+        local ok = membership.probe_uri(membership.myself().uri)
+        if ok then
             resolved = true
             break
-        else
-            print('Not resolved yet')
         end
 
+        log.info("DNS resolution has been failed. Trying to probe it again...")
         fiber.sleep(1)
         time = time + 1
     end
-    srv:stop()
 
-    return resolved
+    membership.leave()
+    if not resolved then
+        return false
+    end
+
+    return true
 end
 
-local t = resolve_uri(advertise_uri, 50)
-if not t then os.exit(1) end
-fiber.sleep(5)
+local resolved = dns_resolver({ timeout = 60 })
+if not resolved then
+    log.error("[dns_resolver] Instance has not been resolved")
+    os.exit(1)
+end
+--- End of hack
 
 local ok, err = cartridge.cfg({
     alias = instance_name,
