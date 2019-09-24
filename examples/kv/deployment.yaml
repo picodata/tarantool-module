@@ -69,9 +69,9 @@ spec:
             value: "1"
       containers:
       - name: pim-storage
-        image: tarantool/tarantool-operator-examples-kv:0.0.1
+        image: tarantool/tarantool-operator-examples-kv:0.0.2
         volumeMounts:
-          - mountPath: "/tarantool/data"
+          - mountPath: "/var/lib/tarantool"
             name: www
         ports:
           - containerPort: 3301
@@ -82,11 +82,11 @@ spec:
               fieldRef:
                 fieldPath: metadata.name
           - name: TARANTOOL_WORK_DIR
-            value: "/tarantool/data"
+            value: "/var/lib/tarantool"
           - name: TARANTOOL_MEMTX_MEMORY
             value: "33554432"
           - name: TARANTOOL_LOG
-            value: "/tarantool/data/storage.log"
+            value: "/dev/stdout"
           - name: TARANTOOL_ADVERTISE_HOST
             valueFrom:
               fieldRef:
@@ -128,9 +128,9 @@ spec:
             value: "1"
       containers:
       - name: pim-router
-        image: tarantool/tarantool-operator-examples-kv:0.0.1
+        image: tarantool/tarantool-operator-examples-kv:0.0.2
         volumeMounts:
-          - mountPath: "/tarantool/data"
+          - mountPath: "/var/lib/tarantool"
             name: www
         ports:
           - containerPort: 3301
@@ -141,11 +141,11 @@ spec:
               fieldRef:
                 fieldPath: metadata.name
           - name: TARANTOOL_WORK_DIR
-            value: "/tarantool/data"
+            value: "/var/lib/tarantool"
           - name: TARANTOOL_MEMTX_MEMORY
             value: "33554432"
           - name: TARANTOOL_LOG
-            value: "/tarantool/data/storage.log"
+            value: "/dev/stdout"
           - name: TARANTOOL_ADVERTISE_HOST
             valueFrom:
               fieldRef:

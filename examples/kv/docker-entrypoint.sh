@@ -13,8 +13,4 @@ fi
 
 mkdir -p $TARANTOOL_WORK_DIR $TARANTOOL_LOG_DIR $TARANTOOL_RUN_DIR
 
-export PATH=/home/tarantool/tarantool-enterprise:$PATH
-
-cd /home/tarantool
-
 exec "$@"

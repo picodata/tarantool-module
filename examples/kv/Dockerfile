@@ -1,27 +1,22 @@
-FROM centos:centos7
-
-WORKDIR /home/tarantool
-COPY yum-tnt.sh .
-RUN ./yum-tnt.sh
-RUN yum install -y epel-release && \
-	curl --silent --location https://rpm.nodesource.com/setup_8.x | bash - && \
-	yum install -y git make nodejs cmake gcc tarantool tarantool-devel
-
-RUN tarantoolctl rocks install https://raw.githubusercontent.com/rosik/cartridge/master/cartridge-scm-1.rockspec
-COPY key-value-store /home/tarantool/key-value-store
+FROM tarantool/tarantool:1.x-centos7
 
 # Tarantool binary protocol port
 EXPOSE 3301
-
 # Application HTTP API
 EXPOSE 8081
 
-ENV TARANTOOL_WORK_DIR=/tarantool/data \
-    TARANTOOL_RUN_DIR=/tarantool/run \
+ENV TARANTOOL_WORK_DIR=/var/lib/tarantool \
+    TARANTOOL_RUN_DIR=/var/run \
     TARANTOOL_MEMTX_MEMORY=134217728
+
+WORKDIR /opt/tarantool
+RUN yum install -y gcc make cmake git unzip
+
+COPY key-value-store ./
+RUN tarantoolctl rocks make key-value-scm-1.rockspec
 
 COPY ./docker-entrypoint.sh .
 
-ENTRYPOINT ["/home/tarantool/docker-entrypoint.sh"]
+ENTRYPOINT ["/opt/tarantool/docker-entrypoint.sh"]
 
-CMD ["tarantool", "./key-value-store/init.lua"]
+CMD ["tarantool", "/opt/tarantool/init.lua"]
