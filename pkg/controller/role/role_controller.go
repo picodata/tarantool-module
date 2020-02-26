@@ -26,13 +26,17 @@ import (
 var log = logf.Log.WithName("controller_role")
 var space = uuid.MustParse("C4FA9F56-A49A-4384-8BEE-9A476725973F")
 
+// ResponseError .
 type ResponseError struct {
 	Message string `json:"message"`
 }
 
+// ExpelResponseData .
 type ExpelResponseData struct {
 	ExpelInstance bool `json:"expel_instance"`
 }
+
+// ExpelResponse .
 type ExpelResponse struct {
 	Errors []*ResponseError   `json:"errors,omitempty"`
 	Data   *ExpelResponseData `json:"data,omitempty"`
@@ -180,9 +184,11 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 	if err := r.client.List(context.TODO(), &client.ListOptions{LabelSelector: templateSelector}, templateList); err != nil {
 		return reconcile.Result{}, err
 	}
+
 	if len(templateList.Items) == 0 {
 		return reconcile.Result{}, goerrors.New("no template")
 	}
+
 	template := templateList.Items[0]
 
 	if len(stsList.Items) < int(*role.Spec.NumReplicasets) {
@@ -205,7 +211,16 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 
 	for _, sts := range stsList.Items {
 		if template.Spec.Replicas != sts.Spec.Replicas {
+			reqLogger.Info("Updating replicas count")
 			sts.Spec.Replicas = template.Spec.Replicas
+			if err := r.client.Update(context.TODO(), &sts); err != nil {
+				return reconcile.Result{}, err
+			}
+		}
+
+		if template.Spec.Template.Spec.Containers[0].Image != sts.Spec.Template.Spec.Containers[0].Image {
+			reqLogger.Info("Updating container image")
+			sts.Spec.Template.Spec.Containers[0].Image = template.Spec.Template.Spec.Containers[0].Image
 			if err := r.client.Update(context.TODO(), &sts); err != nil {
 				return reconcile.Result{}, err
 			}
@@ -215,16 +230,20 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 	return reconcile.Result{}, nil
 }
 
+// CreateStatefulSetFromTemplate .
 func CreateStatefulSetFromTemplate(name string, role *tarantoolv1alpha1.Role, rs *tarantoolv1alpha1.ReplicasetTemplate) *appsv1.StatefulSet {
 	sts := &appsv1.StatefulSet{
 		Spec: *rs.Spec,
 	}
+
 	sts.Name = name
 	sts.Namespace = role.GetNamespace()
 	sts.ObjectMeta.Labels = role.GetLabels()
+
 	for k, v := range role.GetLabels() {
 		sts.Spec.Template.Labels[k] = v
 	}
+
 	sts.Spec.ServiceName = role.GetAnnotations()["tarantool.io/cluster-id"]
 	replicasetUUID := uuid.NewSHA1(space, []byte(sts.GetName()))
 	sts.ObjectMeta.Labels["tarantool.io/replicaset-uuid"] = replicasetUUID.String()
@@ -233,6 +252,7 @@ func CreateStatefulSetFromTemplate(name string, role *tarantoolv1alpha1.Role, rs
 	return sts
 }
 
+// RemoveFinalizer .
 func RemoveFinalizer(finalizers []string) []string {
 	newFinalizers := []string{}
 	for _, v := range finalizers {

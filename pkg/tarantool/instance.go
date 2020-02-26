@@ -7,10 +7,11 @@ import (
 )
 
 const (
-	INSTANCE_JOINED    = "joined"
-	INSTANCE_EXPELLING = "expelling"
+	instanceJoined    = "joined"
+	instanceExpelling = "expelling"
 )
 
+// IsJoined .
 func IsJoined(p *corev1.Pod) bool {
 	podLabels := p.GetLabels()
 	if podLabels == nil {
@@ -20,25 +21,27 @@ func IsJoined(p *corev1.Pod) bool {
 	if !ok {
 		return false
 	}
-	if v != INSTANCE_JOINED {
+	if v != instanceJoined {
 		return false
 	}
 
 	return true
 }
 
+// MarkJoined .
 func MarkJoined(p *corev1.Pod) {
 	podLabels := p.GetLabels()
 	if podLabels == nil {
 		podLabels = make(map[string]string)
 	}
-	podLabels["tarantool.io/instance-state"] = INSTANCE_JOINED
+	podLabels["tarantool.io/instance-state"] = instanceJoined
 	p.SetLabels(podLabels)
 }
 
+// JoinedSelector .
 func JoinedSelector() (labels.Selector, error) {
 	s := labels.NewSelector()
-	r, err := labels.NewRequirement("tarantool.io/instance-state", selection.Equals, []string{INSTANCE_JOINED})
+	r, err := labels.NewRequirement("tarantool.io/instance-state", selection.Equals, []string{instanceJoined})
 	if err != nil {
 		return nil, err
 	}
@@ -47,6 +50,7 @@ func JoinedSelector() (labels.Selector, error) {
 	return s, nil
 }
 
+// IsExpelling .
 func IsExpelling(p *corev1.Pod) bool {
 	podLabels := p.GetLabels()
 	if podLabels == nil {
@@ -56,25 +60,27 @@ func IsExpelling(p *corev1.Pod) bool {
 	if !ok {
 		return false
 	}
-	if v != INSTANCE_EXPELLING {
+	if v != instanceExpelling {
 		return false
 	}
 
 	return true
 }
 
+// MarkExpelling .
 func MarkExpelling(p *corev1.Pod) {
 	podLabels := p.GetLabels()
 	if podLabels == nil {
 		podLabels = make(map[string]string)
 	}
-	podLabels["tarantool.io/instance-state"] = INSTANCE_EXPELLING
+	podLabels["tarantool.io/instance-state"] = instanceExpelling
 	p.SetLabels(podLabels)
 }
 
+// ExpellingSelector .
 func ExpellingSelector() (labels.Selector, error) {
 	s := labels.NewSelector()
-	r, err := labels.NewRequirement("tarantool.io/instance-state", selection.Equals, []string{INSTANCE_EXPELLING})
+	r, err := labels.NewRequirement("tarantool.io/instance-state", selection.Equals, []string{instanceExpelling})
 	if err != nil {
 		return nil, err
 	}

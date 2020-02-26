@@ -15,9 +15,9 @@ spec:
       serviceAccountName: tarantool-operator
       containers:
         - name: tarantool-operator
-          image: tarantool/tarantool-operator:0.0.2
+          image: ***REMOVED***/tt-kubernetes:operator-60
           command:
-          - tarantool-operator
+            - tarantool-operator
           imagePullPolicy: Always
           env:
             - name: WATCH_NAMESPACE

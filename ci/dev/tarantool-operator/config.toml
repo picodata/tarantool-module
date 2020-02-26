@@ -1,0 +1,3 @@
+[service]
+dockerfile = 'build/Dockerfile'
+eks_cluster = 'eks-dev'

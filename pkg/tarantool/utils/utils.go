@@ -4,6 +4,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// SetComponent .
 func SetComponent(o metav1.Object, componentName string) error {
 	labels := o.GetLabels()
 	if labels == nil {
@@ -15,6 +16,7 @@ func SetComponent(o metav1.Object, componentName string) error {
 	return nil
 }
 
+// SetPartOf .
 func SetPartOf(o metav1.Object, appName string) error {
 	labels := o.GetLabels()
 	if labels == nil {
@@ -26,6 +28,7 @@ func SetPartOf(o metav1.Object, appName string) error {
 	return nil
 }
 
+// SetTarantoolClusterID .
 func SetTarantoolClusterID(o metav1.Object, clusteID string) error {
 	labels := o.GetLabels()
 	if labels == nil {

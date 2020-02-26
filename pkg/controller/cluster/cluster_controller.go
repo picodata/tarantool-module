@@ -28,25 +28,34 @@ import (
 var log = logf.Log.WithName("controller_cluster")
 var space = uuid.MustParse("73692FF6-EB42-46C2-92B6-65C45191368D")
 
+// ResponseError .
 type ResponseError struct {
 	Message string `json:"message"`
 }
+
+// JoinResponseData .
 type JoinResponseData struct {
 	JoinInstance bool `json:"join_instance"`
 }
+
+// JoinResponse .
 type JoinResponse struct {
 	Errors []*ResponseError  `json:"errors,omitempty"`
 	Data   *JoinResponseData `json:"data,omitempty"`
 }
 
+// ExpelResponseData .
 type ExpelResponseData struct {
 	ExpelInstance bool `json:"expel_instance"`
 }
+
+// ExpelResponse .
 type ExpelResponse struct {
 	Errors []*ResponseError   `json:"errors,omitempty"`
 	Data   *ExpelResponseData `json:"data,omitempty"`
 }
 
+// HasInstanceUUID .
 func HasInstanceUUID(o *corev1.Pod) bool {
 	annotations := o.Labels
 	if _, ok := annotations["tarantool.io/instance-uuid"]; ok {
@@ -56,6 +65,7 @@ func HasInstanceUUID(o *corev1.Pod) bool {
 	return false
 }
 
+// SetInstanceUUID .
 func SetInstanceUUID(o *corev1.Pod) *corev1.Pod {
 	labels := o.Labels
 	if len(o.GetName()) == 0 {
@@ -195,17 +205,13 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 				ClusterIP: "None",
 				Ports: []corev1.ServicePort{
 					{
-						Name:     "bin-udp",
+						Name:     "app",
 						Port:     3301,
-						Protocol: "UDP",
-					},
-					{
-						Name:     "bin-tcp",
-						Port:     3302,
 						Protocol: "TCP",
 					},
 				},
 			}
+
 			if err := controllerutil.SetControllerReference(cluster, svc, r.scheme); err != nil {
 				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 			}
@@ -228,6 +234,11 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	leader, ok := ep.Annotations["tarantool.io/leader"]
 	if !ok {
+		if leader == "" {
+			reqLogger.Info("leader is not elected")
+			// return reconcile.Result{RequeueAfter: time.Duration(5000 * time.Millisecond)}, nil
+		}
+
 		leader = fmt.Sprintf("%s:%s", ep.Subsets[0].Addresses[0].IP, "8081")
 		ep.Annotations["tarantool.io/leader"] = leader
 		if err := r.client.Update(context.TODO(), ep); err != nil {
@@ -338,6 +349,7 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 				Namespace: request.Namespace,
 				Name:      fmt.Sprintf("%s-%d", sts.GetName(), i),
 			}
+
 			if err := r.client.Get(context.TODO(), name, pod); err != nil {
 				if errors.IsNotFound(err) {
 					return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
@@ -345,6 +357,7 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 
 				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 			}
+
 			if tarantool.IsJoined(pod) == false {
 				reqLogger.Info("Not all instances joined, skip weight change", "StatefulSet.Name", sts.GetName())
 				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
@@ -372,7 +385,14 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
 		}
 
+		reqLogger.Error(err, "Bootstrap vshard error")
 		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+	}
+
+	if err := topologyClient.SetFailover(true); err != nil {
+		reqLogger.Error(err, "failed to enable cluster failover")
+	} else {
+		reqLogger.Info("Enabled failover")
 	}
 
 	return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
