@@ -1,3 +1,13 @@
 [service]
 dockerfile = 'build/Dockerfile'
 eks_cluster = 'eks-dev'
+
+regions = [
+    'eu-west-1',
+]
+
+deployment.type = 'kubectl'
+deployment.file = 'deploy/operator.yaml'
+
+deployment.resources.cpu = '1'
+deployment.resources.memory = '512M'
