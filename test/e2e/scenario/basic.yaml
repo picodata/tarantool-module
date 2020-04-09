@@ -1,0 +1,191 @@
+apiVersion: tarantool.io/v1alpha1
+kind: Cluster
+metadata:
+  name: examples-kv-cluster
+spec:
+  selector:
+    matchLabels:
+      tarantool.io/cluster-id: "examples-kv-cluster"
+---
+apiVersion: tarantool.io/v1alpha1
+kind: Role
+metadata:
+  name: storage
+  namespace: default
+  labels:
+    tarantool.io/cluster-id: "examples-kv-cluster"
+    tarantool.io/role: "storage"
+spec:
+  selector:
+    matchLabels:
+      tarantool.io/replicaset-template: "storage-template"
+  numReplicasets: 1
+---
+apiVersion: tarantool.io/v1alpha1
+kind: Role
+metadata:
+  name: routers
+  namespace: default
+  labels:
+    tarantool.io/cluster-id: "examples-kv-cluster"
+    tarantool.io/role: "router"
+spec:
+  selector:
+    matchLabels:
+      tarantool.io/replicaset-template: "router-template"
+  numReplicasets: 1
+---
+apiVersion: tarantool.io/v1alpha1
+kind: ReplicasetTemplate
+metadata:
+  name: storage-template
+  labels:
+    tarantool.io/cluster-id: "examples-kv-cluster"
+    tarantool.io/replicaset-template: "storage-template"
+    tarantool.io/role: "storage"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      tarantool.io/pod-template: "storage-pod-template"
+  volumeClaimTemplates:
+  - metadata:
+      name: www 
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+  template:
+    metadata:
+      labels:
+        tarantool.io/cluster-id: "examples-kv-cluster"
+        tarantool.io/pod-template: "storage-pod-template"
+    spec:
+      terminationGracePeriodSeconds: 10
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      containers:
+      - name: pim-storage
+        image: tarantool/tarantool-operator-examples-kv:0.0.2
+        volumeMounts:
+          - mountPath: "/var/lib/tarantool"
+            name: www
+        ports:
+          - containerPort: 3301
+          - containerPort: 8081
+        env:
+          - name: TARANTOOL_INSTANCE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: TARANTOOL_WORK_DIR
+            value: "/var/lib/tarantool"
+          - name: TARANTOOL_MEMTX_MEMORY
+            value: "33554432"
+          - name: TARANTOOL_LOG
+            value: "/dev/stdout"
+          - name: TARANTOOL_ADVERTISE_HOST
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: TARANTOOL_ADVERTISE_URI
+            value: "$(TARANTOOL_ADVERTISE_HOST).examples-kv-cluster:3301"
+---
+apiVersion: tarantool.io/v1alpha1
+kind: ReplicasetTemplate
+metadata:
+  name: router-template
+  labels:
+    tarantool.io/cluster-id: "examples-kv-cluster"
+    tarantool.io/replicaset-template: "router-template"
+    tarantool.io/role: "router"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      tarantool.io/pod-template: "router-pod-template"
+  volumeClaimTemplates:
+  - metadata:
+      name: www 
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+  template:
+    metadata:
+      labels:
+        tarantool.io/cluster-id: "examples-kv-cluster"
+        tarantool.io/pod-template: "router-pod-template"
+    spec:
+      terminationGracePeriodSeconds: 10
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      containers:
+      - name: pim-router
+        image: tarantool/tarantool-operator-examples-kv:0.0.2
+        volumeMounts:
+          - mountPath: "/var/lib/tarantool"
+            name: www
+        ports:
+          - containerPort: 3301
+          - containerPort: 8081
+        env:
+          - name: TARANTOOL_INSTANCE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: TARANTOOL_WORK_DIR
+            value: "/var/lib/tarantool"
+          - name: TARANTOOL_MEMTX_MEMORY
+            value: "33554432"
+          - name: TARANTOOL_LOG
+            value: "/dev/stdout"
+          - name: TARANTOOL_ADVERTISE_HOST
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: TARANTOOL_ADVERTISE_URI
+            value: "$(TARANTOOL_ADVERTISE_HOST).examples-kv-cluster:3301"
+---
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: examples-kv-topology
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  rules:
+  - http:
+      paths:
+      - backend:
+          serviceName: router
+          servicePort: 8081
+        path: /kv
+      - backend:
+          serviceName: router
+          servicePort: 8081
+        path: /kv_dump
+      - backend:
+          serviceName: router
+          servicePort: 8081
+        path: /
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: router
+  labels:
+    tarantool.io/role: "router"
+spec:
+  ports:
+    - port: 8081
+      name: web
+      protocol: TCP
+  selector:
+    tarantool.io/role: "router"
