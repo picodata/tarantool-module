@@ -5,6 +5,8 @@ align="right">
 
 # Tarantool Kubernetes operator
 
+[![Test][gh-actions-badge]][gh-actions-url]
+
 The Tarantool Operator provides automation that simplifies the administration
 of [Tarantool Cartridge](https://github.com/tarantool/cartridge)-based clusters
 on Kubernetes.
@@ -250,3 +252,6 @@ make start
 ./bootstrap.sh
 make test
 ```
+
+[gh-actions-badge]: https://github.com/tarantool/tarantool-operator/workflows/Test/badge.svg
+[gh-actions-url]: https://github.com/tarantool/tarantool-operator/actions
