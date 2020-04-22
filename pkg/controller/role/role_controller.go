@@ -218,12 +218,9 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 			}
 		}
 
-		templateContainerSpec := template.Spec.Template.Spec.Containers[0]
-		currentContainerSpec := sts.Spec.Template.Spec.Containers[0]
-
-		if templateContainerSpec.Image != currentContainerSpec.Image {
+		if template.Spec.Template.Spec.Containers[0].Image != sts.Spec.Template.Spec.Containers[0].Image {
 			reqLogger.Info("Updating container image")
-			currentContainerSpec.Image = templateContainerSpec.Image
+			sts.Spec.Template.Spec.Containers[0].Image = template.Spec.Template.Spec.Containers[0].Image
 			if err := r.client.Update(context.TODO(), &sts); err != nil {
 				return reconcile.Result{}, err
 			}
@@ -246,7 +243,6 @@ func CreateStatefulSetFromTemplate(name string, role *tarantoolv1alpha1.Role, rs
 	sts.ObjectMeta.Labels = role.GetLabels()
 
 	sts.Spec.UpdateStrategy = appsv1.StatefulSetUpdateStrategy{Type: "OnDelete"}
-	// sts.Spec.UpdateStrategy.Type = "OnDelete"
 
 	reqLogger.Info(fmt.Sprintf("Update Strategy: %s", sts.Spec.UpdateStrategy.Type))
 

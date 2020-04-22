@@ -9,5 +9,5 @@ regions = [
 deployment.type = 'kubectl'
 deployment.file = 'deploy/operator.yaml'
 
-deployment.resources.cpu = '1'
+deployment.resources.cpu = '0.25'
 deployment.resources.memory = '512M'
