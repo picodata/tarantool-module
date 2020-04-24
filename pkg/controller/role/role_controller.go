@@ -247,6 +247,7 @@ func CreateStatefulSetFromTemplate(name string, role *tarantoolv1alpha1.Role, rs
 	reqLogger.Info(fmt.Sprintf("Update Strategy: %s", sts.Spec.UpdateStrategy.Type))
 
 	for k, v := range role.GetLabels() {
+		reqLogger.Info(fmt.Sprintf("label: key: %s value: %s", k, v))
 		sts.Spec.Template.Labels[k] = v
 	}
 

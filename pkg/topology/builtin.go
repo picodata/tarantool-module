@@ -106,10 +106,14 @@ func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
 		return errors.New("instance uuid empty")
 	}
 
-	role, ok := pod.GetLabels()["tarantool.io/role"]
+	role, ok := pod.GetLabels()["tarantool.io/rolesToAssign"]
 	if !ok {
 		return errors.New("role undefined")
 	}
+
+	roles := strings.Split(role, ".")
+
+	log.Info("roles", "roles", roles)
 
 	client := graphql.NewClient(s.serviceHost, graphql.WithHTTPClient(&http.Client{Timeout: time.Duration(time.Second * 5)}))
 	req := graphql.NewRequest(joinMutation)
@@ -117,7 +121,7 @@ func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
 	req.Var("uri", advURI)
 	req.Var("instance_uuid", instanceUUID)
 	req.Var("replicaset_uuid", replicasetUUID)
-	req.Var("roles", []string{role})
+	req.Var("roles", roles)
 
 	resp := &JoinResponseData{}
 	if err := client.Run(context.TODO(), req, resp); err != nil {
