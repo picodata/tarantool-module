@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	tarantoolv1alpha1 "github.com/tarantool/tarantool-operator/pkg/apis/tarantool/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -249,6 +250,11 @@ func CreateStatefulSetFromTemplate(name string, role *tarantoolv1alpha1.Role, rs
 	for k, v := range role.GetLabels() {
 		reqLogger.Info(fmt.Sprintf("label: key: %s value: %s", k, v))
 		sts.Spec.Template.Labels[k] = v
+	}
+
+	privileged := true
+	sts.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
+		Privileged: &privileged,
 	}
 
 	sts.Spec.ServiceName = role.GetAnnotations()["tarantool.io/cluster-id"]
