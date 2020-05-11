@@ -79,3 +79,4 @@ tags
 # End of https://www.gitignore.io/api/go,vim,emacs,visualstudiocode
 kubeconfig.yaml
 deployment.yaml
+tarantool-operator
