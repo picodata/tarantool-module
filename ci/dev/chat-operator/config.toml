@@ -1,7 +1,7 @@
 [service]
 dockerfile = 'build/Dockerfile'
 eks_cluster = 'eks-dev'
-namespace = 'userscripting'
+namespace = 'chat'
 
 regions = [
     'eu-west-1',

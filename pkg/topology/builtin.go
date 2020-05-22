@@ -82,8 +82,22 @@ var (
 	errAlreadyBootstrapped = errors.New("already bootstrapped")
 )
 
-var joinMutation = `mutation do_join_server($uri: String!, $instance_uuid: String!, $replicaset_uuid: String!, $roles: [String!]) {
-	joinInstanceResponse: join_server(uri: $uri, instance_uuid: $instance_uuid, replicaset_uuid: $replicaset_uuid, roles: $roles, timeout: 10)
+var joinMutation = `mutation
+	do_join_server(
+		$uri: String!,
+		$instance_uuid: String!,
+		$replicaset_uuid: String!,
+		$roles: [String!],
+		$vshard_group: String!
+	) {
+	joinInstanceResponse: join_server(
+		uri: $uri,
+		instance_uuid: $instance_uuid,
+		replicaset_uuid: $replicaset_uuid,
+		roles: $roles,
+		timeout: 10,
+		vshard_group: $vshard_group
+	)
 }`
 var editRsMutation = `mutation editReplicaset($uuid: String!, $weight: Float) {
 	editReplicasetResponse: edit_replicaset(uuid: $uuid, weight: $weight)
@@ -92,23 +106,38 @@ var editRsMutation = `mutation editReplicaset($uuid: String!, $weight: Float) {
 // Join comment
 func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
 
-	advURI := fmt.Sprintf("%s.%s.default.svc.cluster.local:3301", pod.GetObjectMeta().GetName(), s.clusterID)
-	replicasetUUID, ok := pod.GetLabels()["tarantool.io/replicaset-uuid"]
+	advURI := fmt.Sprintf("%s.%s.%s.svc.cluster.local:3301", pod.GetObjectMeta().GetName(), s.clusterID, pod.GetObjectMeta().GetNamespace())
 
-	log.Info("payload", "advURI", advURI, "replicasetUUID", replicasetUUID)
+	thisPodLabels := pod.GetLabels()
 
+	replicasetUUID, ok := thisPodLabels["tarantool.io/replicaset-uuid"]
 	if !ok {
 		return errors.New("replicaset uuid empty")
 	}
 
-	instanceUUID, ok := pod.GetLabels()["tarantool.io/instance-uuid"]
+	log.Info("payload", "advURI", advURI, "replicasetUUID", replicasetUUID)
+
+	instanceUUID, ok := thisPodLabels["tarantool.io/instance-uuid"]
 	if !ok {
 		return errors.New("instance uuid empty")
 	}
 
-	role, ok := pod.GetLabels()["tarantool.io/rolesToAssign"]
+	role, ok := thisPodLabels["tarantool.io/rolesToAssign"]
 	if !ok {
 		return errors.New("role undefined")
+	}
+
+	vshardGroup := "default"
+	useVshardGroups, ok := thisPodLabels["tarantool.io/useVshardGroups"]
+	if !ok {
+		return errors.New("failed to get label tarantool.io/useVshardGroups")
+	}
+
+	if useVshardGroups == "1" {
+		vshardGroup, ok = thisPodLabels["tarantool.io/vshardGroupName"]
+		if !ok {
+			return errors.New("vshard_group undefined")
+		}
 	}
 
 	roles := strings.Split(role, ".")
@@ -122,6 +151,7 @@ func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
 	req.Var("instance_uuid", instanceUUID)
 	req.Var("replicaset_uuid", replicasetUUID)
 	req.Var("roles", roles)
+	req.Var("vshard_group", vshardGroup)
 
 	resp := &JoinResponseData{}
 	if err := client.Run(context.TODO(), req, resp); err != nil {

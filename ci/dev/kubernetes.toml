@@ -2,5 +2,5 @@
 [packages]
     tobuild = [
         'tarantool-operator',
+        'chat-operator',
     ]
-

@@ -199,7 +199,7 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 			sts.Namespace = request.Namespace
 
 			if err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: sts.Namespace, Name: sts.Name}, sts); err != nil {
-				sts = CreateStatefulSetFromTemplate(fmt.Sprintf("%s-%d", role.Name, i), role, &template)
+				sts = CreateStatefulSetFromTemplate(i, fmt.Sprintf("%s-%d", role.Name, i), role, &template)
 				if err := controllerutil.SetControllerReference(role, sts, r.scheme); err != nil {
 					return reconcile.Result{}, err
 				}
@@ -232,7 +232,7 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 }
 
 // CreateStatefulSetFromTemplate .
-func CreateStatefulSetFromTemplate(name string, role *tarantoolv1alpha1.Role, rs *tarantoolv1alpha1.ReplicasetTemplate) *appsv1.StatefulSet {
+func CreateStatefulSetFromTemplate(replicasetNumber int, name string, role *tarantoolv1alpha1.Role, rs *tarantoolv1alpha1.ReplicasetTemplate) *appsv1.StatefulSet {
 	reqLogger := log.WithValues("func", "CreateStatefulSetFromTemplate")
 
 	sts := &appsv1.StatefulSet{
@@ -260,7 +260,10 @@ func CreateStatefulSetFromTemplate(name string, role *tarantoolv1alpha1.Role, rs
 	sts.Spec.ServiceName = role.GetAnnotations()["tarantool.io/cluster-id"]
 	replicasetUUID := uuid.NewSHA1(space, []byte(sts.GetName()))
 	sts.ObjectMeta.Labels["tarantool.io/replicaset-uuid"] = replicasetUUID.String()
+	sts.ObjectMeta.Labels["tarantool.io/vshard_group"] = fmt.Sprintf("group_%d", replicasetNumber)
+
 	sts.Spec.Template.Labels["tarantool.io/replicaset-uuid"] = replicasetUUID.String()
+	sts.Spec.Template.Labels["tarantool.io/vshard_group"] = fmt.Sprintf("group_%d", replicasetNumber)
 
 	return sts
 }
