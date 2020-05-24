@@ -11,7 +11,6 @@ apiVersion: tarantool.io/v1alpha1
 kind: Role
 metadata:
   name: storage
-  namespace: default
   labels:
     tarantool.io/cluster-id: "examples-kv-cluster"
     tarantool.io/role: "storage"
@@ -25,7 +24,6 @@ apiVersion: tarantool.io/v1alpha1
 kind: Role
 metadata:
   name: routers
-  namespace: default
   labels:
     tarantool.io/cluster-id: "examples-kv-cluster"
     tarantool.io/role: "router"
