@@ -1,6 +1,6 @@
 [service]
 dockerfile = 'build/Dockerfile'
-eks_cluster = 'eks-dev'
+eks_cluster = 'eks-prod'
 namespace = 'userscripting'
 
 regions = [
@@ -8,11 +8,11 @@ regions = [
 ]
 
 labels = [
-    'environment:dev',
+    'environment:prod',
 ]
 
 deployment.type = 'kubectl'
 deployment.file = 'deploy/operator.yaml'
 
-deployment.resources.cpu = '0.25'
+deployment.resources.cpu = '0.5'
 deployment.resources.memory = '512M'

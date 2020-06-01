@@ -7,6 +7,10 @@ regions = [
     'eu-west-1',
 ]
 
+labels = [
+    'environment:dev',
+]
+
 deployment.type = 'kubectl'
 deployment.file = 'deploy/operator.yaml'
 
