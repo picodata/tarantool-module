@@ -378,15 +378,23 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 	}
 
-	if err := topologyClient.BootstrapVshard(); err != nil {
-		if topology.IsAlreadyBootstrapped(err) {
-			cluster.Status.State = "Ready"
-			r.client.Status().Update(context.TODO(), cluster)
-			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
-		}
+	for _, sts := range stsList.Items {
+		stsAnnotations := sts.GetAnnotations()
+		if stsAnnotations["tarantool.io/isBootstrapped"] != "1" {
+			if err := topologyClient.BootstrapVshard(); err != nil {
+				if topology.IsAlreadyBootstrapped(err) {
+					stsAnnotations["tarantool.io/isBootstrapped"] = "1"
+					sts.SetAnnotations(stsAnnotations)
 
-		reqLogger.Error(err, "Bootstrap vshard error")
-		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+					cluster.Status.State = "Ready"
+					r.client.Status().Update(context.TODO(), cluster)
+					return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
+				}
+
+				reqLogger.Error(err, "Bootstrap vshard error")
+				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+			}
+		}
 	}
 
 	if err := topologyClient.SetFailover(true); err != nil {
