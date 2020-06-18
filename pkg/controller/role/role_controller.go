@@ -260,10 +260,13 @@ func CreateStatefulSetFromTemplate(replicasetNumber int, name string, role *tara
 	sts.Spec.ServiceName = role.GetAnnotations()["tarantool.io/cluster-id"]
 	replicasetUUID := uuid.NewSHA1(space, []byte(sts.GetName()))
 	sts.ObjectMeta.Labels["tarantool.io/replicaset-uuid"] = replicasetUUID.String()
-	sts.ObjectMeta.Labels["tarantool.io/vshard_group"] = fmt.Sprintf("group_%d", replicasetNumber)
+	sts.ObjectMeta.Labels["tarantool.io/vshardGroupName"] = role.GetLabels()["tarantool.io/role"]
+
+	sts.ObjectMeta.Annotations = make(map[string]string)
+	sts.ObjectMeta.Annotations["tarantool.io/isBootstrapped"] = "0"
 
 	sts.Spec.Template.Labels["tarantool.io/replicaset-uuid"] = replicasetUUID.String()
-	sts.Spec.Template.Labels["tarantool.io/vshard_group"] = fmt.Sprintf("group_%d", replicasetNumber)
+	sts.Spec.Template.Labels["tarantool.io/vshardGroupName"] = role.GetLabels()["tarantool.io/role"]
 
 	return sts
 }

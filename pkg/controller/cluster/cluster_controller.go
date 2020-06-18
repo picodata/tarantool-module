@@ -381,10 +381,13 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 	for _, sts := range stsList.Items {
 		stsAnnotations := sts.GetAnnotations()
 		if stsAnnotations["tarantool.io/isBootstrapped"] != "1" {
+			reqLogger.Info("cluster is not bootstrapped, bootstrapping", "Statefulset.Name", sts.GetName())
 			if err := topologyClient.BootstrapVshard(); err != nil {
 				if topology.IsAlreadyBootstrapped(err) {
 					stsAnnotations["tarantool.io/isBootstrapped"] = "1"
 					sts.SetAnnotations(stsAnnotations)
+
+					reqLogger.Info("Added bootstrapped annotation", "StatefulSet.Name", sts.GetName())
 
 					cluster.Status.State = "Ready"
 					r.client.Status().Update(context.TODO(), cluster)
@@ -394,13 +397,23 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 				reqLogger.Error(err, "Bootstrap vshard error")
 				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 			}
+		} else {
+			reqLogger.Info("cluster is already bootstrapped, not retrying", "Statefulset.Name", sts.GetName())
 		}
 	}
 
-	if err := topologyClient.SetFailover(true); err != nil {
-		reqLogger.Error(err, "failed to enable cluster failover")
+	clusterAnnotations := cluster.GetAnnotations()
+	if clusterAnnotations["tarantool.io/failoverEnabled"] == "1" {
+		reqLogger.Info("cluster failover is already enabled, not retrying")
 	} else {
-		reqLogger.Info("Enabled failover")
+		if err := topologyClient.SetFailover(true); err != nil {
+			reqLogger.Error(err, "failed to enable cluster failover")
+		} else {
+			reqLogger.Info("Enabled failover")
+
+			clusterAnnotations["tarantool.io/failoverEnabled"] = "1"
+			cluster.SetAnnotations(clusterAnnotations)
+		}
 	}
 
 	return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
