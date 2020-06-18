@@ -54,7 +54,12 @@ type BootstrapVshardResponse struct {
 
 // FailoverData Structure of data for changing failover status
 type FailoverData struct {
-	failover bool `json:"failover"`
+	failover *FailoverParams `json:"failover_params"`
+}
+
+// FailoverParams returns the mode of failover which has been enabled
+type FailoverParams struct {
+	mode string `json:"mode"`
 }
 
 // FailoverResponse type struct for returning on failovers
@@ -183,15 +188,10 @@ func (s *BuiltInTopologyService) SetFailover(enabled bool) error {
 	resp := &FailoverData{}
 	if err := client.Run(context.TODO(), req, resp); err != nil {
 		log.Error(err, "failoverError")
-
 		return errors.New("failed to enable cluster failover")
 	}
 
-	if resp.failover == enabled {
-		return nil
-	}
-
-	return errors.New("bad things happened")
+	return nil
 }
 
 // Expel removes an instance from the replicaset
