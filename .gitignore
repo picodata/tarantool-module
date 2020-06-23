@@ -78,5 +78,5 @@ tags
 .DS_Store
 # End of https://www.gitignore.io/api/go,vim,emacs,visualstudiocode
 kubeconfig.yaml
-deployment.yaml
+./deployment.yaml
 ./tarantool-operator

@@ -1,0 +1,10 @@
+# Default values for helm-chart.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+namespace: chat
+
+image:
+  repository: ***REMOVED***/chat-operator
+  tag: 0000000011-dev
+  pullPolicy: Always

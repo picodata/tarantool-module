@@ -1,18 +1,13 @@
 [service]
 dockerfile = 'build/Dockerfile'
+docker_build_dir = '.'
 eks_cluster = 'eks-dev'
 namespace = 'userscripting'
+app_name = 'tarantool-operator'
 
 regions = [
     'eu-west-1',
 ]
 
-labels = [
-    'environment:dev',
-]
-
-deployment.type = 'kubectl'
-deployment.file = 'deploy/operator.yaml'
-
-deployment.resources.cpu = '0.25'
-deployment.resources.memory = '512M'
+deployment.type = 'helm'
+deployment.helm_chart = './ci/helm-chart'
