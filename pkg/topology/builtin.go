@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -216,13 +217,22 @@ func (s *BuiltInTopologyService) Expel(pod *corev1.Pod) error {
 	return nil
 }
 
-// SetWeight sets weight of an instance within a replicaset
-func (s *BuiltInTopologyService) SetWeight(replicasetUUID string) error {
+// SetWeight sets weight of a replicaset
+func (s *BuiltInTopologyService) SetWeight(replicasetUUID string, replicaWeight string) error {
 	client := graphql.NewClient(s.serviceHost, graphql.WithHTTPClient(&http.Client{Timeout: time.Duration(time.Second * 5)}))
 	req := graphql.NewRequest(editRsMutation)
 
+	reqLogger := log.WithValues("namespace", "topology.builtin")
+
+	weightParam, err := strconv.ParseUint(replicaWeight, 10, 32)
+	if err != nil {
+		return err
+	}
+
+	reqLogger.Info("setting cluster weight", "uuid", replicasetUUID, "weight", replicaWeight)
+
 	req.Var("uuid", replicasetUUID)
-	req.Var("weight", 1)
+	req.Var("weight", weightParam)
 
 	resp := &EditReplicasetResponse{}
 	if err := client.Run(context.TODO(), req, resp); err != nil {

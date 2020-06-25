@@ -334,14 +334,10 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	for _, sts := range stsList.Items {
 		stsAnnotations := sts.GetAnnotations()
-		weight, ok := stsAnnotations["tarantool.io/replicaset-weight"]
-		if ok {
-			continue
-		}
-
-		if weight == "1" {
-			continue
-		}
+		weight, _ := stsAnnotations["tarantool.io/replicaset-weight"]
+		// if ok {
+		// 	continue
+		// }
 
 		for i := 0; i < int(*sts.Spec.Replicas); i++ {
 			pod := &corev1.Pod{}
@@ -364,18 +360,19 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 			}
 		}
 
-		if err := topologyClient.SetWeight(sts.GetLabels()["tarantool.io/replicaset-uuid"]); err != nil {
+		if err := topologyClient.SetWeight(sts.GetLabels()["tarantool.io/replicaset-uuid"], weight); err != nil {
 			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
-		}
-		if stsAnnotations == nil {
-			stsAnnotations = make(map[string]string)
 		}
 
-		stsAnnotations["tarantool.io/replicaset-weight"] = "1"
-		sts.SetAnnotations(stsAnnotations)
-		if err := r.client.Update(context.TODO(), &sts); err != nil {
-			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
-		}
+		// if stsAnnotations == nil {
+		// 	stsAnnotations = make(map[string]string)
+		// }
+
+		// stsAnnotations["tarantool.io/replicaset-weight"] = "1"
+		// sts.SetAnnotations(stsAnnotations)
+		// if err := r.client.Update(context.TODO(), &sts); err != nil {
+		// 	return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+		// }
 	}
 
 	for _, sts := range stsList.Items {
