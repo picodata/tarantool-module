@@ -80,6 +80,34 @@ type EditReplicasetResponse struct {
 	Response bool `json:"editReplicasetResponse"`
 }
 
+// GetServerStatResponse .
+type GetServerStatResponse struct {
+	Data   *ServerStatData  `json:"data"`
+	Errors []*ResponseError `json:"errors,omitempty"`
+}
+
+// ServerStatData .
+type ServerStatData struct {
+	Stats []*ServerStat `json:"serverStat"`
+}
+
+// ServerStat .
+type ServerStat struct {
+	Statistics Statistics `json:"statistics"`
+	UUID       string     `json:"uuid"`
+	URI        string     `json:"uri"`
+}
+
+// Statistics .
+type Statistics struct {
+	ItemsUsedRatio string `json:"items_used_ratio"`
+	ArenaUsedRatio string `json:"arena_used_ratio"`
+	QuotaSize      int    `json:"quotaSize"`
+	ArenaUsed      int    `json:"arenaUsed"`
+	QuotaUsedRatio string `json:"quota_used_ratio"`
+	BucketsCount   int    `json:"bucketsCount"`
+}
+
 var log = logf.Log.WithName("topology")
 
 var (
@@ -107,6 +135,21 @@ var joinMutation = `mutation
 }`
 var editRsMutation = `mutation editReplicaset($uuid: String!, $weight: Float) {
 	editReplicasetResponse: edit_replicaset(uuid: $uuid, weight: $weight)
+}`
+
+var getServerStatQuery = `query serverList {
+	serverStat: servers {
+		uuid
+		uri
+		statistics {
+			quotaSize: quota_size
+			arenaUsed: arena_used
+			bucketsCount: vshard_buckets_count
+			quota_used_ratio
+			arena_used_ratio
+			items_used_ratio
+		}
+	}
 }`
 
 // Join comment
@@ -238,11 +281,29 @@ func (s *BuiltInTopologyService) SetWeight(replicasetUUID string, replicaWeight 
 	if err := client.Run(context.TODO(), req, resp); err != nil {
 		return err
 	}
+
 	if resp.Response == true {
 		return nil
 	}
 
 	return errors.New("something really bad happened")
+}
+
+// GetServerStat Fetch the replicaset as reported by cartridge
+func (s *BuiltInTopologyService) GetServerStat() (ServerStatData, error) {
+	client := graphql.NewClient(s.serviceHost, graphql.WithHTTPClient(&http.Client{Timeout: time.Duration(time.Second * 5)}))
+	req := graphql.NewRequest(getServerStatQuery)
+
+	reqLogger := log.WithValues("function", "GetServerStat")
+
+	reqLogger.Info("fetching server stats")
+
+	resp := ServerStatData{}
+	if err := client.Run(context.TODO(), req, &resp); err != nil {
+		return resp, err
+	}
+
+	return resp, nil
 }
 
 // BootstrapVshard enable the vshard service on the cluster

@@ -168,6 +168,7 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 			sts.Name = fmt.Sprintf("%s-%d", role.Name, i-1)
 			sts.Namespace = request.Namespace
 			reqLogger.Info("ROLE DOWNSCALE", "will remove", sts.Name)
+
 			if err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: sts.Namespace, Name: sts.Name}, sts); err != nil {
 				if errors.IsNotFound(err) {
 					continue
@@ -175,9 +176,14 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 				return reconcile.Result{}, err
 			}
 
-			if err := r.client.Delete(context.TODO(), sts); err != nil {
-				return reconcile.Result{}, err
+			stsAnnotations := sts.GetAnnotations()
+			if stsAnnotations["tarantool.io/scheduledDelete"] == "1" {
+				reqLogger.Info("statefulset is ready for deletion")
 			}
+
+			// if err := r.client.Delete(context.TODO(), sts); err != nil {
+			// 	return reconcile.Result{}, err
+			// }
 		}
 	}
 
