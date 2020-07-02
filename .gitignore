@@ -80,3 +80,4 @@ tags
 kubeconfig.yaml
 ./deployment.yaml
 ./tarantool-operator
+helm_values.yaml

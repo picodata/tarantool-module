@@ -5,6 +5,6 @@
 namespace: userscripting
 
 image:
-  repository: ***REMOVED***/tarantool-operator
+  repository: null
   tag: null
   pullPolicy: Always

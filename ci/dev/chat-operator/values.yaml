@@ -5,6 +5,6 @@
 namespace: chat
 
 image:
-  repository: ***REMOVED***/chat-operator
-  tag: 0000000011-dev
+  repository: null
+  tag: null
   pullPolicy: Always
