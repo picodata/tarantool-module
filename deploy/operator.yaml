@@ -17,8 +17,8 @@ spec:
         - name: tarantool-operator
           image: null
           command:
-            - tarantool-operator
-          imagePullPolicy: Always
+          - tarantool-operator
+          imagePullPolicy: IfNotPresent
           env:
             - name: WATCH_NAMESPACE
               valueFrom:
