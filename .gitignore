@@ -81,3 +81,7 @@ kubeconfig.yaml
 ./deployment.yaml
 ./tarantool-operator
 helm_values.yaml
+deploy/*
+
+ci/helm-chart/templates/crds/tarantool.io_*s_crd.yaml
+ci/helm-chart/templates/crds/tarantool_*_cr.yaml

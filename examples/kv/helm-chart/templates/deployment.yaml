@@ -56,7 +56,6 @@ spec:
         tarantool.io/pod-template: "{{ .RoleName }}-pod-template"
         tarantool.io/rolesToAssign: "{{ .RolesToAssign }}"
         tarantool.io/useVshardGroups: "0"
-        tarantool.io/replicaset-weight: "100"
         environment: "{{ $.Values.ClusterEnv }}"
       annotations:
         prometheus.io/path: "{{ $.Values.Prometheus.path }}"

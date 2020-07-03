@@ -21,3 +21,9 @@
 .idea/
 *.tmproj
 .vscode/
+# ignore the custom resource examples
+templates/crds/tarantool_*cr.yaml
+# Ignore plural definitions, not required
+templates/crds/tarantool.io_replicasettemplates_crd.yaml
+templates/crds/tarantool.io_roles_crd.yaml
+templates/crds/tarantool.io_clusters_crd.yaml
