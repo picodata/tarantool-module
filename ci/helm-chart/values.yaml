@@ -2,9 +2,9 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
-namespace: userscripting
+namespace: tarantool
 
 image:
-  repository: null
-  tag: null
-  pullPolicy: Always
+  repository: tarantool/tarantool-operator
+  tag: 0.0.2
+  pullPolicy: IfNotPresent

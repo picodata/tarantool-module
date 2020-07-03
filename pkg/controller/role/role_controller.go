@@ -251,10 +251,9 @@ func CreateStatefulSetFromTemplate(replicasetNumber int, name string, role *tara
 
 	sts.Spec.UpdateStrategy = appsv1.StatefulSetUpdateStrategy{Type: "OnDelete"}
 
-	reqLogger.Info(fmt.Sprintf("Update Strategy: %s", sts.Spec.UpdateStrategy.Type))
+	reqLogger.Info("Update Strategy: %s", sts.Spec.UpdateStrategy.Type)
 
 	for k, v := range role.GetLabels() {
-		reqLogger.Info(fmt.Sprintf("label: key: %s value: %s", k, v))
 		sts.Spec.Template.Labels[k] = v
 	}
 
@@ -273,6 +272,7 @@ func CreateStatefulSetFromTemplate(replicasetNumber int, name string, role *tara
 	}
 
 	sts.ObjectMeta.Annotations["tarantool.io/isBootstrapped"] = "0"
+	sts.ObjectMeta.Annotations["tarantool.io/replicaset-weight"] = "100"
 
 	sts.Spec.Template.Labels["tarantool.io/replicaset-uuid"] = replicasetUUID.String()
 	sts.Spec.Template.Labels["tarantool.io/vshardGroupName"] = role.GetLabels()["tarantool.io/role"]
