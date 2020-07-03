@@ -1,6 +1,7 @@
 module github.com/tarantool/tarantool-operator
 
 require (
+	github.com/ghodss/yaml v1.0.0
 	github.com/go-openapi/spec v0.19.0
 	github.com/google/uuid v1.1.1
 	github.com/machinebox/graphql v0.2.2
