@@ -8,8 +8,7 @@ align="right">
 [![Test][gh-actions-badge]][gh-actions-url]
 
 The Tarantool Operator provides automation that simplifies the administration
-of [Tarantool Cartridge](https://github.com/tarantool/cartridge)-based clusters
-on Kubernetes.
+of [Tarantool Cartridge](https://github.com/tarantool/cartridge)-based cluster on Kubernetes.
 
 The Operator introduces new API version `tarantool.io/v1alpha1` and installs
 custom resources for objects of three custom types: Cluster, Role, and
@@ -47,71 +46,61 @@ will be removed.
 
 ## Deploying the Tarantool operator on minikube
 
-1. Install the required software:
+1. Install the required deployment utilities:
 
-    - [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl)
+    * [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl)
+    * [helm](https://helm.sh/docs/intro/install/)
 
-    - [minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/)
+    Pick one of these to run a local kubernetes cluster
+    * [minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/)
+    * [Windows Docker Desktop](https://docs.docker.com/docker-for-windows/#kubernetes)
+    * [OSX Docker Desktop](https://docs.docker.com/docker-for-mac/#kubernetes)
 
-1. Create a `minikube` cluster:
+    To install and configure a local minikube installation:
 
-    ```shell
-    minikube start --memory=4096
-    ```
+    1. Create a `minikube` cluster:
 
-    You will need 4Gb of RAM allocated to the `minikube` cluster to run examples.
+        ```shell
+        minikube start --memory=4096
+        ```
 
-    Ensure `minikube` is up and running:
+        You will need 4Gb of RAM allocated to the `minikube` cluster to run examples.
 
-    ```shell
-    minikube status
-    ```
+        Ensure `minikube` is up and running:
 
-    In case of success you will see this output:
+        ```shell
+        minikube status
+        ```
 
-    ```shell
-    host: Running
-    kubelet: Running
-    apiserver: Running
-    ```
+        In case of success you will see this output:
 
-1. Enable Ingress add-on:
+        ```shell
+        host: Running
+        kubelet: Running
+        apiserver: Running
+        ```
 
-    ```shell
-    minikube addons enable ingress
-    ```
+    2. Enable minikube Ingress add-on:
 
-1. Create operator resources:
+        ```shell
+        minikube addons enable ingress
+        ```
 
-    ```shell
-    kubectl create -f deploy/service_account.yaml
-    kubectl create -f deploy/role.yaml
-    kubectl create -f deploy/role_binding.yaml
-    ```
-
-1. Create Tarantool Operator CRD's (Custom Resource Definitions):
+2. Install the operator
 
     ```shell
-    kubectl create -f deploy/crds/tarantool_v1alpha1_cluster_crd.yaml
-    kubectl create -f deploy/crds/tarantool_v1alpha1_role_crd.yaml
-    kubectl create -f deploy/crds/tarantool_v1alpha1_replicasettemplate_crd.yaml
-    ```
-
-1. Start the operator:
-
-    ```shell
-    kubectl create -f deploy/operator.yaml
+    helm install tarantool-operator ci/helm-chart --namespace tarantool --create-namespace
     ```
 
     Ensure the operator is up:
 
     ```shell
-    kubectl get pods --watch
+    watch kubectl get pods -n tarantool
     ```
 
     Wait for `tarantool-operator-xxxxxx-xx` Pod's status to become `Running`.
 
-## Example: key-value storage
+## Example Application: key-value storage
 
 `examples/kv` contains a Tarantool-based distributed key-value storage.
 Data are accessed via HTTP REST API.
@@ -128,19 +117,19 @@ Tarantool Operator is up and running.
 1. Create a cluster:
 
     ```shell
-    kubectl create -f examples/kv/deployment.yaml
+    helm install examples-kv-cluster examples/kv/helm-chart --namespace tarantool
     ```
 
-   Wait until all the cluster Pods are up (status becomes `Running`):
-
-     ```shell
-     kubectl get pods --watch
-     ```
-
-1.  Ensure cluster became operational:
+    Wait until all the cluster Pods are up (status becomes `Running`):
 
     ```shell
-    kubectl describe clusters.tarantool.io examples-kv-cluster
+    watch kubectl -n tarantool get pods
+    ```
+
+2. Ensure cluster became operational:
+
+    ```shell
+    kubectl -n tarantool describe clusters.tarantool.io examples-kv-cluster
     ```
 
     wait until Status.State is Ready:
@@ -152,25 +141,35 @@ Tarantool Operator is up and running.
     ...
     ```
 
-1. Access the cluster web UI:
+3. Access the cluster web UI:
 
-   1. Get `minikube` vm IP-address:
+    * If using minikube:
 
-       ```shell
-       minikube ip
-       ```
+        * Get `minikube` vm IP-address:
 
-   1. Open **http://MINIKUBE_IP** in your browser.
-      Replace MINIKUBE_IP with the IP-address reported by the previous command.
+        ```shell
+        minikube ip
+        ```
 
-      ![Web UI](./assets/kv_web_ui.png)
+        * Open **http://MINIKUBE_IP** in your browser.
+        Replace MINIKUBE_IP with the IP-address reported by the previous command.
 
-> **_NOTE:_** Due to a recent
-> [bug in Ingress](https://github.com/kubernetes/minikube/issues/2840),
-> web UI may be inaccessible. If needed, you can try this
-> [workaround](https://github.com/kubernetes/minikube/issues/2840#issuecomment-492454708).
+        ![Web UI](./assets/kv_web_ui.png)
 
-1. Access the key-value API:
+        > **_NOTE:_** Due to a recent
+        > [bug in Ingress](https://github.com/kubernetes/minikube/issues/2840),
+        > web UI may be inaccessible. If needed, you can try this
+        > [workaround](https://github.com/kubernetes/minikube/issues/2840#issuecomment-492454708).
+
+    * If using kubernetes in docker-desktop
+
+        Run: (MINIKUBE_IP will be localhost:8081 in this case)
+
+        ```shell
+        kc port-forward -n tarantool routers-0-0 8081:8081
+        ````
+
+4. Access the key-value API:
 
    1. Store some value:
 
@@ -184,7 +183,7 @@ Tarantool Operator is up and running.
        {"info":"Successfully created"}
        ```
 
-   1. Access stored values:
+   2. Access stored values:
 
        ```shell
        curl http://MINIKUBE_IP/kv_dump
@@ -200,53 +199,58 @@ Tarantool Operator is up and running.
 
 1. Increase the number of replica sets in Storages Role:
 
-    ```shell
-    kubectl edit roles.tarantool.io storage
+    in the examples-kv helm chart, edit the `examples/kv/helm-chart/values.yaml` file to be
+
+    ```yaml
+    - RoleName: storage
+      ReplicaCount: 1
+      ReplicaSetCount: 2
     ```
 
-    This will open the resource in a text editor.
-    Change `spec.numReplicasets` field value to 3:
+    Then run:
 
     ```shell
-    spec:
-      numReplicasets: 3
+    helm upgrade examples-kv-cluster examples/kv/helm-chart --namespace tarantool
     ```
 
-    Save your changes and exit the editor.
+    This will add another storage role replica set to the existing cluster. View the new cluster topology via the cluster web UI.
 
-    This will add new replica sets to the existing cluster.
+2. Increase the number of replicas across all Storages Role replica sets:
 
-    View the new cluster topology via the cluster web UI.
+    in the examples-kv helm chart, edit the `examples/kv/helm-chart/values.yaml` file to be
 
-1. Increase the number of replicas across all Storages Role replica sets:
+    ```yaml
+    - RoleName: storage
+      ReplicaCount: 2
+      ReplicaSetCount: 2
+    ```
+
+    Then run:
 
     ```shell
-    kubectl edit replicasettemplates.tarantool.io storage-template
+    helm upgrade examples-kv-cluster examples/kv/helm-chart --namespace tarantool
     ```
 
-    This will open the resource in a text editor.
-    Change `spec.replicas` field value to 3:
+    This will add one more replica to each Storages Role replica set. View the new cluster topology via the cluster web UI.
 
-    ```shell
-    spec:
-      replicas: 3
-    ```
+## Development
 
-    Save your changes and exit the editor.
+### Regenerate the Custom Resource Definitions
 
-    This will add one more replica to each Storages Role replica set.
+```shell
+make crds
+```
 
-    View the new cluster topology via the cluster web UI.
+### Building tarantool-operator docker image
 
-> **_NOTE:_** When `kubectl` 1.16 is out, you will be able to scale the
-> application with a single `kubectl scale` command, for example
-> `kubectl scale roles.tarantool.io storage --replicas=3`.
-> With younger versions of `kubectl` this is impossible due to
-> [this bug](https://github.com/kubernetes/kubernetes/issues/80515).
+```shell
+make docker
+```
 
 ### Running tests
 
 ```shell
+# In the examples/kv directory
 make build
 make start
 ./bootstrap.sh

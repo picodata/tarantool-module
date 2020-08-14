@@ -1,7 +1,9 @@
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: tarantool-operator
+  namespace: {{ .Values.namespace }}
 spec:
   replicas: 1
   selector:
@@ -13,12 +15,13 @@ spec:
         name: tarantool-operator
     spec:
       serviceAccountName: tarantool-operator
+      imagePullSecrets:
+        - name: ecr
       containers:
         - name: tarantool-operator
-          image: tarantool/tarantool-operator:0.0.2
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
           command:
-          - tarantool-operator
-          imagePullPolicy: IfNotPresent
+            - tarantool-operator
           env:
             - name: WATCH_NAMESPACE
               valueFrom:
@@ -30,3 +33,4 @@ spec:
                   fieldPath: metadata.name
             - name: tarantool-operator
               value: "tarantool-operator"
+---

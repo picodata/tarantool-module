@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	tarantoolv1alpha1 "github.com/tarantool/tarantool-operator/pkg/apis/tarantool/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -26,13 +27,17 @@ import (
 var log = logf.Log.WithName("controller_role")
 var space = uuid.MustParse("C4FA9F56-A49A-4384-8BEE-9A476725973F")
 
+// ResponseError .
 type ResponseError struct {
 	Message string `json:"message"`
 }
 
+// ExpelResponseData .
 type ExpelResponseData struct {
 	ExpelInstance bool `json:"expel_instance"`
 }
+
+// ExpelResponse .
 type ExpelResponse struct {
 	Errors []*ResponseError   `json:"errors,omitempty"`
 	Data   *ExpelResponseData `json:"data,omitempty"`
@@ -163,6 +168,7 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 			sts.Name = fmt.Sprintf("%s-%d", role.Name, i-1)
 			sts.Namespace = request.Namespace
 			reqLogger.Info("ROLE DOWNSCALE", "will remove", sts.Name)
+
 			if err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: sts.Namespace, Name: sts.Name}, sts); err != nil {
 				if errors.IsNotFound(err) {
 					continue
@@ -170,9 +176,14 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 				return reconcile.Result{}, err
 			}
 
-			if err := r.client.Delete(context.TODO(), sts); err != nil {
-				return reconcile.Result{}, err
+			stsAnnotations := sts.GetAnnotations()
+			if stsAnnotations["tarantool.io/scheduledDelete"] == "1" {
+				reqLogger.Info("statefulset is ready for deletion")
 			}
+
+			// if err := r.client.Delete(context.TODO(), sts); err != nil {
+			// 	return reconcile.Result{}, err
+			// }
 		}
 	}
 
@@ -180,9 +191,11 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 	if err := r.client.List(context.TODO(), &client.ListOptions{LabelSelector: templateSelector}, templateList); err != nil {
 		return reconcile.Result{}, err
 	}
+
 	if len(templateList.Items) == 0 {
 		return reconcile.Result{}, goerrors.New("no template")
 	}
+
 	template := templateList.Items[0]
 
 	if len(stsList.Items) < int(*role.Spec.NumReplicasets) {
@@ -192,7 +205,7 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 			sts.Namespace = request.Namespace
 
 			if err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: sts.Namespace, Name: sts.Name}, sts); err != nil {
-				sts = CreateStatefulSetFromTemplate(fmt.Sprintf("%s-%d", role.Name, i), role, &template)
+				sts = CreateStatefulSetFromTemplate(i, fmt.Sprintf("%s-%d", role.Name, i), role, &template)
 				if err := controllerutil.SetControllerReference(role, sts, r.scheme); err != nil {
 					return reconcile.Result{}, err
 				}
@@ -205,7 +218,16 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 
 	for _, sts := range stsList.Items {
 		if template.Spec.Replicas != sts.Spec.Replicas {
+			reqLogger.Info("Updating replicas count")
 			sts.Spec.Replicas = template.Spec.Replicas
+			if err := r.client.Update(context.TODO(), &sts); err != nil {
+				return reconcile.Result{}, err
+			}
+		}
+
+		if template.Spec.Template.Spec.Containers[0].Image != sts.Spec.Template.Spec.Containers[0].Image {
+			reqLogger.Info("Updating container image")
+			sts.Spec.Template.Spec.Containers[0].Image = template.Spec.Template.Spec.Containers[0].Image
 			if err := r.client.Update(context.TODO(), &sts); err != nil {
 				return reconcile.Result{}, err
 			}
@@ -215,24 +237,50 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 	return reconcile.Result{}, nil
 }
 
-func CreateStatefulSetFromTemplate(name string, role *tarantoolv1alpha1.Role, rs *tarantoolv1alpha1.ReplicasetTemplate) *appsv1.StatefulSet {
+// CreateStatefulSetFromTemplate .
+func CreateStatefulSetFromTemplate(replicasetNumber int, name string, role *tarantoolv1alpha1.Role, rs *tarantoolv1alpha1.ReplicasetTemplate) *appsv1.StatefulSet {
+	reqLogger := log.WithValues("func", "CreateStatefulSetFromTemplate")
+
 	sts := &appsv1.StatefulSet{
 		Spec: *rs.Spec,
 	}
+
 	sts.Name = name
 	sts.Namespace = role.GetNamespace()
 	sts.ObjectMeta.Labels = role.GetLabels()
+
+	sts.Spec.UpdateStrategy = appsv1.StatefulSetUpdateStrategy{Type: "OnDelete"}
+
+	reqLogger.Info("Update Strategy: %s", sts.Spec.UpdateStrategy.Type)
+
 	for k, v := range role.GetLabels() {
 		sts.Spec.Template.Labels[k] = v
 	}
+
+	privileged := true
+	sts.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
+		Privileged: &privileged,
+	}
+
 	sts.Spec.ServiceName = role.GetAnnotations()["tarantool.io/cluster-id"]
 	replicasetUUID := uuid.NewSHA1(space, []byte(sts.GetName()))
 	sts.ObjectMeta.Labels["tarantool.io/replicaset-uuid"] = replicasetUUID.String()
+	sts.ObjectMeta.Labels["tarantool.io/vshardGroupName"] = role.GetLabels()["tarantool.io/role"]
+
+	if sts.ObjectMeta.Annotations == nil {
+		sts.ObjectMeta.Annotations = make(map[string]string)
+	}
+
+	sts.ObjectMeta.Annotations["tarantool.io/isBootstrapped"] = "0"
+	sts.ObjectMeta.Annotations["tarantool.io/replicaset-weight"] = "100"
+
 	sts.Spec.Template.Labels["tarantool.io/replicaset-uuid"] = replicasetUUID.String()
+	sts.Spec.Template.Labels["tarantool.io/vshardGroupName"] = role.GetLabels()["tarantool.io/role"]
 
 	return sts
 }
 
+// RemoveFinalizer .
 func RemoveFinalizer(finalizers []string) []string {
 	newFinalizers := []string{}
 	for _, v := range finalizers {

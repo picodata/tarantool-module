@@ -1,0 +1,10 @@
+# Default values for helm-chart.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+namespace: tarantool
+
+image:
+  repository: tarantool/tarantool-operator
+  tag: 0.0.2
+  pullPolicy: IfNotPresent

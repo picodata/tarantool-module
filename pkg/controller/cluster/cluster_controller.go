@@ -3,6 +3,7 @@ package cluster
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,25 +29,34 @@ import (
 var log = logf.Log.WithName("controller_cluster")
 var space = uuid.MustParse("73692FF6-EB42-46C2-92B6-65C45191368D")
 
+// ResponseError .
 type ResponseError struct {
 	Message string `json:"message"`
 }
+
+// JoinResponseData .
 type JoinResponseData struct {
 	JoinInstance bool `json:"join_instance"`
 }
+
+// JoinResponse .
 type JoinResponse struct {
 	Errors []*ResponseError  `json:"errors,omitempty"`
 	Data   *JoinResponseData `json:"data,omitempty"`
 }
 
+// ExpelResponseData .
 type ExpelResponseData struct {
 	ExpelInstance bool `json:"expel_instance"`
 }
+
+// ExpelResponse .
 type ExpelResponse struct {
 	Errors []*ResponseError   `json:"errors,omitempty"`
 	Data   *ExpelResponseData `json:"data,omitempty"`
 }
 
+// HasInstanceUUID .
 func HasInstanceUUID(o *corev1.Pod) bool {
 	annotations := o.Labels
 	if _, ok := annotations["tarantool.io/instance-uuid"]; ok {
@@ -56,6 +66,7 @@ func HasInstanceUUID(o *corev1.Pod) bool {
 	return false
 }
 
+// SetInstanceUUID .
 func SetInstanceUUID(o *corev1.Pod) *corev1.Pod {
 	labels := o.Labels
 	if len(o.GetName()) == 0 {
@@ -195,17 +206,13 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 				ClusterIP: "None",
 				Ports: []corev1.ServicePort{
 					{
-						Name:     "bin-udp",
+						Name:     "app",
 						Port:     3301,
-						Protocol: "UDP",
-					},
-					{
-						Name:     "bin-tcp",
-						Port:     3302,
 						Protocol: "TCP",
 					},
 				},
 			}
+
 			if err := controllerutil.SetControllerReference(cluster, svc, r.scheme); err != nil {
 				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 			}
@@ -228,7 +235,17 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	leader, ok := ep.Annotations["tarantool.io/leader"]
 	if !ok {
+		if leader == "" {
+			reqLogger.Info("leader is not elected")
+			// return reconcile.Result{RequeueAfter: time.Duration(5000 * time.Millisecond)}, nil
+		}
+
 		leader = fmt.Sprintf("%s:%s", ep.Subsets[0].Addresses[0].IP, "8081")
+
+		if ep.Annotations == nil {
+			ep.Annotations = make(map[string]string)
+		}
+
 		ep.Annotations["tarantool.io/leader"] = leader
 		if err := r.client.Update(context.TODO(), ep); err != nil {
 			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
@@ -323,13 +340,33 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	for _, sts := range stsList.Items {
 		stsAnnotations := sts.GetAnnotations()
-		weight, ok := stsAnnotations["tarantool.io/replicaset-weight"]
-		if ok {
-			continue
-		}
+		weight, _ := stsAnnotations["tarantool.io/replicaset-weight"]
 
-		if weight == "1" {
-			continue
+		if weight == "0" {
+			reqLogger.Info("weight is set to 0, checking replicaset buckets for scheduled deletion")
+			data, err := topologyClient.GetServerStat()
+			if err != nil {
+				reqLogger.Error(err, "failed to get server stats")
+			} else {
+				for i := 0; i < len(data.Stats); i++ {
+					if strings.HasPrefix(data.Stats[i].URI, sts.GetName()) {
+						reqLogger.Info("Found statefulset to check for buckets count", "sts.Name", sts.GetName())
+
+						bucketsCount := data.Stats[i].Statistics.BucketsCount
+						if bucketsCount == 0 {
+							reqLogger.Info("replicaset has migrated all of its buckets away, schedule to remove", "sts.Name", sts.GetName())
+
+							stsAnnotations["tarantool.io/scheduledDelete"] = "1"
+							sts.SetAnnotations(stsAnnotations)
+							if err := r.client.Update(context.TODO(), &sts); err != nil {
+								reqLogger.Error(err, "failed to set scheduled deletion annotation")
+							}
+						} else {
+							reqLogger.Info("replicaset still has buckets, retry checking on next run", "sts.Name", sts.GetName(), "buckets", bucketsCount)
+						}
+					}
+				}
+			}
 		}
 
 		for i := 0; i < int(*sts.Spec.Replicas); i++ {
@@ -338,6 +375,7 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 				Namespace: request.Namespace,
 				Name:      fmt.Sprintf("%s-%d", sts.GetName(), i),
 			}
+
 			if err := r.client.Get(context.TODO(), name, pod); err != nil {
 				if errors.IsNotFound(err) {
 					return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
@@ -345,34 +383,70 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 
 				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 			}
+
 			if tarantool.IsJoined(pod) == false {
 				reqLogger.Info("Not all instances joined, skip weight change", "StatefulSet.Name", sts.GetName())
 				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
 			}
 		}
 
-		if err := topologyClient.SetWeight(sts.GetLabels()["tarantool.io/replicaset-uuid"]); err != nil {
+		if err := topologyClient.SetWeight(sts.GetLabels()["tarantool.io/replicaset-uuid"], weight); err != nil {
 			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
-		}
-		if stsAnnotations == nil {
-			stsAnnotations = make(map[string]string)
 		}
 
-		stsAnnotations["tarantool.io/replicaset-weight"] = "1"
-		sts.SetAnnotations(stsAnnotations)
-		if err := r.client.Update(context.TODO(), &sts); err != nil {
-			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
-		}
+		// if stsAnnotations == nil {
+		// 	stsAnnotations = make(map[string]string)
+		// }
+
+		// stsAnnotations["tarantool.io/replicaset-weight"] = "1"
+		// sts.SetAnnotations(stsAnnotations)
+		// if err := r.client.Update(context.TODO(), &sts); err != nil {
+		// 	return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+		// }
 	}
 
-	if err := topologyClient.BootstrapVshard(); err != nil {
-		if topology.IsAlreadyBootstrapped(err) {
-			cluster.Status.State = "Ready"
-			r.client.Status().Update(context.TODO(), cluster)
-			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
+	for _, sts := range stsList.Items {
+		stsAnnotations := sts.GetAnnotations()
+		if stsAnnotations["tarantool.io/isBootstrapped"] != "1" {
+			reqLogger.Info("cluster is not bootstrapped, bootstrapping", "Statefulset.Name", sts.GetName())
+			if err := topologyClient.BootstrapVshard(); err != nil {
+				if topology.IsAlreadyBootstrapped(err) {
+					stsAnnotations["tarantool.io/isBootstrapped"] = "1"
+					sts.SetAnnotations(stsAnnotations)
+
+					if err := r.client.Update(context.TODO(), &sts); err != nil {
+						reqLogger.Error(err, "failed to set bootstrapped annotation")
+					}
+
+					reqLogger.Info("Added bootstrapped annotation", "StatefulSet.Name", sts.GetName())
+
+					cluster.Status.State = "Ready"
+					r.client.Status().Update(context.TODO(), cluster)
+					return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
+				}
+
+				reqLogger.Error(err, "Bootstrap vshard error")
+				return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+			}
+		} else {
+			reqLogger.Info("cluster is already bootstrapped, not retrying", "Statefulset.Name", sts.GetName())
 		}
 
-		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+		if stsAnnotations["tarantool.io/failoverEnabled"] == "1" {
+			reqLogger.Info("failover is enabled, not retrying")
+		} else {
+			if err := topologyClient.SetFailover(true); err != nil {
+				reqLogger.Error(err, "failed to enable cluster failover")
+			} else {
+				reqLogger.Info("enabled failover")
+
+				stsAnnotations["tarantool.io/failoverEnabled"] = "1"
+				sts.SetAnnotations(stsAnnotations)
+				if err := r.client.Update(context.TODO(), &sts); err != nil {
+					reqLogger.Error(err, "failed to set failover enabled annotation")
+				}
+			}
+		}
 	}
 
 	return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
