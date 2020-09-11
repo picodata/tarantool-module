@@ -152,6 +152,42 @@ var getServerStatQuery = `query serverList {
 	}
 }`
 
+// GetRoles comment
+func GetRoles(pod *corev1.Pod) ([]string, error) {
+	thisPodLabels := pod.GetLabels()
+	thisPodAnnotations := pod.GetAnnotations()
+
+	rolesFromAnnotations, ok := thisPodAnnotations["tarantool.io/rolesToAssign"]
+	if !ok {
+		rolesFromLabels, ok := thisPodLabels["tarantool.io/rolesToAssign"]
+		if !ok {
+			return nil, errors.New("role undefined")
+		}
+
+		roles := strings.Split(rolesFromLabels, ".")
+		log.Info("roles", "roles", roles)
+
+		return roles, nil
+	}
+
+	var singleRole string
+	var roleArray []string
+
+	err := json.Unmarshal([]byte(rolesFromAnnotations), &singleRole)
+	if err == nil {
+		log.Info("roles", "roles", singleRole)
+		return []string{singleRole}, nil
+	}
+
+	err = json.Unmarshal([]byte(rolesFromAnnotations), &roleArray)
+	if err == nil {
+		log.Info("roles", "roles", roleArray)
+		return roleArray, nil
+	}
+
+	return nil, errors.New("failed to parse roles from annotations")
+}
+
 // Join comment
 func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
 
@@ -171,10 +207,11 @@ func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
 		return errors.New("instance uuid empty")
 	}
 
-	role, ok := thisPodLabels["tarantool.io/rolesToAssign"]
-	if !ok {
-		return errors.New("role undefined")
+	roles, err := GetRoles(pod)
+	if err != nil {
+		return err
 	}
+	log.Info("roles", "roles", roles)
 
 	vshardGroup := "default"
 	useVshardGroups, ok := thisPodLabels["tarantool.io/useVshardGroups"]
@@ -188,10 +225,6 @@ func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
 			return errors.New("vshard_group undefined")
 		}
 	}
-
-	roles := strings.Split(role, ".")
-
-	log.Info("roles", "roles", roles)
 
 	client := graphql.NewClient(s.serviceHost, graphql.WithHTTPClient(&http.Client{Timeout: time.Duration(time.Second * 5)}))
 	req := graphql.NewRequest(joinMutation)
