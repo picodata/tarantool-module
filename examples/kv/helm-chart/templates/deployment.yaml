@@ -9,6 +9,7 @@ spec:
       tarantool.io/cluster-id: {{ .Values.ClusterName }}
 ---
 {{- range .Values.RoleConfig }}
+{{- $r := .RolesToAssign | toJson | quote }}
 apiVersion: tarantool.io/v1alpha1
 kind: Role
 metadata:
@@ -17,7 +18,8 @@ metadata:
   labels:
     tarantool.io/cluster-id: {{ $.Values.ClusterName }}
     tarantool.io/role: {{ .RoleName }}
-    tarantool.io/rolesToAssign: "{{ .RolesToAssign }}"
+  annotations:
+    tarantool.io/rolesToAssign: {{ $r }}
 spec:
   selector:
     matchLabels:
@@ -33,8 +35,9 @@ metadata:
     tarantool.io/cluster-id: {{ $.Values.ClusterName }}
     tarantool.io/replicaset-template: "{{ .RoleName }}-template"
     tarantool.io/role: {{ .RoleName }}
-    tarantool.io/rolesToAssign: "{{ .RolesToAssign }}"
     tarantool.io/useVshardGroups: "0"
+  annotations:
+    tarantool.io/rolesToAssign: {{ $r }}
 spec:
   replicas: {{ .ReplicaCount }}
   serviceName: {{ .RoleName }}
@@ -54,10 +57,10 @@ spec:
       labels:
         tarantool.io/cluster-id: {{ $.Values.ClusterName }}
         tarantool.io/pod-template: "{{ .RoleName }}-pod-template"
-        tarantool.io/rolesToAssign: "{{ .RolesToAssign }}"
         tarantool.io/useVshardGroups: "0"
         environment: "{{ $.Values.ClusterEnv }}"
       annotations:
+        tarantool.io/rolesToAssign: {{ $r }}
         prometheus.io/path: "{{ $.Values.Prometheus.path }}"
         prometheus.io/port: "{{ $.Values.Prometheus.port}}"
         prometheus.io/scrape: "true"

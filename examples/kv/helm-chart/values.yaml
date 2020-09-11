@@ -33,4 +33,6 @@ RoleConfig:
     DiskSize: 1Gi
     CPUallocation: 0.25
     MemtxMemoryMB: 256
-    RolesToAssign: storage
+    RolesToAssign:
+      - storage
+      - vshard.storage
