@@ -6,5 +6,5 @@ namespace: tarantool
 
 image:
   repository: tarantool/tarantool-operator
-  tag: 0.0.3
+  tag: 0.0.5
   pullPolicy: IfNotPresent
