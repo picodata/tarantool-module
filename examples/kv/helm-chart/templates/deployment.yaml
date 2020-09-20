@@ -120,6 +120,8 @@ spec:
               value: "$(TARANTOOL_ADVERTISE_HOST):3301"
             - name: TARANTOOL_PROBE_URI_TIMEOUT
               value: "60"
+            - name: TARANTOOL_HTTP_PORT
+              value: "8081"
           readinessProbe:
             tcpSocket:
               port: http
