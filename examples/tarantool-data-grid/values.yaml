@@ -1,0 +1,34 @@
+# Название среды и название кластера.
+ClusterEnv: dev
+ClusterName: test-app
+
+# Installation namespace
+namespace: tarantool
+
+# Docker image to run
+image:
+  repository: tdg
+  tag: 1.6.8
+  pullPolicy: IfNotPresent
+
+# Cluster topology
+RoleConfig:
+  - RoleName: routers   # Tarantool replicaset name
+    ReplicaCount: 1     # Number of replicas in each replicaset
+    ReplicaSetCount: 1  # Number of replicasets for this role(s)
+    DiskSize: 1Gi       # Persistent Volume disk sze
+    CPUallocation: 0.25 # Number of vCPUs to allocate to each container
+    MemtxMemoryMB: 256  # MB of memory to be assigned to each container
+    RolesToAssign:      # Tarantool Cartridge roles to assign
+      - account_manager
+      - input_processor
+      - connector
+      - scheduler
+      - task_runner
+      - frontend
+      - notifier
+      - output_processor
+      - storage
+      - logger
+      - sequence_generator
+      - failover-coordinator
