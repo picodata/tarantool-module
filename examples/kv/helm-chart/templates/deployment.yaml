@@ -2,7 +2,6 @@ apiVersion: tarantool.io/v1alpha1
 kind: Cluster
 metadata:
   name: {{ .Values.ClusterName }}
-  namespace: {{ .Values.namespace }}
 spec:
   selector:
     matchLabels:
@@ -14,7 +13,6 @@ apiVersion: tarantool.io/v1alpha1
 kind: Role
 metadata:
   name: {{ .RoleName | replace "_" "" }}
-  namespace: {{ $.Values.namespace }}
   labels:
     tarantool.io/cluster-id: {{ $.Values.ClusterName }}
     tarantool.io/role: {{ .RoleName }}
@@ -30,7 +28,6 @@ apiVersion: tarantool.io/v1alpha1
 kind: ReplicasetTemplate
 metadata:
   name: "{{ .RoleName | replace "_" "" }}-template"
-  namespace: {{ $.Values.namespace }}
   labels:
     tarantool.io/cluster-id: {{ $.Values.ClusterName }}
     tarantool.io/replicaset-template: "{{ .RoleName }}-template"
@@ -115,7 +112,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: TARANTOOL_ADVERTISE_HOST
-              value: "$(TARANTOOL_ADVERTISE_TMP).{{ $.Values.ClusterName }}.{{ $.Values.namespace }}.svc.cluster.local"
+              value: "$(TARANTOOL_ADVERTISE_TMP).{{ $.Values.ClusterName }}.{{ $.Release.Namespace }}.svc.cluster.local"
             - name: TARANTOOL_ADVERTISE_URI
               value: "$(TARANTOOL_ADVERTISE_HOST):3301"
             - name: TARANTOOL_PROBE_URI_TIMEOUT
@@ -132,7 +129,6 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ .RoleName }}
-  namespace: {{ $.Values.namespace }}
   labels:
     tarantool.io/role: {{ .RoleName }}
 spec:

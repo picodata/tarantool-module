@@ -2,9 +2,6 @@
 ClusterEnv: dev
 ClusterName: test-app
 
-# Installation namespace
-namespace: tarantool
-
 # Docker image to run
 image:
   repository: tdg

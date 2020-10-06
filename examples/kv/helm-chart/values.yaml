@@ -3,8 +3,6 @@
 ClusterEnv: dev
 ClusterName: examples-kv-cluster
 
-namespace: tarantool
-
 image:
   repository: tarantool/tarantool-operator-examples-kv
   tag: 0.0.2
