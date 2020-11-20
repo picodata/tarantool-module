@@ -103,6 +103,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: TARANTOOL_ALIAS
+              value: "$(TARANTOOL_INSTANCE_NAME)"
             - name: TARANTOOL_MEMTX_MEMORY
               value: "{{ mul .MemtxMemoryMB 1048576 }}"
             - name: TARANTOOL_BUCKET_COUNT
