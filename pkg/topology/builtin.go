@@ -191,9 +191,17 @@ func GetRoles(pod *corev1.Pod) ([]string, error) {
 // Join comment
 func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
 
-	advURI := fmt.Sprintf("%s.%s.%s.svc.cluster.local:3301", pod.GetObjectMeta().GetName(), s.clusterID, pod.GetObjectMeta().GetNamespace())
-
 	thisPodLabels := pod.GetLabels()
+	clusterDomainName, ok := thisPodLabels["tarantool.io/cluster-domain-name"]
+	if !ok {
+		clusterDomainName = "cluster.local"
+	}
+
+	advURI := fmt.Sprintf("%s.%s.%s.svc.%s:3301",
+		pod.GetObjectMeta().GetName(),      // Instance name
+		s.clusterID,                        // Cartridge cluster name
+		pod.GetObjectMeta().GetNamespace(), // Namespace
+		clusterDomainName)                  // Cluster domain name
 
 	replicasetUUID, ok := thisPodLabels["tarantool.io/replicaset-uuid"]
 	if !ok {

@@ -53,6 +53,7 @@ spec:
     metadata:
       labels:
         tarantool.io/cluster-id: {{ $.Values.ClusterName }}
+        tarantool.io/cluster-domain-name: "{{ $.Values.ClusterDomainName }}"
         tarantool.io/pod-template: "{{ .RoleName }}-pod-template"
         tarantool.io/useVshardGroups: "0"
         environment: "{{ $.Values.ClusterEnv }}"
@@ -114,7 +115,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: TARANTOOL_ADVERTISE_HOST
-              value: "$(TARANTOOL_ADVERTISE_TMP).{{ $.Values.ClusterName }}.{{ $.Release.Namespace }}.svc.cluster.local"
+              value: "$(TARANTOOL_ADVERTISE_TMP).{{ $.Values.ClusterName }}.{{ $.Release.Namespace }}.svc.{{ $.Values.ClusterDomainName }}"
             - name: TARANTOOL_ADVERTISE_URI
               value: "$(TARANTOOL_ADVERTISE_HOST):3301"
             - name: TARANTOOL_PROBE_URI_TIMEOUT
