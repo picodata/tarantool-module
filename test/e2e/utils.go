@@ -32,7 +32,6 @@ func InitializeScenario(ctx *framework.TestCtx, name string) error {
 	for {
 		b, err := dec.Read()
 		if err != nil {
-			fmt.Errorf("%s", err)
 			if err == io.EOF {
 				break
 			}

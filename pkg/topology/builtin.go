@@ -55,12 +55,6 @@ type BootstrapVshardResponse struct {
 
 // FailoverData Structure of data for changing failover status
 type FailoverData struct {
-	failover *FailoverParams `json:"failover_params"`
-}
-
-// FailoverParams returns the mode of failover which has been enabled
-type FailoverParams struct {
-	mode string `json:"mode"`
 }
 
 // FailoverResponse type struct for returning on failovers
@@ -256,7 +250,7 @@ func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
 		return err
 	}
 
-	if resp.JoinInstance == true {
+	if resp.JoinInstance {
 		return nil
 	}
 
@@ -294,7 +288,7 @@ func (s *BuiltInTopologyService) Expel(pod *corev1.Pod) error {
 		return err
 	}
 
-	if resp.Data.ExpelInstance == false && (resp.Errors == nil || len(resp.Errors) == 0) {
+	if !resp.Data.ExpelInstance && (resp.Errors == nil || len(resp.Errors) == 0) {
 		return errors.New("something really bad happened")
 	}
 
@@ -323,7 +317,7 @@ func (s *BuiltInTopologyService) SetWeight(replicasetUUID string, replicaWeight 
 		return err
 	}
 
-	if resp.Response == true {
+	if resp.Response {
 		return nil
 	}
 
@@ -353,7 +347,7 @@ func (s *BuiltInTopologyService) BootstrapVshard() error {
 
 	reqLogger.Info("Bootstrapping vshard")
 
-	req := fmt.Sprint("mutation bootstrap {bootstrapVshardResponse: bootstrap_vshard}")
+	req := "mutation bootstrap {bootstrapVshardResponse: bootstrap_vshard}"
 	j := fmt.Sprintf("{\"query\": \"%s\"}", req)
 	rawResp, err := http.Post(s.serviceHost, "application/json", strings.NewReader(j))
 	if err != nil {
