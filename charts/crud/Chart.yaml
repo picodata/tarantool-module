@@ -1,0 +1,12 @@
+apiVersion: v2
+appVersion: "1.0"
+description: A Helm chart for Tarantool CRUD
+name: crud-storage
+version: 0.0.1
+dependencies:
+- name: tarantool-operator
+  version: "0.0.7"
+  repository: "https://tarantool.github.io/tarantool-operator"
+- name: cartridge
+  version: "0.0.7"
+  repository: "https://tarantool.github.io/tarantool-operator"

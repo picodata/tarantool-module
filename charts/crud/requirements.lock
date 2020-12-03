@@ -1,0 +1,9 @@
+dependencies:
+- name: tarantool-operator
+  repository: https://tarantool.github.io/tarantool-operator
+  version: 0.0.7
+- name: cartridge
+  repository: https://tarantool.github.io/tarantool-operator
+  version: 0.0.7
+digest: sha256:1d9a2af9e20c9b635a433af6d5bb5637473ae8a81eeb8a27252e21e0d4695aca
+generated: "2020-12-01T21:22:55.751256666+03:00"
