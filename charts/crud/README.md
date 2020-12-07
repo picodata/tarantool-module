@@ -1,5 +1,14 @@
 # CRUD base ready-to-use application
 
+## Chart preparation
+
+Build chart dependencies
+
+```shell
+$ helm repo add tarantool https://tarantool.github.io/tarantool-operator
+$ helm dependency build ./charts/crud/
+```
+
 ## Deploy
 
 Run `helm install`:
