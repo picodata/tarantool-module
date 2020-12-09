@@ -259,7 +259,8 @@ func CreateStatefulSetFromTemplate(replicasetNumber int, name string, role *tara
 		sts.Spec.Template.Labels[k] = v
 	}
 
-	privileged := true
+	privileged := false
+
 	sts.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
 		Privileged: &privileged,
 	}
