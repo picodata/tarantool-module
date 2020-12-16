@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.0.8] - 2020-12-16
+
 ### Added
 - Support custom cluster domain name via variable `ClusterDomainName` in cartrige chart `values.yaml`
 - New chart for deploying ready-to-use crud based application

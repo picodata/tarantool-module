@@ -5,7 +5,7 @@ description: kubernetes tarantool operator
 type: application
 
 # Helm chart Version
-version: 0.0.7
+version: 0.0.8
 
 # Application version to be deployed
 appVersion: 1.16.0
