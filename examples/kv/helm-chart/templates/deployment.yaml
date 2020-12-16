@@ -79,7 +79,7 @@ spec:
           image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"
           volumeMounts:
             - name: www
-              mountPath: "/data"
+              mountPath: "{{ $.Values.TarantoolWorkDir }}"
           resources:
             requests:
               cpu: "{{ .CPUallocation }}"
@@ -110,6 +110,8 @@ spec:
               value: "{{ mul .MemtxMemoryMB 1048576 }}"
             - name: TARANTOOL_BUCKET_COUNT
               value: "30000"
+            - name: TARANTOOL_WORKDIR
+              value: "{{ $.Values.TarantoolWorkDir }}"
             - name: TARANTOOL_ADVERTISE_TMP
               valueFrom:
                 fieldRef:

@@ -10,3 +10,4 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - Support custom cluster domain name via variable `ClusterDomainName` in cartrige chart `values.yaml`
 - New chart for deploying ready-to-use crud based application
+- Ability to change TARANTOOL_WORKDIR in the Cartridge helm chart and the **default value is set to** `/var/lib/tarantool`

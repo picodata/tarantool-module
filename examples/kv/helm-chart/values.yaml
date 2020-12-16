@@ -3,6 +3,7 @@
 ClusterEnv: dev
 ClusterName: examples-kv-cluster
 ClusterDomainName: cluster.local
+TarantoolWorkDir: /var/lib/tarantool
 
 image:
   repository: tarantool/tarantool-operator-examples-kv
