@@ -233,7 +233,7 @@ Tarantool Operator is up and running.
 
     This will add one more replica to each Storages Role replica set. View the new cluster topology via the cluster web UI.
 
-## Development
+## Development
 
 ### Regenerate the Custom Resource Definitions
 
