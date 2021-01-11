@@ -1,18 +1,18 @@
 .. _cartridge_kubernetes_guide:
 
 ================================================================================
-Kubernetes guide
+Tarantool Cartridge on Kubernetes
 ================================================================================
 
 This guide covers the full life cycle of a Tarantool Cartridge app--from
-developing the app to operating it in Kubernetes.
+developing the app to operating it on Kubernetes.
 
 .. contents::
 
 .. _cartridge_kubernetes_installing_tools:
 
 --------------------------------------------------------------------------------
-Installion tools
+Installation tools
 --------------------------------------------------------------------------------
 
 The following tools are needed:
@@ -31,7 +31,7 @@ The following tools are needed:
 
 2. **kubectl** is a Kubernetes cluster management tool. We need the
    version 1.16 or higher. Installation instructions can be found
-   `here <https://kubernetes.io/ru/docs/tasks/tools/install-kubectl/>`_.
+   `here <https://kubernetes.io/docs/tasks/tools/install-kubectl/>`_.
 
    .. code-block:: console
 
@@ -51,7 +51,7 @@ The following tools are needed:
 
 4. **minikube** is a tool for creating a local Kubernetes cluster. We
    need the version 1.12 or higher. Installation instructions can be found
-   `here <https://kubernetes.io/ru/docs/tasks/tools/install-minikube/>`_.
+   `here <https://minikube.sigs.k8s.io/docs/start/>`_.
 
    .. code-block:: console
 
@@ -74,7 +74,7 @@ The following tools are needed:
 .. _cartridge_kubernetes_creating_an_application:
 
 --------------------------------------------------------------------------------
-Creating application
+Creating an application
 --------------------------------------------------------------------------------
 
 Let's create a Cartridge application named ``test-app`` using ``cartridge-cli``:
@@ -96,7 +96,7 @@ In the ``test-app`` directory, we get the app created from a template:
    ---
    ...
 
-   instances.yaml
+   instances.yml
    test-app-scm-1.rockspec
    ...
 
@@ -114,19 +114,19 @@ The app is fully functional and can respond to the HTTP GET request ``/hello``.
           ...
       }
 
-The version of Cartridge must be **>= 2.3.0**. Starting from this version,
-Cartridge waits for an instance to become available on its DNS address during
-the instance start. This is required for correct operations in Kubernetes. For
-versions below 2.3.0, an application must be customized independently.
-See the
-`example <https://github.com/tarantool/tarantool-operator/blob/master/examples/kv/key-value-store/init.lua#L27-L71>`_
-of how to do this.
+   The version of Cartridge must be **>= 2.3.0**. Starting from this version,
+   Cartridge waits for an instance to become available on its DNS address during
+   the instance start. This is required for correct operations on Kubernetes. For
+   versions below 2.3.0, an application must be customized independently.
+   See the
+   `example <https://github.com/tarantool/tarantool-operator/blob/master/examples/kv/key-value-store/init.lua#L27-L71>`_
+   of how to do this.
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Building application
+Building the application
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Let's create a docker image using ``cartridge-cli``:
+Let's create a Docker image using ``cartridge-cli``:
 
 .. code-block:: console
 
@@ -142,7 +142,7 @@ Let's create a docker image using ``cartridge-cli``:
       • Created result image test-app:0.1.0-0-g68f6117
       • Application was successfully packed
 
-Upload the image to a registry:
+Upload the image to the Docker registry:
 
 .. code-block:: console
 
@@ -163,7 +163,7 @@ Upload the image to a registry:
 .. _cartridge_kubernetes_creating_a_kubernetes_cluster:
 
 --------------------------------------------------------------------------------
-Creating Kubernetes cluster
+Creating a Kubernetes cluster
 --------------------------------------------------------------------------------
 
 If you have a ready-made cluster in the cloud, you can use it. If not, we
@@ -185,7 +185,7 @@ Create a Kubernetes cluster of version 1.16.4 with 4GB of RAM (recommended):
    $ minikube start --kubernetes-version v1.16.4 --memory 4096
    ---
    😄  minikube v1.12.3 on Ubuntu 18.10
-   ✨  Automatically selected  docker driver. Other choices: kvm2, virtualbox
+   ✨  Automatically selected the docker driver. Other choices: kvm2, virtualbox
    👍  Starting control plane node minikube in cluster minikube
    🔥  Creating docker container (CPUs=2, Memory=4096MB) ...
    🐳  Preparing Kubernetes v1.16.4 on Docker 19.03.8 ...
@@ -213,7 +213,7 @@ alternative to *minikube*:
 
 .. code-block:: console
 
-   $ kind create cluster  --image kindest/node:v1.16.4
+   $ kind create cluster --image kindest/node:v1.16.4
    ---
    Creating cluster "kind" ...
     ✓ Ensuring node image (kindest/node:v1.16.4) 🖼
@@ -241,10 +241,10 @@ Let's check the cluster status:
 .. _cartridge_kubernetes_launch_the_application:
 
 --------------------------------------------------------------------------------
-Launch application
+Launch the application
 --------------------------------------------------------------------------------
 
-To install Tarantool Kubernetes operator and deploy the cluster, we will use
+To install the Tarantool Kubernetes operator and deploy the cluster, we will use
 the ``helm`` utility. Charts are published in our repository. Let’s add it:
 
 .. code-block:: console
@@ -271,7 +271,7 @@ conjunction with the Tarantool Kubernetes operator.
 
 .. NOTE::
 
-   Use the same version of the charts. If you set the ``tarantool-operator``
+   Use the same version with both charts. If you set the ``tarantool-operator``
    chart to version 0.0.8, set the ``cartridge`` chart to the same version 0.0.8.
 
 Install *tarantool-operator* in the *tarantool* namespace:
@@ -294,7 +294,7 @@ Let's wait until a pod with the operator is ready to work:
    $ kubectl get pods -n tarantool
    ---
    NAME                                 READY   STATUS    RESTARTS   AGE
-   tarantool-operator-xxx-yyy   0/1     Pending   0          3s
+   tarantool-operator-xxx-yyy           0/1     Pending   0          3s
 
 In the meantime, let’s talk about what the Tarantool operator is and why
 it is needed.
@@ -313,14 +313,14 @@ joining a node or creating a replica set. The operator knows how to do
 this better, and if you set the value for its desired system
 configuration, it begins to bring the cluster to the desired state.
 
-The Tarantool Kubernetes operator itself is the implementation of the Kubernetes
+The Tarantool Kubernetes operator itself is an implementation of the Kubernetes
 Operator design pattern. It offers the automation of work with user
 resources using controllers that respond to various events and changes.
 
 The following links can help you understand this pattern:
 
-- `Official description on kubernetes.io <https://kubernetes.io/docs/concepts/extend-kubernetes/operator/>`_
-- `Overview from the creators of the pattern (CoreOS) <https://coreos.com/operators/>`_
+- `Official description on kubernetes.io <https://kubernetes.io/docs/concepts/extend-kubernetes/operator/>`_;
+- `Overview from the creators of the pattern (CoreOS) <https://coreos.com/operators/>`_;
 - `Post on Habr from Lamoda about the development of the operator <https://habr.com/ru/company/lamoda/blog/446648/>`_.
 
 In the meantime, our pod with ``tarantool-operator`` went into a *Running*
@@ -328,7 +328,7 @@ state. The next step is to install the app using the ``tarantool/cartridge``
 helm chart. To do this, prepare a description of the desired system.
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Deploying Tarantool Cartridge application
+Deploying a Tarantool Cartridge application
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 After you have deployed the cluster and installed the operator, you can
@@ -336,29 +336,29 @@ move to the next step--launching the app.
 
 We will deploy the app using the ``tarantool/cartridge`` chart. This is
 a template. Run it with the default settings and get our example application
-that have 3 instances. If you define your own settings, you can deploy any
+that has 3 instances. If you define your own settings, you can deploy any
 application of any topology using the Tarantool Cartridge.
 
 Let's have a look at the settings in the ``values.yaml`` file.
 Comments provide a description of each parameter:
 
-.. code:: yaml
+.. code-block:: yaml
 
    # Environment name and cluster name
    ClusterEnv: "dev"
    ClusterName: "test-app"
 
-   # docker image of an application
+   # Docker image of the application
    image:
      repository: "vanyarock01/test-app"
      tag: "0.1.0-0-g68f6117"
      pullPolicy: "IfNotPresent"
 
    # The cluster topology includes a description of the number and
-   # characteristics of replicasets and is described in the RoleConfig section
+   # characteristics of replicasets and is described in the RoleConfig section.
 
    # For example, we want to create a cluster containing two types of replicasets:
-   # routers и storages
+   # routers and storages:
    RoleConfig:
      - RoleName: "routers" # Name of the replicaset type
        ReplicaCount: 1     # Number of replicas in the replicaset
@@ -382,11 +382,11 @@ Comments provide a description of each parameter:
 
 With this configuration we will get the following:
 
-1. Tarantool Cartridge cluster called ``test-app``.
-2. Two replica sets in the cluster: ``routers`` and ``storages``.
-3. One tarantool instance in the ``routers`` replica set.
-4. Two instances, master and replica, in the ``storages`` replica set.
-5. Each replica set performs the roles listed in the ``RolesToAssign`` parameter.
+*  A Tarantool Cartridge cluster called ``test-app``.
+*  Two replica sets in the cluster: ``routers`` and ``storages``.
+*  One Tarantool instance in the ``routers`` replica set.
+*  Two instances, master and replica, in the ``storages`` replica set.
+*  Each replica set performs the roles listed in the ``RolesToAssign`` parameter.
 
 Install the app:
 
@@ -414,7 +414,9 @@ Let's wait for all the pods to launch:
 To check the cluster, we forward ports from one of the pods and go to
 the Cartridge dashboard:
 
-``kubectl port-forward -n tarantool routers-0-0 8081:8081``
+..  code-block:: console
+
+    $ kubectl port-forward -n tarantool routers-0-0 8081:8081
 
 Now the Tarantool Cartridge Web UI is available at ``http://localhost:8081``.
 
@@ -563,7 +565,7 @@ Pack the new version of the app:
       • Created result image vanyarock01/test-app:0.1.0-1-g4577716
       • Application was successfully packed
 
-Upload the new image version to the docker registry:
+Upload the new image version to the Docker registry:
 
 .. code-block:: console
 
@@ -578,11 +580,11 @@ Update the ``values.yaml`` configuration file by specifying a new ``image.tag``:
      tag: "0.1.0-1-g4577716"
      pullPolicy: "IfNotPresent"
 
-Update the app in Kubernetes:
+Update the app on Kubernetes:
 
 .. code-block:: console
 
-   helm upgrade -f values.yaml test-app tarantool/cartridge --namespace tarantool
+   $ helm upgrade -f values.yaml test-app tarantool/cartridge --namespace tarantool
 
    ---
 
@@ -666,17 +668,17 @@ To remove a cluster, execute the following command:
    release "test-app" uninstalled
 
 After a while, all the pods of our application will disappear. Among the
-pods in the ``tarantool`` namespace, only Tarantool Kubernetes operator will
+pods in the ``tarantool`` namespace, only the Tarantool Kubernetes operator will
 remain.
 
 .. code-block:: console
 
-   $ kubectl -n tarantool get pods
+   $ kubectl get pods -n tarantool
    ---
    NAME                                  READY   STATUS    RESTARTS   AGE
-   tarantool-operator-7dc948c89b-pb9r4   1/1     Running   0          9m45s
+   tarantool-operator-xxx-yyy            1/1     Running   0          9m45s
 
-If you need to remove Tarantool Kubernetes operator, execute:
+If you need to remove the Tarantool Kubernetes operator, execute:
 
 .. code-block:: console
 
@@ -715,7 +717,7 @@ Insufficient CPU
 After executing ``helm install / upgrade`` the pods remain in the
 **Pending** state.
 
-It looks like that:
+It looks like this:
 
 .. code-block:: console
 
@@ -725,7 +727,7 @@ It looks like that:
    routers-0-0                           0/1     Pending   0          20m
    routers-1-0                           0/1     Pending   0          20m
    storages-0-0                          0/1     Pending   0          20m
-   tarantool-operator-5bd6d895c4-xhjsg   1/1     Running   0          23m
+   tarantool-operator-xxx-yyy            1/1     Running   0          23m
 
 Let's take a look at the events of one of the pending pods:
 
@@ -779,21 +781,21 @@ Customization
 
 For most cases, the ``tarantool/cartridge`` helm chart is enough for you.
 However, if customization is required, you can continue to use the chart
-by making your own changes. Or use ``deployment.yaml`` and ``kubectl`` instead
+by making your own changes. You can also ``deployment.yaml`` and ``kubectl`` instead
 of ``helm``.
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Sidecar containers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-What it is? In Kubernetes, it is possible to create several
+What are they? With Kubernetes, it is possible to create several
 containers inside one pod that share common resources such as disk
 storage and network interfaces. Such containers are called sidecar.
 
 Learn more about this architectural pattern
 `here <https://www.magalix.com/blog/the-sidecar-pattern>`_.
 
-For implementation in Kubernetes, it is necessary to expand the
+For implementation on Kubernetes, it is necessary to expand the
 container park in the description of the required resource. Let's try to
 add another service container with ``nginx`` to each pod containing a
 container with a Tarantool instance based on
@@ -803,7 +805,7 @@ article.
 To do this, you will need to change the ``tarantool/cartridge`` chart. You
 can find it
 `here <https://github.com/tarantool/tarantool-operator/tree/master/examples/kv/helm-chart>`_.
-Add a new container with ``nginx`` to the `ReplicasetTemplate which can be
+Add a new container with ``nginx`` to the ``ReplicasetTemplate`` which can be
 found in the ``templates/deployment.yaml`` file.
 
 .. code:: yaml
@@ -824,11 +826,11 @@ found in the ``templates/deployment.yaml`` file.
    after the pim-storage container. Otherwise, problems may occur when
    updating the version of the application.
 
-   By default, Tarantool Kubernetes operator
+   By default, the Tarantool Kubernetes operator
    chooses the first one in the list as the application container.
 
 Now, let's start the installation specifying the path to the directory
-with the customized chart.
+with the customized chart:
 
 .. code-block:: console
 
@@ -850,14 +852,14 @@ If everything goes well, it will be visible in the pod list:
    routers-0-0                           2/2     Running   0          113s
    routers-1-0                           2/2     Running   0          113s
    storages-0-0                          2/2     Running   0          113s
-   tarantool-operator-7dc948c89b-fnq28   1/1     Running   0          30m
+   tarantool-operator-xxx-yyy            1/1     Running   0          30m
 
 ``READY 2/2`` means that 2 containers are ready inside the pod.
 
 .. _cartridge_kubernetes_installation_on_the_internal_network:
 
 --------------------------------------------------------------------------------
-Installation in the internal network
+Installation in an internal network
 --------------------------------------------------------------------------------
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -872,52 +874,52 @@ You can download the charts from the following links:
 * `tarantool-operator v0.0.8 <https://github.com/tarantool/tarantool-operator/releases/download/tarantool-operator-0.0.8/tarantool-operator-0.0.8.tgz>`_
 * `cartridge v0.0.8 <https://github.com/tarantool/tarantool-operator/releases/download/cartridge-0.0.8/cartridge-0.0.8.tgz>`_.
 
-Next, you need to pack the docker image with ``tarantool-operator``.
-First, let's pull the required version from ``docker.hub``:
+Next, you need to pack a Docker image with the ``tarantool-operator``.
+First, let's pull the required version from the Docker Hub:
 
 .. code-block:: console
 
-   $ docker pull tarantool/tarantool-operator:0.0.6
+   $ docker pull tarantool/tarantool-operator:0.0.8
    ---
-   0.0.6: Pulling from tarantool/tarantool-operator
-   6910e5a164f7: Pull complete
-   bd72e138561f: Pull complete
-   caca2f749f40: Pull complete
-   00d2d9ebea80: Pull complete
-   Digest: sha256:c0cfdc769f545ab106115ef5ee8d924778aea78b08454fbfed4a5b8e42afa5aa
-   Status: Downloaded newer image for tarantool/tarantool-operator:0.0.6
-   docker.io/tarantool/tarantool-operator:0.0.6
+   0.0.8: Pulling from tarantool/tarantool-operator
+   3c72a8ed6814: Pull complete
+   e6ffc8cffd54: Pull complete
+   cb731cdf9a11: Pull complete
+   a42b002f4072: Pull complete
+   Digest: sha256:e3b46c2a0231bd09a8cdc6c86eac2975211b2c597608bdd1e8510ee0054a9854
+   Status: Downloaded newer image for tarantool/tarantool-operator:0.0.8
+   docker.io/tarantool/tarantool-operator:0.0.8
 
 And pack it into the archive:
 
 .. code-block:: console
 
-   $ docker save tarantool/tarantool-operator:0.0.6 | gzip > tarantool-operator-0.0.6.tar.gz
+   $ docker save tarantool/tarantool-operator:0.0.8 | gzip > tarantool-operator-0.0.8.tar.gz
 
 After delivering the archive with the container to the target location,
-you need to upload the image to your docker:
+you need to load the image to your Docker:
 
 .. code-block:: console
 
-   $ docker load < tarantool-operator-0.0.6.tar.gz
+   $ docker load < tarantool-operator-0.0.8.tar.gz
    ---
-   Loaded image: tarantool/tarantool-operator:0.0.6
+   Loaded image: tarantool/tarantool-operator:0.0.8
 
-All that remains is to push the image in the internal docker registry. We
-will use a test docker registry hosted on ``localhost:5000``:
+All that remains is to push the image to the internal Docker registry. We
+will use an example Docker registry hosted on ``localhost:5000``:
 
 .. code-block:: console
 
-   $ docker tag tarantool/tarantool-operator:0.0.6 localhost:5000/tarantool-operator:0.0.6
+   $ docker tag tarantool/tarantool-operator:0.0.8 localhost:5000/tarantool-operator:0.0.8
 
-   $ docker push localhost:5000/tarantool-operator:0.0.6
+   $ docker push localhost:5000/tarantool-operator:0.0.8
    ---
    The push refers to repository [localhost:5000/tarantool-operator]
-   9ace38e69165: Pushed
-   e38e5e822ecf: Pushed
-   b6533bbd0bc5: Pushed
-   eb29745b8228: Pushed
-   0.0.6: digest: sha256:c0cfdc769f545ab106115ef5ee8d924778aea78b08454fbfed4a5b8e42afa5aa size: 1155
+   febd47bb69b9: Pushed
+   bacec9f8c1dd: Pushed
+   d1d164c2f681: Pushed
+   291f6e44771a: Pushed
+   0.0.8: digest: sha256:e3b46c2a0231bd09a8cdc6c86eac2975211b2c597608bdd1e8510ee0054a9854 size: 1155
 
 .. NOTE::
 
@@ -925,7 +927,7 @@ will use a test docker registry hosted on ``localhost:5000``:
    method described above.
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Installing Tarantool Kubernetes operator
+Installing the Tarantool Kubernetes operator
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Let's describe the custom operator values in the
@@ -934,8 +936,9 @@ Let's describe the custom operator values in the
 .. code:: yaml
 
    image:
-     repository: "localhost:5000/tarantool-operator" # internal docker repository
-     tag: "0.0.6"
+     # internal Docker repository
+     repository: "localhost:5000/tarantool-operator"
+     tag: "0.0.8"
      pullPolicy: "IfNotPresent"
 
 And install the operator specifying the path to the archive with chart:
@@ -958,15 +961,15 @@ Check the installation:
    $ kubectl -n tarantool get pods
    ---
    NAME                                  READY   STATUS    RESTARTS   AGE
-   tarantool-operator-7c867cb467-vthf4   1/1     Running   0          7s
+   tarantool-operator-xxx-yyy            1/1     Running   0          7s
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Installing the Tarantool Cartridge app
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-We have put the app image in the local Docker registry beforehand. What
+We have pushed the app image to the local Docker registry beforehand. What
 remains is to customize the ``values.yaml`` file by specifying the available
-repository.
+repository:
 
 .. code:: yaml
 
@@ -981,7 +984,7 @@ The complete configuration of the ``values.yaml`` can be found in the
 instructions for installing the Tarantool Cartridge application
 described in the guide earlier.
 
-It remains to unpack the Cartridge card:
+It remains to unpack the Cartridge chart:
 
 .. code-block:: console
 
@@ -1010,7 +1013,7 @@ successful:
    routers-0-0                           1/1     Running   0          8m30s
    storages-0-0                          1/1     Running   0          8m30s
    storages-1-0                          1/1     Running   0          8m30s
-   tarantool-operator-7c867cb467-vthf4   1/1     Running   0          67m
+   tarantool-operator-xxx-yyy            1/1     Running   0          67m
 
 .. |image2| image:: images/kubernetes-increase-cluster-replicas.png
 .. |image3| image:: images/kubernetes-increase-cluster-replicasets.png
