@@ -162,16 +162,16 @@ extern crate num_derive;
 #[macro_use]
 extern crate serde;
 
-pub mod ffi;
 pub mod clock;
 pub mod coio;
 pub mod error;
+pub mod ffi;
 pub mod fiber;
 pub mod index;
 pub mod log;
 pub mod net_box;
 pub mod sequence;
+pub mod session;
 pub mod space;
 pub mod transaction;
 pub mod tuple;
-pub mod session;

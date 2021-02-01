@@ -1,11 +1,10 @@
-use std::ffi::{CString};
+use std::ffi::CString;
 
-use super::ffi::lua::{lua_newthread, lua_getglobal, lua_getfield, lua_tointeger};
-use super::ffi::tarantool::{luaT_state, luaT_call};
+use super::ffi::lua::{lua_getfield, lua_getglobal, lua_newthread, lua_tointeger};
+use super::ffi::tarantool::{luaT_call, luaT_state};
 
 pub fn uid() -> Option<isize> {
     let result = unsafe {
-
         // Create new stack (just in case - in order no to mess things
         // in current stack).
         let state = luaT_state();
@@ -34,7 +33,6 @@ pub fn uid() -> Option<isize> {
 
 pub fn euid() -> Option<isize> {
     let result = unsafe {
-
         // Create new stack (just in case - in order no to mess things
         // in current stack).
         let state = luaT_state();

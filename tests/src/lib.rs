@@ -17,9 +17,9 @@ mod test_fiber;
 mod test_latch;
 mod test_log;
 mod test_net_box;
+mod test_session;
 mod test_transaction;
 mod test_tuple;
-mod test_session;
 
 macro_rules! tests {
     ($($func_name:expr,)*) => {
