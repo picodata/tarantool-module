@@ -12,6 +12,8 @@ import (
 
     . "github.com/onsi/ginkgo"
     . "github.com/onsi/gomega"
+
+    "github.com/onsi/gomega/types"
     "github.com/operator-framework/operator-sdk/pkg/log/zap"
 
     corev1 "k8s.io/api/core/v1"
@@ -29,8 +31,6 @@ import (
     logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
     // +kubebuilder:scaffold:imports
     "github.com/tarantool/tarantool-operator/pkg/apis"
-    // operatorCtrl "github.com/tarantool/tarantool-operator/pkg/controller"
-    // tarantoolv1alpha1 "github.com/tarantool/tarantool-operator/pkg/apis/tarantool/v1alpha1"
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
@@ -45,11 +45,11 @@ var (
     ClusterTestNamespace = "cluster-test-namespace"
 )
 
-func TestAPIs(t *testing.T) {
+func TestControllers(t *testing.T) {
     RegisterFailHandler(Fail)
 
     RunSpecsWithDefaultAndCustomReporters(t,
-        "Controller Suite",
+        "Controllers Suite",
         []Reporter{envtest.NewlineReporter{}})
 }
 
@@ -145,4 +145,50 @@ func PortForwardToPod(pod *corev1.Pod, localPort int, podPort int, stopChan <-ch
         Expect(err).ToNot(HaveOccurred())
         Expect(fw.ForwardPorts()).ToNot(HaveOccurred())
     }()
+}
+
+type rolesMatcher struct {
+    expected interface{}
+}
+
+func (matcher *rolesMatcher) Match(actual interface{}) (success bool, err error) {
+    actualRoles, ok := actual.([]string)
+    if !ok {
+        return false, fmt.Errorf("Actual value must be of type []string")
+    }
+
+    expectRoles, ok := matcher.expected.([]string)
+    if !ok {
+        return false, fmt.Errorf("Excepted value must be of type []string")
+    }
+
+    isSubset := func(X, Y []string) bool {
+        for _, x := range X {
+            match := false
+            for _, y := range Y {
+                if x == y {
+                    match = true
+                    break
+                }
+            }
+            if !match {
+                return false
+            }
+        }
+        return true
+    }
+    return isSubset(actualRoles, expectRoles) && isSubset(expectRoles, actualRoles), nil
+}
+func (matcher *rolesMatcher) FailureMessage(actual interface{}) (message string) {
+    return fmt.Sprintf("\n\t%#v is expected to be equal to \t%#v", actual.([]string), matcher.expected.([]string))
+}
+
+func (matcher *rolesMatcher) NegatedFailureMessage(actual interface{}) (message string) {
+    return fmt.Sprintf("\n\t%#v is expected to be unequal to \t%#v", actual.([]string), matcher.expected.([]string))
+}
+
+func RolesMatcherObject(expected interface{}) types.GomegaMatcher {
+    return &rolesMatcher{
+        expected: expected,
+    }
 }

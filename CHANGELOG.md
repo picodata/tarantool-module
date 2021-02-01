@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - Integration test for cluster_controller written with envtest and ginkgo
 
+### Fixed
+- Not working update of replicaset roles
+
 ## [0.0.8] - 2020-12-16
 
 ### Added

@@ -92,6 +92,17 @@ type ServerStat struct {
 	URI        string     `json:"uri"`
 }
 
+// ReplicasetsQueryResponse struct for returning replicasets data
+type ReplicasetsQueryResponse struct {
+	Replicasets []*ReplicasetData `json:"replicasets"`
+}
+
+// ReplicasetData .
+type ReplicasetData struct {
+	UUID  string   `json:"uuid"`
+	Roles []string `json:"roles"`
+}
+
 // Statistics .
 type Statistics struct {
 	ItemsUsedRatio string `json:"items_used_ratio"`
@@ -127,8 +138,17 @@ var joinMutation = `mutation
 		vshard_group: $vshard_group
 	)
 }`
-var editRsMutation = `mutation editReplicaset($uuid: String!, $weight: Float) {
+
+var setRsWeightMutation = `mutation editReplicaset($uuid: String!, $weight: Float) {
 	editReplicasetResponse: edit_replicaset(uuid: $uuid, weight: $weight)
+}`
+
+var setRsRolesMutation = `mutation editReplicaset($uuid: String!, $roles: [String!]) {
+	editReplicasetResponse: edit_replicaset(uuid: $uuid, roles: $roles)
+}`
+
+var getRsRolesQuery = `query ($uuid: String!) {
+	replicasets(uuid: $uuid) { roles }
 }`
 
 var getServerStatQuery = `query serverList {
@@ -146,14 +166,20 @@ var getServerStatQuery = `query serverList {
 	}
 }`
 
-// GetRoles comment
-func GetRoles(pod *corev1.Pod) ([]string, error) {
-	thisPodLabels := pod.GetLabels()
-	thisPodAnnotations := pod.GetAnnotations()
+// An interface describing an object with accessor methods for labels and annotations
+type ObjectWithMeta interface {
+	GetLabels() map[string]string
+	GetAnnotations() map[string]string
+}
 
-	rolesFromAnnotations, ok := thisPodAnnotations["tarantool.io/rolesToAssign"]
+// GetRoles comment
+func GetRoles(obj ObjectWithMeta) ([]string, error) {
+	labels := obj.GetLabels()
+	annotations := obj.GetAnnotations()
+
+	rolesFromAnnotations, ok := annotations["tarantool.io/rolesToAssign"]
 	if !ok {
-		rolesFromLabels, ok := thisPodLabels["tarantool.io/rolesToAssign"]
+		rolesFromLabels, ok := labels["tarantool.io/rolesToAssign"]
 		if !ok {
 			return nil, errors.New("role undefined")
 		}
@@ -239,7 +265,6 @@ func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
 
 	resp := &JoinResponseData{}
 	if err := client.Run(context.TODO(), req, resp); err != nil {
-
 		if strings.Contains(err.Error(), "already joined") {
 			return errAlreadyJoined
 		}
@@ -298,7 +323,7 @@ func (s *BuiltInTopologyService) Expel(pod *corev1.Pod) error {
 // SetWeight sets weight of a replicaset
 func (s *BuiltInTopologyService) SetWeight(replicasetUUID string, replicaWeight string) error {
 	client := graphql.NewClient(s.serviceHost, graphql.WithHTTPClient(&http.Client{Timeout: time.Duration(time.Second * 5)}))
-	req := graphql.NewRequest(editRsMutation)
+	req := graphql.NewRequest(setRsWeightMutation)
 
 	reqLogger := log.WithValues("namespace", "topology.builtin")
 
@@ -322,6 +347,44 @@ func (s *BuiltInTopologyService) SetWeight(replicasetUUID string, replicaWeight 
 	}
 
 	return errors.New("something really bad happened")
+}
+
+// SetReplicasetRoles set roles list of replicaset in the Tarantool service
+func (s *BuiltInTopologyService) SetReplicasetRoles(replicasetUUID string, roles []string) error {
+	reqLogger := log.WithValues("namespace", "topology.builtin")
+	reqLogger.Info("setting replicaset roles", "uuid", replicasetUUID, "weight", roles)
+
+	req := graphql.NewRequest(setRsRolesMutation)
+	req.Var("uuid", replicasetUUID)
+	req.Var("roles", roles)
+
+	resp := &EditReplicasetResponse{}
+	client := graphql.NewClient(s.serviceHost, graphql.WithHTTPClient(&http.Client{Timeout: time.Duration(time.Second * 5)}))
+
+	if err := client.Run(context.TODO(), req, resp); err != nil {
+		return err
+	}
+	return nil
+}
+
+// GetReplicasetRolesFromService get roles list of replicaset from the Tarantool service
+func (s *BuiltInTopologyService) GetReplicasetRolesFromService(replicasetUUID string) ([]string, error) {
+	reqLogger := log.WithValues("namespace", "topology.builtin")
+	reqLogger.Info("getting replicaset roles", "uuid", replicasetUUID)
+
+	req := graphql.NewRequest(getRsRolesQuery)
+	req.Var("uuid", replicasetUUID)
+
+	resp := &ReplicasetsQueryResponse{}
+	client := graphql.NewClient(s.serviceHost, graphql.WithHTTPClient(&http.Client{Timeout: time.Duration(time.Second * 5)}))
+	if err := client.Run(context.TODO(), req, resp); err != nil {
+		return nil, err
+	}
+
+	if len(resp.Replicasets) == 0 {
+		return nil, fmt.Errorf("replicaset with uuid: '%s' not found", replicasetUUID)
+	}
+	return resp.Replicasets[0].Roles, nil
 }
 
 // GetServerStat Fetch the replicaset as reported by cartridge

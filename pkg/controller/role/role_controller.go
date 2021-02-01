@@ -234,6 +234,37 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 				return reconcile.Result{}, err
 			}
 		}
+
+		if templateRolesToAssign, ok := template.ObjectMeta.Annotations["tarantool.io/rolesToAssign"]; ok {
+			// check rolesToAssign from annotations
+			if templateRolesToAssign != sts.ObjectMeta.Annotations["tarantool.io/rolesToAssign"] {
+				reqLogger.Info("Updating replicaset rolesToAssign",
+					"from", sts.ObjectMeta.Annotations["tarantool.io/rolesToAssign"],
+					"to", templateRolesToAssign)
+
+				sts.ObjectMeta.Annotations["tarantool.io/rolesToAssign"] = templateRolesToAssign
+				sts.Spec.Template.Annotations["tarantool.io/rolesToAssign"] = templateRolesToAssign
+
+				if err := r.client.Update(context.TODO(), &sts); err != nil {
+					return reconcile.Result{}, err
+				}
+			}
+		} else {
+			// check rolesToAssign from labels (deprecated)
+			templateRolesToAssignFromLabels, ok := template.ObjectMeta.Labels["tarantool.io/rolesToAssign"]
+			if ok && templateRolesToAssignFromLabels != sts.ObjectMeta.Labels["tarantool.io/rolesToAssign"] {
+				reqLogger.Info("Updating replicaset rolesToAssign from labels",
+					"from", sts.ObjectMeta.Labels["tarantool.io/rolesToAssign"],
+					"to", templateRolesToAssignFromLabels)
+
+				sts.ObjectMeta.Labels["tarantool.io/rolesToAssign"] = templateRolesToAssignFromLabels
+				sts.Spec.Template.Labels["tarantool.io/rolesToAssign"] = templateRolesToAssignFromLabels
+
+				if err := r.client.Update(context.TODO(), &sts); err != nil {
+					return reconcile.Result{}, err
+				}
+			}
+		}
 	}
 
 	return reconcile.Result{}, nil

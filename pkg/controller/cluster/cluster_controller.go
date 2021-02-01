@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	tarantoolv1alpha1 "github.com/tarantool/tarantool-operator/pkg/apis/tarantool/v1alpha1"
+	utils "github.com/tarantool/tarantool-operator/pkg/controller/utils"
 	"github.com/tarantool/tarantool-operator/pkg/tarantool"
 	"github.com/tarantool/tarantool-operator/pkg/topology"
 	appsv1 "k8s.io/api/apps/v1"
@@ -393,16 +394,33 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 		if err := topologyClient.SetWeight(sts.GetLabels()["tarantool.io/replicaset-uuid"], weight); err != nil {
 			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 		}
+	}
 
-		// if stsAnnotations == nil {
-		// 	stsAnnotations = make(map[string]string)
-		// }
+	for _, sts := range stsList.Items {
+		replicasetUUID := sts.GetLabels()["tarantool.io/replicaset-uuid"]
 
-		// stsAnnotations["tarantool.io/replicaset-weight"] = "1"
-		// sts.SetAnnotations(stsAnnotations)
-		// if err := r.client.Update(context.TODO(), &sts); err != nil {
-		// 	return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
-		// }
+		actualRoles, err := topologyClient.GetReplicasetRolesFromService(replicasetUUID)
+		if err != nil {
+			reqLogger.Error(err, "Getting roles from server")
+			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+		}
+
+		desireRoles, err := topology.GetRoles(&sts.ObjectMeta)
+		if err != nil {
+			reqLogger.Error(err, "Getting roles from statefulset")
+			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+		}
+
+		if utils.IsRolesEquals(actualRoles, desireRoles) {
+			continue
+		}
+		reqLogger.Info("Update replicaset roles", "id", replicasetUUID, "from", actualRoles, "to", desireRoles)
+
+		err = topologyClient.SetReplicasetRoles(replicasetUUID, desireRoles)
+		if err != nil {
+			reqLogger.Error(err, "Setting new replicaset roles")
+			return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+		}
 	}
 
 	for _, sts := range stsList.Items {
