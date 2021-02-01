@@ -19,6 +19,7 @@ mod test_log;
 mod test_net_box;
 mod test_transaction;
 mod test_tuple;
+mod test_session;
 
 macro_rules! tests {
     ($($func_name:expr,)*) => {
@@ -147,6 +148,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_net_box::test_triggers_connect,
                 test_net_box::test_triggers_reject,
                 test_net_box::test_triggers_schema_sync,
+                test_session::test_uid,
+                test_session::test_euid,
             ]
         },
     )
