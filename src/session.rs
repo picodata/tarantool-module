@@ -1,6 +1,7 @@
 use std::ffi::{CString};
 
-use super::ffi::*;
+use super::ffi::lua::{lua_newthread, lua_getglobal, lua_getfield, lua_tointeger};
+use super::ffi::tarantool::{luaT_state, luaT_call};
 
 pub fn uid() -> Option<isize> {
     let result = unsafe {

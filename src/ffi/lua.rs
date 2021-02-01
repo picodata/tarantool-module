@@ -1,6 +1,6 @@
 use std::os::raw::{c_int, c_schar};
 
-use super::types::*;
+use super::types::{lua_State};
 
 pub const LUA_GLOBALSINDEX: c_int = -10002;
 

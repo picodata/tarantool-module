@@ -1,6 +1,6 @@
 use std::os::raw::{c_int};
 
-use super::types::*;
+use super::types::{lua_State};
 
 extern "C" {
     pub fn luaT_state() -> *mut lua_State;
