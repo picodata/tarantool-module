@@ -62,7 +62,7 @@ return {
             if_not_exists = true,
         })
         s:create_index('primary', {
-            parts = { 'key' },
+            parts = { 'id' },
             if_not_exists = true,
         })
         s:create_index('bucket_id', {
