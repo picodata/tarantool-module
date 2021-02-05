@@ -130,32 +130,33 @@ pub fn create_space(name: &str, opts: &SpaceOptions) -> Result<Option<Space>, Er
         }
     }
 
-    // Use provided space ID or compute it.
-    let space_space = SystemSpace::Space.into();
-    if opts.id != 0 {
+    // Use provided space ID or resolve it.
+    let space_space: Space = SystemSpace::Space.into();
+    let space_id = if opts.id != 0 {
         let space_schema: Space = SystemSpace::Schema.into();
-        let new_max_id = match
+        let max_id_tuple =
             space_schema.update(
                 &("max_id",),
                 &vec![SpaceQueryOperation {
                     op: "+".to_string(),
                     field_id: 2,
                     value: 1.into(),
-                }]){
-            Err(e) => return Err(e),
-            Ok(tuple) => tuple.unwrap().field::<u32>(2).unwrap().unwrap(),
-        };
+                }])?;
+        if max_id_tuple.is_none() {
+            // let primary_index = space_space.index("primary").unwrap().max("id")?;
+            let  
+        }
+        let max_id = max_id_tuple.unwrap().field::<u32>(2)?;
+    } else {
+        opts.id
     }
 
     // Resolve ID of provided user or use ID of current session's user.
-    let uid = if opts.user.is_empty() {
-        match session::uid() {
-            Err(e) => return Err(e),
-            Ok(uid) => Some(uid),
-        }
+    let user_id = if opts.user.is_empty() {
+        session::uid()?
     } else {
         if let resolved_uid = user_or_role_resolve(opts.user.as_str()) {
-            resolved_uid
+            resolved_uid.unwrap()
         } else {
             set_error(
                 file!(),
@@ -167,16 +168,16 @@ pub fn create_space(name: &str, opts: &SpaceOptions) -> Result<Option<Space>, Er
         }
     };
 
-    // 
+    //
 }
 
-fn user_or_role_resolve(user: &str) ->  Option<isize> {
+fn user_or_role_resolve(user: &str) ->  Result<Option<u32>, Error> {
     let space_vuser: Space = SystemSpace::VUser.into();
     let name_idx = space_vuser.index("name").unwrap();
-    match name_idx.get(&(user,)) {
-        Err(e) => None,
-        Ok(tuple) => tuple.unwrap().field::<isize>(0).unwrap(),
-    }
+    Ok(match name_idx.get(&(user,))? {
+        None => None,
+        Some(user_tuple) => Some(user_tuple.field::<u32>(2)?.unwrap()),
+    })
 }
 
 impl Space {
