@@ -11,10 +11,12 @@ use std::ptr::null_mut;
 
 use num_traits::ToPrimitive;
 
-use crate::error::{Error, TarantoolError};
+use crate::error::{Error, TarantoolError, set_error, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
 use crate::index::{Index, IndexIterator, IteratorType};
 use crate::tuple::{AsTuple, Tuple};
+use crate::session;
+use serde::{Deserialize, Serialize};
 
 /// Provides access to system spaces
 ///
@@ -90,6 +92,91 @@ impl Into<Space> for SystemSpace {
 
 pub struct Space {
     id: u32,
+}
+
+pub struct SpaceOptions {
+    pub if_not_exists: bool,
+    pub id: u32,
+    pub field_count: u32,
+    pub user: String,
+    pub is_local: bool,
+    pub temporary: bool,
+    pub is_sync: bool,
+}
+
+#[derive(Serialize)]
+pub struct SpaceQueryOperation {
+    pub op: String,
+    pub field_id: u32,
+    pub value: serde_json::Value,
+}
+
+impl AsTuple for SpaceQueryOperation {}
+
+// Create new space.
+pub fn create_space(name: &str, opts: &SpaceOptions) -> Result<Option<Space>, Error> {
+    // Check if space already exists.
+    if let space = Space::find(name) {
+        if opts.if_not_exists {
+            return Ok(None);
+        } else {
+            set_error(
+                file!(),
+                line!(),
+                &TarantoolErrorCode::SpaceExists,
+                name,
+            );
+            return Err(TarantoolError::last().into());
+        }
+    }
+
+    // Use provided space ID or compute it.
+    let space_space = SystemSpace::Space.into();
+    if opts.id != 0 {
+        let space_schema: Space = SystemSpace::Schema.into();
+        let new_max_id = match
+            space_schema.update(
+                &("max_id",),
+                &vec![SpaceQueryOperation {
+                    op: "+".to_string(),
+                    field_id: 2,
+                    value: 1.into(),
+                }]){
+            Err(e) => return Err(e),
+            Ok(tuple) => tuple.unwrap().field::<u32>(2).unwrap().unwrap(),
+        };
+    }
+
+    // Resolve ID of provided user or use ID of current session's user.
+    let uid = if opts.user.is_empty() {
+        match session::uid() {
+            Err(e) => return Err(e),
+            Ok(uid) => Some(uid),
+        }
+    } else {
+        if let resolved_uid = user_or_role_resolve(opts.user.as_str()) {
+            resolved_uid
+        } else {
+            set_error(
+                file!(),
+                line!(),
+                &TarantoolErrorCode::NoSuchUser,
+                opts.user.as_str(),
+            );
+            return Err(TarantoolError::last().into());
+        }
+    };
+
+    // 
+}
+
+fn user_or_role_resolve(user: &str) ->  Option<isize> {
+    let space_vuser: Space = SystemSpace::VUser.into();
+    let name_idx = space_vuser.index("name").unwrap();
+    match name_idx.get(&(user,)) {
+        Err(e) => None,
+        Ok(tuple) => tuple.unwrap().field::<isize>(0).unwrap(),
+    }
 }
 
 impl Space {
