@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - Integration test for cluster_controller written with envtest and ginkgo
 
+### Changed
+- Requested verbs for a RBAC role Tarantool: remove all * verbs and resources
+
 ### Fixed
 - Not working update of replicaset roles
 

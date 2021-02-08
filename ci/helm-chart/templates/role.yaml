@@ -15,7 +15,13 @@ rules:
   - configmaps
   - secrets
   verbs:
-  - '*'
+  - get
+  - create
+  - update
+  - watch
+  - list
+  - patch
+  - delete
 - apiGroups:
   - apps
   resources:
@@ -24,7 +30,13 @@ rules:
   - replicasets
   - statefulsets
   verbs:
-  - '*'
+  - get
+  - create
+  - update
+  - watch
+  - list
+  - patch
+  - delete
 - apiGroups:
   - monitoring.coreos.com
   resources:
@@ -43,10 +55,15 @@ rules:
 - apiGroups:
   - tarantool.io
   resources:
-  - '*'
   - clusters
   - roles
   - statefulsettemplatespecs
   - replicasettemplates
   verbs:
-  - '*'
+  - get
+  - create
+  - update
+  - watch
+  - list
+  - patch
+  - delete
