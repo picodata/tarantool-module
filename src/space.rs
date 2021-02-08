@@ -16,7 +16,10 @@ use crate::ffi::tarantool as ffi;
 use crate::index::{Index, IndexIterator, IteratorType};
 use crate::tuple::{AsTuple, Tuple};
 use crate::session;
-use serde::{Deserialize, Serialize};
+use serde::{Serialize};
+
+/// End of the reserved range of system spaces.
+pub const SYSTEM_ID_MAX: u32 = 511;
 
 /// Provides access to system spaces
 ///
@@ -94,8 +97,10 @@ pub struct Space {
     id: u32,
 }
 
-pub struct SpaceOptions {
+/// Options for new space.
+pub struct CreateSpaceOptions {
     pub if_not_exists: bool,
+    pub engine: String,
     pub id: u32,
     pub field_count: u32,
     pub user: String,
@@ -104,19 +109,32 @@ pub struct SpaceOptions {
     pub is_sync: bool,
 }
 
+//
 #[derive(Serialize)]
-pub struct SpaceQueryOperation {
-    pub op: String,
-    pub field_id: u32,
-    pub value: serde_json::Value,
+struct SpaceOptions {
+    group_id: u32,
+    temporary: bool,
+    is_sync: bool,
 }
 
-impl AsTuple for SpaceQueryOperation {}
+impl AsTuple for SpaceOptions {}
+
+//
+#[derive(Serialize)]
+struct SpaceInternal {
+    id: u32,
+    uid: u32,
+    name: String,
+    engine: String,
+    options: SpaceOptions,
+}
+
+impl AsTuple for SpaceInternal {}
 
 // Create new space.
-pub fn create_space(name: &str, opts: &SpaceOptions) -> Result<Option<Space>, Error> {
+pub fn create_space(name: &str, opts: &CreateSpaceOptions) -> Result<Option<Space>, Error> {
     // Check if space already exists.
-    if let space = Space::find(name) {
+    if Space::find(name).is_none() {
         if opts.if_not_exists {
             return Ok(None);
         } else {
@@ -130,32 +148,19 @@ pub fn create_space(name: &str, opts: &SpaceOptions) -> Result<Option<Space>, Er
         }
     }
 
-    // Use provided space ID or resolve it.
-    let space_space: Space = SystemSpace::Space.into();
+    // Resolve ID of new space of use ID, specified in options.
     let space_id = if opts.id != 0 {
-        let space_schema: Space = SystemSpace::Schema.into();
-        let max_id_tuple =
-            space_schema.update(
-                &("max_id",),
-                &vec![SpaceQueryOperation {
-                    op: "+".to_string(),
-                    field_id: 2,
-                    value: 1.into(),
-                }])?;
-        if max_id_tuple.is_none() {
-            // let primary_index = space_space.index("primary").unwrap().max("id")?;
-            let  
-        }
-        let max_id = max_id_tuple.unwrap().field::<u32>(2)?;
+        resolve_new_space_id()?
     } else {
         opts.id
-    }
+    };
 
-    // Resolve ID of provided user or use ID of current session's user.
+    // Resolve ID of user, specified in options, or use ID of current session's user.
     let user_id = if opts.user.is_empty() {
-        session::uid()?
+        session::uid()? as u32
     } else {
-        if let resolved_uid = user_or_role_resolve(opts.user.as_str()) {
+        let resolved_uid = resolve_user_or_role(opts.user.as_str())?;
+        if resolved_uid.is_some() {
             resolved_uid.unwrap()
         } else {
             set_error(
@@ -168,16 +173,63 @@ pub fn create_space(name: &str, opts: &SpaceOptions) -> Result<Option<Space>, Er
         }
     };
 
-    //
+    insert_new_space(space_id, user_id, name, opts)
 }
 
-fn user_or_role_resolve(user: &str) ->  Result<Option<u32>, Error> {
+fn resolve_new_space_id() -> Result<u32, Error> {
+    let sys_space: Space = SystemSpace::Space.into();
+    let mut sys_schema: Space = SystemSpace::Schema.into();
+
+    // Try to update max_id in _schema space.
+    let new_max_id = sys_schema.update(
+        &("max_id",),
+        &vec![("+".to_string(), 2, 1)])?;
+
+    let space_id = if new_max_id.is_some() {
+        // In case of successful update max_id return its value.
+        new_max_id.unwrap().field::<u32>(2)?.unwrap()
+    } else {
+        // Get tuple with greatest id. Increment it and use as id of new space.
+        let max_tuple = sys_space.index("primary").unwrap().max(&())?.unwrap();
+        let max_tuple_id = max_tuple.field::<u32>(1)?.unwrap();
+        let max_id_val = if max_tuple_id < SYSTEM_ID_MAX {SYSTEM_ID_MAX} else {max_tuple_id};
+        // Insert max_id into _schema space.
+        let created_max_id = sys_schema.insert(&("max_id".to_string(), max_id_val + 1))?.unwrap();
+        created_max_id.field::<u32>(2)?.unwrap()
+    };
+
+    return Ok(space_id)
+}
+
+fn resolve_user_or_role(user: &str) ->  Result<Option<u32>, Error> {
     let space_vuser: Space = SystemSpace::VUser.into();
     let name_idx = space_vuser.index("name").unwrap();
     Ok(match name_idx.get(&(user,))? {
         None => None,
         Some(user_tuple) => Some(user_tuple.field::<u32>(2)?.unwrap()),
     })
+}
+
+fn insert_new_space(id: u32, uid: u32, name: &str, opts: &CreateSpaceOptions) -> Result<Option<Space>, Error> {
+    // Update _space with metadata about new space.
+    let engine = if opts.engine.is_empty() {"memtx".to_string()} else {opts.engine.clone()};
+    let space_opts = SpaceOptions{
+        group_id: if opts.is_local {1} else {0}, // TODO: must be either true or nil
+        temporary: opts.temporary, // TODO: must be either true or nil
+        is_sync: opts.is_sync,
+    };
+    let new_space = SpaceInternal {
+        id: id,
+        uid: uid,
+        name: name.to_string(),
+        engine: engine,
+        options: space_opts,
+    };
+    let mut sys_space: Space = SystemSpace::Space.into();
+    match sys_space.insert(&new_space) {
+        Err(e) => Err(e),
+        Ok(_) => Ok(Space::find(name)),
+    }
 }
 
 impl Space {
