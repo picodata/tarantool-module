@@ -699,6 +699,83 @@ If you need to remove the Tarantool Kubernetes operator, execute:
       persistentvolumeclaim "www-routers-1-0" deleted
       persistentvolumeclaim "www-storages-0-0" deleted
 
+
+.. _cartridge_kubernetes_cluster_management_failover:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Failover
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Failover - replicaset leader selection mechanism. You can read more about it `here <https://www.tarantool.io/en/doc/latest/book/cartridge/topics/failover/>`_.
+
+.. NOTE::
+
+   The ability to configure failover via kubernetes manifests will appear later
+
+********************************************************************************
+Eventual mode
+********************************************************************************
+
+Default mode. Uses SWIM protocol to detect failures.
+
+********************************************************************************
+Stateful mode
+********************************************************************************
+
+Uses external storage for coordination. To work, you need to enable a ``failover-coordinator`` role on several instances.
+
+To do this, add the role in *values.yml* to the description of the replicasets:
+
+.. code-block:: yaml
+
+    RoleConfig:
+       ...
+      - RoleName: storage
+        ReplicaCount: 1
+        ReplicaSetCount: 1
+        DiskSize: 1Gi
+        CPUallocation: 0.1
+        MemtxMemoryMB: 256
+        RolesToAssign:
+          - vshard-storage
+          - metrics
+          - failover-coordinator # added role
+
+.. NOTE::
+
+   Ability to update the roles is available in the Tarantool operator version later than 0.0.8
+
+And run upgrading:
+
+.. code-block:: console
+
+   $ helm upgrade -f values.yaml test-app tarantool/cartridge --namespace tarantool 
+   ---
+   Release "test-app" has been upgraded. Happy Helming!
+   NAME: test-app
+   LAST DEPLOYED: Wed Feb  3 14:40:34 2021
+   NAMESPACE: tarantool
+   STATUS: deployed
+   REVISION: 2
+
+After we have at least one active role ``failover-coordinator``, we can enable stateful mode. It has two state providers: etcd and stateboard.
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+etcd
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+The etcd cluster is deployed independently, if you don't have it - the easiest way to install etcd is `etcd-operator <https://github.com/helm/charts/tree/master/stable/etcd-operator>`_ with helm chart.
+
+We'll need a list of available etc cluster IP`s, the prefix for storage keys and credentials (user name and password).
+
+How to set up stateful failover can be found on the documentation `page <https://www.tarantool.io/en/doc/latest/book/cartridge/topics/failover/#failover-configuration>`_.
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Stateboard
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+How to install a stateboard can be found on this documentation `page <https://www.tarantool.io/en/doc/latest/book/cartridge/topics/failover/#stateboard-configuration>`_.
+
 .. _cartridge_kubernetes_troubleshooting:
 
 --------------------------------------------------------------------------------
