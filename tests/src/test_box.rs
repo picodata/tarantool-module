@@ -2,7 +2,8 @@ use rand::Rng;
 
 use tarantool::index::IteratorType;
 use tarantool::sequence::Sequence;
-use tarantool::space::{Space, SystemSpace};
+use tarantool::space;
+use tarantool::space::{Space, SystemSpace, CreateSpaceOptions};
 use tarantool::tuple::Tuple;
 
 use crate::common::{QueryOperation, S1Record, S2Key, S2Record};
@@ -427,4 +428,62 @@ pub fn test_box_sequence_set() {
 
     seq.set(99).unwrap();
     assert_eq!(seq.next().unwrap(), 100);
+}
+
+pub fn test_create_space() {
+    let mut opts = CreateSpaceOptions {
+        if_not_exists: false,
+        engine: "memtx".to_string(),
+        id: 0,
+        field_count: 0,
+        user: "".to_string(),
+        is_local: true,
+        temporary: true,
+        is_sync: false,
+    };
+
+    // Create space with default options.
+    let result_1 = space::create_space("new_space_1", &opts);
+    assert_eq!(result_1.is_ok(), true);
+    assert_eq!(result_1.unwrap().is_some(), true);
+
+    // Test `SpaceExists` error.
+    let result_2 = space::create_space("new_space_1", &opts);
+    assert_eq!(result_2.is_err(), true);
+
+    // Test `if_not_exists` option.
+    opts.if_not_exists = true;
+    let result_3 = space::create_space("new_space_1", &opts);
+    assert_eq!(result_3.is_err(), false);
+    assert_eq!(result_3.unwrap().is_none(), true);
+    opts.if_not_exists = false;
+
+    // Test `id` option.
+    // opts.id = 10000;
+    // let result_4 = space::create_space("new_space_2", &opts);
+    // let id = result_4.unwrap().unwrap().id();
+    // assert_eq!(id, opts.id);
+    // opts.id = 0;
+
+    // Test correct ID increment of created spaces.
+    let mut prev_id = Space::find("new_space_1").unwrap().id();
+    for i in 2..6 {
+        let space_name = format!("new_space_{}", i);
+        let result = space::create_space(space_name.as_str(), &opts);
+        let curr_id = result.unwrap().unwrap().id();
+        assert_eq!(prev_id+1, curr_id);
+        prev_id = curr_id;
+    }
+
+    // Test `user` option and `NoSuchUser` error.
+    opts.user = "admin".to_string();
+    let result_4 = space::create_space("new_space_6", &opts);
+    assert_eq!(result_4.is_ok(), true);
+    assert_eq!(result_4.unwrap().is_some(), true);
+
+    opts.user = "user".to_string();
+    let result_5 = space::create_space("new_space_7", &opts);
+    assert_eq!(result_5.is_err(), true);
+
+    // Test `is_local` and `temporary` options.
 }

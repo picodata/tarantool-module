@@ -110,6 +110,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_box::test_box_sequence_get_by_name,
                 test_box::test_box_sequence_iterate,
                 test_box::test_box_sequence_set,
+                test_box::test_create_space,
                 test_tuple::test_tuple_new_from_struct,
                 test_tuple::test_tuple_field_count,
                 test_tuple::test_tuple_size,
