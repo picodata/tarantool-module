@@ -444,6 +444,8 @@ pub fn test_create_space() {
 
     // Create space with default options.
     let result_1 = space::create_space("new_space_1", &opts);
+    // !!!
+    if result_1.is_err() { panic!(result_1.err())};
     assert_eq!(result_1.is_ok(), true);
     assert_eq!(result_1.unwrap().is_some(), true);
 
@@ -454,6 +456,8 @@ pub fn test_create_space() {
     // Test `if_not_exists` option.
     opts.if_not_exists = true;
     let result_3 = space::create_space("new_space_1", &opts);
+    // !!!
+    if result_3.is_err() { panic!(result_3.err())};
     assert_eq!(result_3.is_err(), false);
     assert_eq!(result_3.unwrap().is_none(), true);
     opts.if_not_exists = false;
@@ -470,6 +474,8 @@ pub fn test_create_space() {
     for i in 2..6 {
         let space_name = format!("new_space_{}", i);
         let result = space::create_space(space_name.as_str(), &opts);
+        // !!!
+        if result.is_err() { panic!(result.err())};
         let curr_id = result.unwrap().unwrap().id();
         assert_eq!(prev_id+1, curr_id);
         prev_id = curr_id;
@@ -478,6 +484,8 @@ pub fn test_create_space() {
     // Test `user` option and `NoSuchUser` error.
     opts.user = "admin".to_string();
     let result_4 = space::create_space("new_space_6", &opts);
+    // !!!
+    if result_4.is_err() { panic!(result_4.err())};
     assert_eq!(result_4.is_ok(), true);
     assert_eq!(result_4.unwrap().is_some(), true);
 
