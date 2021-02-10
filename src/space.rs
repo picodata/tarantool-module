@@ -230,7 +230,7 @@ fn insert_new_space(id: u32, uid: u32, name: &str, opts: &CreateSpaceOptions) ->
     let mut space_opts = Map::<String, Value>::new();
     space_opts.insert("group_id".to_string(), if opts.is_local {Value::Number(Number::from(1))} else {Value::Null});
     space_opts.insert("temporary".to_string(), if opts.temporary {Value::Bool(true)} else {Value::Null});
-    space_opts.insert("is_sync".to_string(), Value::Bool(opts.is_sync));
+    // space_opts.insert("is_sync".to_string(), Value::Bool(opts.is_sync)); // Only for Tarantool version >= 2.6
 
     let new_space = SpaceInternal {
         id: id,
