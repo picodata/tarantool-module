@@ -128,10 +128,6 @@ impl Space {
     // Create new space.
     pub fn create_space(name: &str, opts: &CreateSpaceOptions) -> Result<Option<Space>, Error> {
         // Check if space already exists.
-
-        // !!!
-        println!("checking space exists");
-
         if Space::find(name).is_some() {
             if opts.if_not_exists {
                 return Ok(None);
@@ -175,34 +171,23 @@ impl Space {
     }
 
     fn resolve_new_space_id() -> Result<u32, Error> {
-        // !!!
-        println!("resolving space id");
-
         let sys_space: Space = SystemSpace::Space.into();
         let mut sys_schema: Space = SystemSpace::Schema.into();
 
         // Try to update max_id in _schema space.
-        // !!!
-        println!("Try to update max_id in _schema space.");
         let new_max_id = sys_schema.update(
             &("max_id",),
             &vec![("+".to_string(), 1, 1)])?;
 
         let space_id = if new_max_id.is_some() {
             // In case of successful update max_id return its value.
-            // !!!
-            println!("In case of successful update max_id return its value.");
             new_max_id.unwrap().field::<u32>(1)?.unwrap()
         } else {
             // Get tuple with greatest id. Increment it and use as id of new space.
-            // !!!
-            println!("Get tuple with greatest id. Increment it and use as id of new space.");
             let max_tuple = sys_space.index("primary").unwrap().max(&())?.unwrap();
             let max_tuple_id = max_tuple.field::<u32>(0)?.unwrap();
             let max_id_val = if max_tuple_id < SYSTEM_ID_MAX {SYSTEM_ID_MAX} else {max_tuple_id};
             // Insert max_id into _schema space.
-            // !!!
-            println!("Insert max_id into _schema space.");
             let created_max_id = sys_schema.insert(&("max_id".to_string(), max_id_val + 1))?.unwrap();
             created_max_id.field::<u32>(1)?.unwrap()
         };
@@ -211,9 +196,6 @@ impl Space {
     }
 
     fn resolve_user_or_role(user: &str) ->  Result<Option<u32>, Error> {
-        // !!!
-        println!("resolving space user id");
-
         let space_vuser: Space = SystemSpace::VUser.into();
         let name_idx = space_vuser.index("name").unwrap();
         Ok(match name_idx.get(&(user,))? {
@@ -223,9 +205,6 @@ impl Space {
     }
 
     fn insert_new_space(id: u32, uid: u32, name: &str, opts: &CreateSpaceOptions) -> Result<Option<Space>, Error> {
-        // !!!
-        println!("inserting new space");
-
         // Update _space with metadata about new space.
         let engine = if opts.engine.is_empty() {"memtx".to_string()} else {opts.engine.clone()};
 
@@ -243,9 +222,6 @@ impl Space {
             options: space_opts.clone(),
             format: Vec::<Value>::new(),
         };
-
-        // !!!
-        println!("new space is {:?}", new_space);
 
         let mut sys_space: Space = SystemSpace::Space.into();
         match sys_space.insert(&new_space) {
