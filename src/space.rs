@@ -109,6 +109,22 @@ pub struct CreateSpaceOptions {
     pub is_sync: bool,
 }
 
+impl CreateSpaceOptions {
+
+    pub fn Default() -> CreateSpaceOptions {
+        CreateSpaceOptions {
+            if_not_exists: false,
+            engine: "memtx".to_string(),
+            id: 0,
+            field_count: 0,
+            user: "".to_string(),
+            is_local: true,
+            temporary: true,
+            is_sync: false,
+        }
+    }
+}
+
 //
 #[derive(Serialize, Debug)]
 struct SpaceInternal {

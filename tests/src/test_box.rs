@@ -430,16 +430,7 @@ pub fn test_box_sequence_set() {
 }
 
 pub fn test_create_space() {
-    let mut opts = CreateSpaceOptions {
-        if_not_exists: false,
-        engine: "memtx".to_string(),
-        id: 0,
-        field_count: 0,
-        user: "".to_string(),
-        is_local: true,
-        temporary: true,
-        is_sync: false,
-    };
+    let mut opts = CreateSpaceOptions::Default();
 
     // Create space with default options.
     let result_1 = Space::create_space("new_space_1", &opts);
@@ -487,6 +478,6 @@ pub fn test_create_space() {
     opts.id = 0;
 
     // TODO: Test `is_local` and `temporary` options.
-    // Currently setting one or both this options to true
+    // Currently setting one or both this options to false.
     // leads to error in `create_space`.
 }
