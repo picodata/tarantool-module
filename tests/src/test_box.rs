@@ -2,7 +2,6 @@ use rand::Rng;
 
 use tarantool::index::IteratorType;
 use tarantool::sequence::Sequence;
-use tarantool::space;
 use tarantool::space::{Space, SystemSpace, CreateSpaceOptions};
 use tarantool::tuple::Tuple;
 
@@ -443,37 +442,30 @@ pub fn test_create_space() {
     };
 
     // Create space with default options.
-    let result_1 = space::create_space("new_space_1", &opts);
+    let result_1 = Space::create_space("new_space_1", &opts);
     // !!!
     if result_1.is_err() { panic!(dbg!(result_1.err().unwrap())) };
     assert_eq!(result_1.is_ok(), true);
     assert_eq!(result_1.unwrap().is_some(), true);
 
     // Test `SpaceExists` error.
-    let result_2 = space::create_space("new_space_1", &opts);
+    let result_2 = Space::create_space("new_space_1", &opts);
     assert_eq!(result_2.is_err(), true);
 
     // Test `if_not_exists` option.
     opts.if_not_exists = true;
-    let result_3 = space::create_space("new_space_1", &opts);
+    let result_3 = Space::create_space("new_space_1", &opts);
     // !!!
     if result_3.is_err()  { panic!(dbg!(result_3.err().unwrap())) };
     assert_eq!(result_3.is_err(), false);
     assert_eq!(result_3.unwrap().is_none(), true);
     opts.if_not_exists = false;
 
-    // Test `id` option.
-    // opts.id = 10000;
-    // let result_4 = space::create_space("new_space_2", &opts);
-    // let id = result_4.unwrap().unwrap().id();
-    // assert_eq!(id, opts.id);
-    // opts.id = 0;
-
     // Test correct ID increment of created spaces.
     let mut prev_id = Space::find("new_space_1").unwrap().id();
     for i in 2..6 {
         let space_name = format!("new_space_{}", i);
-        let result = space::create_space(space_name.as_str(), &opts);
+        let result = Space::create_space(space_name.as_str(), &opts);
         // !!!
         if result.is_err()  { panic!(dbg!(result.err().unwrap())) };
         let curr_id = result.unwrap().unwrap().id();
@@ -481,17 +473,28 @@ pub fn test_create_space() {
         prev_id = curr_id;
     }
 
-    // Test `user` option and `NoSuchUser` error.
+    // Test `user` option.
     opts.user = "admin".to_string();
-    let result_4 = space::create_space("new_space_6", &opts);
+    let result_4 = Space::create_space("new_space_6", &opts);
     // !!!
     if result_4.is_err()  { panic!(dbg!(result_4.err().unwrap())) };
     assert_eq!(result_4.is_ok(), true);
     assert_eq!(result_4.unwrap().is_some(), true);
 
+    // Test `NoSuchUser` error.
     opts.user = "user".to_string();
-    let result_5 = space::create_space("new_space_7", &opts);
+    let result_5 = Space::create_space("new_space_7", &opts);
     assert_eq!(result_5.is_err(), true);
+    opts.user = "".to_string();
+
+    // Test `id` option.
+    opts.id = 10000;
+    let result_5 = Space::create_space("new_space_8", &opts);
+    // !!!
+    if result_5.is_err()  { panic!(dbg!(result_5.err().unwrap())) };
+    let id = result_5.unwrap().unwrap().id();
+    assert_eq!(id, opts.id);
+    opts.id = 0;
 
     // Test `is_local` and `temporary` options.
 }
