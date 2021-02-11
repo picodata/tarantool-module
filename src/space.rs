@@ -11,12 +11,12 @@ use std::ptr::null_mut;
 
 use num_traits::ToPrimitive;
 
-use crate::error::{Error, TarantoolError, set_error, TarantoolErrorCode};
+use crate::error::{set_error, Error, TarantoolError, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
 use crate::index::{Index, IndexIterator, IteratorType};
-use crate::tuple::{AsTuple, Tuple};
+use crate::serde_json::{Map, Number, Value};
 use crate::session;
-use crate::serde_json::{Map, Value, Number};
+use crate::tuple::{AsTuple, Tuple};
 
 /// End of the reserved range of system spaces.
 pub const SYSTEM_ID_MAX: u32 = 511;
@@ -124,7 +124,6 @@ struct SpaceInternal {
 impl AsTuple for SpaceInternal {}
 
 impl Space {
-
     // Create new space.
     pub fn create_space(name: &str, opts: &CreateSpaceOptions) -> Result<Option<Space>, Error> {
         // Check if space already exists.
@@ -132,12 +131,7 @@ impl Space {
             if opts.if_not_exists {
                 return Ok(None);
             } else {
-                set_error(
-                    file!(),
-                    line!(),
-                    &TarantoolErrorCode::SpaceExists,
-                    name,
-                );
+                set_error(file!(), line!(), &TarantoolErrorCode::SpaceExists, name);
                 return Err(TarantoolError::last().into());
             }
         }
@@ -175,9 +169,7 @@ impl Space {
         let mut sys_schema: Space = SystemSpace::Schema.into();
 
         // Try to update max_id in _schema space.
-        let new_max_id = sys_schema.update(
-            &("max_id",),
-            &vec![("+".to_string(), 1, 1)])?;
+        let new_max_id = sys_schema.update(&("max_id",), &vec![("+".to_string(), 1, 1)])?;
 
         let space_id = if new_max_id.is_some() {
             // In case of successful update max_id return its value.
@@ -186,16 +178,22 @@ impl Space {
             // Get tuple with greatest id. Increment it and use as id of new space.
             let max_tuple = sys_space.index("primary").unwrap().max(&())?.unwrap();
             let max_tuple_id = max_tuple.field::<u32>(0)?.unwrap();
-            let max_id_val = if max_tuple_id < SYSTEM_ID_MAX {SYSTEM_ID_MAX} else {max_tuple_id};
+            let max_id_val = if max_tuple_id < SYSTEM_ID_MAX {
+                SYSTEM_ID_MAX
+            } else {
+                max_tuple_id
+            };
             // Insert max_id into _schema space.
-            let created_max_id = sys_schema.insert(&("max_id".to_string(), max_id_val + 1))?.unwrap();
+            let created_max_id = sys_schema
+                .insert(&("max_id".to_string(), max_id_val + 1))?
+                .unwrap();
             created_max_id.field::<u32>(1)?.unwrap()
         };
 
-        return Ok(space_id)
+        return Ok(space_id);
     }
 
-    fn resolve_user_or_role(user: &str) ->  Result<Option<u32>, Error> {
+    fn resolve_user_or_role(user: &str) -> Result<Option<u32>, Error> {
         let space_vuser: Space = SystemSpace::VUser.into();
         let name_idx = space_vuser.index("name").unwrap();
         Ok(match name_idx.get(&(user,))? {
@@ -204,13 +202,36 @@ impl Space {
         })
     }
 
-    fn insert_new_space(id: u32, uid: u32, name: &str, opts: &CreateSpaceOptions) -> Result<Option<Space>, Error> {
+    fn insert_new_space(
+        id: u32,
+        uid: u32,
+        name: &str,
+        opts: &CreateSpaceOptions,
+    ) -> Result<Option<Space>, Error> {
         // Update _space with metadata about new space.
-        let engine = if opts.engine.is_empty() {"memtx".to_string()} else {opts.engine.clone()};
+        let engine = if opts.engine.is_empty() {
+            "memtx".to_string()
+        } else {
+            opts.engine.clone()
+        };
 
         let mut space_opts = Map::<String, Value>::new();
-        space_opts.insert("group_id".to_string(), if opts.is_local {Value::Number(Number::from(1))} else {Value::Null});
-        space_opts.insert("temporary".to_string(), if opts.temporary {Value::Bool(true)} else {Value::Null});
+        space_opts.insert(
+            "group_id".to_string(),
+            if opts.is_local {
+                Value::Number(Number::from(1))
+            } else {
+                Value::Null
+            },
+        );
+        space_opts.insert(
+            "temporary".to_string(),
+            if opts.temporary {
+                Value::Bool(true)
+            } else {
+                Value::Null
+            },
+        );
         // space_opts.insert("is_sync".to_string(), Value::Bool(opts.is_sync)); // Only for Tarantool version >= 2.6
 
         let new_space = SpaceInternal {

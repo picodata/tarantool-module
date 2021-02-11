@@ -2,7 +2,7 @@ use rand::Rng;
 
 use tarantool::index::IteratorType;
 use tarantool::sequence::Sequence;
-use tarantool::space::{Space, SystemSpace, CreateSpaceOptions};
+use tarantool::space::{CreateSpaceOptions, Space, SystemSpace};
 use tarantool::tuple::Tuple;
 
 use crate::common::{QueryOperation, S1Record, S2Key, S2Record};
@@ -463,7 +463,7 @@ pub fn test_create_space() {
         let space_name = format!("new_space_{}", i);
         let result = Space::create_space(space_name.as_str(), &opts);
         let curr_id = result.unwrap().unwrap().id();
-        assert_eq!(prev_id+1, curr_id);
+        assert_eq!(prev_id + 1, curr_id);
         prev_id = curr_id;
     }
 
