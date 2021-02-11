@@ -97,7 +97,10 @@ pub struct Space {
     id: u32,
 }
 
-/// Options for new space.
+/// Options for new space, used by Space::create.
+/// (for details see [Options for box.schema.space.create](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/space_create/)).
+///
+/// `format` option is not supported at this moment.
 pub struct CreateSpaceOptions {
     pub if_not_exists: bool,
     pub engine: String,
@@ -110,8 +113,8 @@ pub struct CreateSpaceOptions {
 }
 
 impl CreateSpaceOptions {
-
-    pub fn Default() -> CreateSpaceOptions {
+    /// Create instance of CreateSpaceOptions with default values.
+    pub fn default() -> CreateSpaceOptions {
         CreateSpaceOptions {
             if_not_exists: false,
             engine: "memtx".to_string(),
@@ -125,9 +128,10 @@ impl CreateSpaceOptions {
     }
 }
 
-//
-#[derive(Serialize, Debug)]
-struct SpaceInternal {
+// SpaceInternal is tuple, hodiing space metdata in system `_space` space.
+// For details see internal Space::insert_new_space function.
+#[derive(Serialize)]
+struct SpaceMetadata {
     id: u32,
     uid: u32,
     name: String,
@@ -137,11 +141,17 @@ struct SpaceInternal {
     format: Vec<Value>,
 }
 
-impl AsTuple for SpaceInternal {}
+impl AsTuple for SpaceMetadata {}
 
 impl Space {
-    // Create new space.
-    pub fn create_space(name: &str, opts: &CreateSpaceOptions) -> Result<Option<Space>, Error> {
+    /// Create a space.
+    /// (for details see [box.schema.space.create()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/space_create/)).
+    ///
+    /// - `name` -  name of space, which should conform to the rules for object names.
+    /// - `opts` - see CreateSpaceOptions struct.
+    ///
+    /// Returns a new space.
+    pub fn create(name: &str, opts: &CreateSpaceOptions) -> Result<Option<Space>, Error> {
         // Check if space already exists.
         if Space::find(name).is_some() {
             if opts.if_not_exists {
@@ -250,7 +260,7 @@ impl Space {
         );
         // space_opts.insert("is_sync".to_string(), Value::Bool(opts.is_sync)); // Only for Tarantool version >= 2.6
 
-        let new_space = SpaceInternal {
+        let new_space = SpaceMetadata {
             id: id,
             uid: uid,
             name: name.to_string(),
