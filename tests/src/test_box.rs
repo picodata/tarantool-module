@@ -443,8 +443,6 @@ pub fn test_create_space() {
 
     // Create space with default options.
     let result_1 = Space::create_space("new_space_1", &opts);
-    // !!!
-    if result_1.is_err() { panic!(dbg!(result_1.err().unwrap())) };
     assert_eq!(result_1.is_ok(), true);
     assert_eq!(result_1.unwrap().is_some(), true);
 
@@ -455,8 +453,6 @@ pub fn test_create_space() {
     // Test `if_not_exists` option.
     opts.if_not_exists = true;
     let result_3 = Space::create_space("new_space_1", &opts);
-    // !!!
-    if result_3.is_err()  { panic!(dbg!(result_3.err().unwrap())) };
     assert_eq!(result_3.is_err(), false);
     assert_eq!(result_3.unwrap().is_none(), true);
     opts.if_not_exists = false;
@@ -466,8 +462,6 @@ pub fn test_create_space() {
     for i in 2..6 {
         let space_name = format!("new_space_{}", i);
         let result = Space::create_space(space_name.as_str(), &opts);
-        // !!!
-        if result.is_err()  { panic!(dbg!(result.err().unwrap())) };
         let curr_id = result.unwrap().unwrap().id();
         assert_eq!(prev_id+1, curr_id);
         prev_id = curr_id;
@@ -476,8 +470,6 @@ pub fn test_create_space() {
     // Test `user` option.
     opts.user = "admin".to_string();
     let result_4 = Space::create_space("new_space_6", &opts);
-    // !!!
-    if result_4.is_err()  { panic!(dbg!(result_4.err().unwrap())) };
     assert_eq!(result_4.is_ok(), true);
     assert_eq!(result_4.unwrap().is_some(), true);
 
@@ -490,11 +482,11 @@ pub fn test_create_space() {
     // Test `id` option.
     opts.id = 10000;
     let result_5 = Space::create_space("new_space_8", &opts);
-    // !!!
-    if result_5.is_err()  { panic!(dbg!(result_5.err().unwrap())) };
     let id = result_5.unwrap().unwrap().id();
     assert_eq!(id, opts.id);
     opts.id = 0;
 
-    // Test `is_local` and `temporary` options.
+    // TODO: Test `is_local` and `temporary` options.
+    // Currently setting one or both this options to true
+    // leads to error in `create_space`.
 }
