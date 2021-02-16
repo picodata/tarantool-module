@@ -235,6 +235,12 @@ func (r *ReconcileRole) Reconcile(request reconcile.Request) (reconcile.Result, 
 			}
 		}
 
+		sts.Spec.Template.Spec.Containers[0].Env = template.Spec.Template.Spec.Containers[0].Env
+		reqLogger.Info("Env variables", "vars", sts.Spec.Template.Spec.Containers[0].Env)
+		if err := r.client.Update(context.TODO(), &sts); err != nil {
+			return reconcile.Result{}, err
+		}
+
 		if templateRolesToAssign, ok := template.ObjectMeta.Annotations["tarantool.io/rolesToAssign"]; ok {
 			// check rolesToAssign from annotations
 			if templateRolesToAssign != sts.ObjectMeta.Annotations["tarantool.io/rolesToAssign"] {

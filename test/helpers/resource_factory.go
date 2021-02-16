@@ -37,6 +37,7 @@ type ReplicasetTemplateParams struct {
 	ContainerName   string
 	ContainerImage  string
 	ServiceName     string
+	EnvVars         map[string]string
 }
 
 type ServiceParams struct {
@@ -95,6 +96,30 @@ func NewReplicasetTemplate(params ReplicasetTemplateParams) tarantoolv1alpha1.Re
 		advHost     = fmt.Sprintf("%s.%s.%s.svc.cluster.local", alias, params.ClusterId, params.Namespace)
 		advUri      = fmt.Sprintf("%s:3301", advHost)
 	)
+
+	envs := map[string]string{
+		"ENVIRONMENT":                 "dev",
+		"TARANTOOL_INSTANCE_NAME":     alias,
+		"TARANTOOL_ALIAS":             alias,
+		"TARANTOOL_MEMTX_MEMORY":      "268435456",
+		"TARANTOOL_BUCKET_COUNT":      "30000",
+		"TARANTOOL_WORKDIR":           "/var/lib/tarantool",
+		"TARANTOOL_ADVERTISE_TMP":     alias,
+		"TARANTOOL_ADVERTISE_HOST":    advHost,
+		"TARANTOOL_ADVERTISE_URI":     advUri,
+		"TARANTOOL_PROBE_URI_TIMEOUT": "60",
+		"TARANTOOL_HTTP_PORT":         "8081",
+	}
+
+	for name, val := range params.EnvVars {
+		envs[name] = val
+	}
+
+	vars := []corev1.EnvVar{}
+	for name, val := range envs {
+		vars = append(vars, corev1.EnvVar{Name: name, Value: val})
+	}
+
 	return tarantoolv1alpha1.ReplicasetTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      params.Name,
@@ -200,52 +225,7 @@ func NewReplicasetTemplate(params ReplicasetTemplateParams) tarantoolv1alpha1.Re
 									ContainerPort: int32(8081),
 								},
 							},
-							Env: []corev1.EnvVar{
-								{
-									Name:  "ENVIRONMENT",
-									Value: "dev",
-								},
-								{
-									Name:  "TARANTOOL_INSTANCE_NAME",
-									Value: alias,
-								},
-								{
-									Name:  "TARANTOOL_ALIAS",
-									Value: alias,
-								},
-								{
-									Name:  "TARANTOOL_MEMTX_MEMORY",
-									Value: "268435456",
-								},
-								{
-									Name:  "TARANTOOL_BUCKET_COUNT",
-									Value: "30000",
-								},
-								{
-									Name:  "TARANTOOL_WORKDIR",
-									Value: "/var/lib/tarantool",
-								},
-								{
-									Name:  "TARANTOOL_ADVERTISE_TMP",
-									Value: alias,
-								},
-								{
-									Name:  "TARANTOOL_ADVERTISE_HOST",
-									Value: advHost,
-								},
-								{
-									Name:  "TARANTOOL_ADVERTISE_URI",
-									Value: advUri,
-								},
-								{
-									Name:  "TARANTOOL_PROBE_URI_TIMEOUT",
-									Value: "60",
-								},
-								{
-									Name:  "TARANTOOL_HTTP_PORT",
-									Value: "8081",
-								},
-							},
+							Env: vars,
 							// ReadinessProbe: &corev1.Probe{
 							// 	Handler: corev1.Handler{
 							// 		TCPSocket: &corev1.TCPSocketAction{
@@ -266,7 +246,7 @@ func NewReplicasetTemplate(params ReplicasetTemplateParams) tarantoolv1alpha1.Re
 	}
 }
 
-// Create new corev1.Service to access instances of specific tarantoolv1alpha1.Role
+// Create new corev1.Service to access instances of specific Tarantool role
 func NewService(params ServiceParams) corev1.Service {
 	return corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
