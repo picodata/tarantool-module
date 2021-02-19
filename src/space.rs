@@ -18,6 +18,7 @@ use crate::index::{Index, IndexIterator, IteratorType};
 use crate::schema;
 use crate::schema::{SpaceEngineType, SpaceMetadata};
 use crate::sequence::Sequence;
+use crate::serde::{Serialize, Serializer};
 use crate::serde_json::{Map, Number, Value};
 use crate::session;
 use crate::tuple::{AsTuple, Tuple};
@@ -130,8 +131,147 @@ impl SpaceCreateOptions {
     }
 }
 
-pub struct SpaceDropOptions {
+#[derive(Copy, Clone, Debug)]
+pub enum IndexType {
+    Hash,
+    Tree,
+    Bitset,
+    Rtree,
+}
+
+impl Serialize for IndexType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            IndexType::Hash => serializer.serialize_str("HASH"),
+            IndexType::Tree => serializer.serialize_str("TREE"),
+            IndexType::Bitset => serializer.serialize_str("BITSET"),
+            IndexType::Rtree => serializer.serialize_str("RTREE"),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum IndexFieldType {
+    Unsigned,
+    String,
+    Integer,
+    Number,
+    Double,
+    Decimal,
+    Boolean,
+    Varbinary,
+    Uuid,
+    Array,
+    Scalar,
+}
+
+impl Serialize for IndexFieldType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            IndexFieldType::Unsigned => serializer.serialize_str("unsigned"),
+            IndexFieldType::String => serializer.serialize_str("string"),
+            IndexFieldType::Integer => serializer.serialize_str("integer"),
+            IndexFieldType::Number => serializer.serialize_str("number"),
+            IndexFieldType::Double => serializer.serialize_str("double"),
+            IndexFieldType::Decimal => serializer.serialize_str("decimal"),
+            IndexFieldType::Boolean => serializer.serialize_str("boolean"),
+            IndexFieldType::Varbinary => serializer.serialize_str("varbinary"),
+            IndexFieldType::Uuid => serializer.serialize_str("uuid"),
+            IndexFieldType::Array => serializer.serialize_str("array"),
+            IndexFieldType::Scalar => serializer.serialize_str("scalar"),
+        }
+    }
+}
+
+pub struct IndexField {
+    pub field_index: u32,
+    pub field_type: IndexFieldType,
+    pub collation: Option<String>,
+    pub is_nullable: bool,
+    pub path: Option<String>,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum RtreeIndexDistanceType {
+    Euclid,
+    Manhattan,
+}
+
+impl Serialize for RtreeIndexDistanceType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            RtreeIndexDistanceType::Euclid => serializer.serialize_str("Euclid"),
+            RtreeIndexDistanceType::Manhattan => serializer.serialize_str("Manhattan"),
+        }
+    }
+}
+
+pub enum IndexSequenceOption {
+    SeqId{
+        seq_id: u32,
+        field_id: Option<u32>,
+    },
+    SeqName{
+        seq_name: String,
+        field_id: Option<u32>,
+    },
+    FieldId(u32),
+    Seq(bool),
+}
+
+pub struct IndexOptions {
+    pub index_type: IndexType,
+    pub id: Option<u32>,
+    pub unique: bool,
     pub if_not_exists: bool,
+    pub parts: Vec<IndexField>,
+    pub dimension: u32,
+    pub distance: RtreeIndexDistanceType,
+    pub bloom_fpr: f32,
+    pub vinyl_page_size: u32,
+    pub vinyl_range_size: Option<u32>,
+    pub vinyl_run_count_per_level: u32,
+    pub vinyl_run_size_ratio: f32,
+    pub sequence: Option<IndexSequenceOption>,
+    pub func: Option<String>,
+    pub hint: bool,
+}
+
+impl IndexOptions {
+    pub fn default() -> IndexOptions {
+        IndexOptions {
+            index_type: IndexType::Tree,
+            id: None,
+            unique: false,
+            if_not_exists: true,
+            parts: vec![IndexField {
+                field_index: 0,
+                field_type: IndexFieldType::Unsigned,
+                collation: None,
+                is_nullable: false,
+                path: None,
+            }],
+            dimension: 2,
+            distance: RtreeIndexDistanceType::Euclid,
+            bloom_fpr: 0.05,
+            vinyl_page_size: 8 * 1024,
+            vinyl_range_size: None,
+            vinyl_run_count_per_level: 2,
+            vinyl_run_size_ratio: 3.5,
+            sequence: None,
+            func: None,
+            hint: true
+        }
+    }
 }
 
 impl Space {
@@ -299,7 +439,7 @@ impl Space {
             sys_fk_constraint.delete(&(name, self.id))?;
         }
 
-        // CRemove from _ck_constraint.
+        // Remove from _ck_constraint.
         let mut sys_ck_constraint: Space = SystemSpace::CkConstraint.into();
         let sys_space_idx = sys_ck_constraint.index("primary").unwrap();
         for t in sys_space_idx
@@ -373,6 +513,47 @@ impl Space {
         self.id
     }
 
+    pub fn create_index(&self, name: &str, opts: &IndexOptions) -> Result<Index, Error> {
+        let _index: Space = SystemSpace::Index.into();
+        let _vindex: Space = SystemSpace::VIndex.into();
+
+        // Check if index exists.
+        let _vindex_idx_name = _vindex.index("name").unwrap();
+        match _vindex_idx_name.get(&(self.id, name))? {
+            None => (),
+            Some(t) => if opts.if_not_exists {
+                let index_id = t.field::<u32>(1)?.unwrap();
+                return Ok(Index{space_id: self.id, index_id: index_id})
+            } else {
+                set_error(file!(), line!(), &TarantoolErrorCode::IndexExists, name);
+                return Err(TarantoolError::last().into());
+            },
+        }
+
+        // Resolve id of new index.
+        let defaut_new_idx_id = 0;
+        let index_id = match opts.id {
+            Some(id) => id,
+            None => {
+                let _vindex_idx_primary = _vindex.index("primary").unwrap();
+                let  idx_list = _vindex_idx_primary
+                    .select(IteratorType::LE, &(self.id,))?
+                    .collect::<Vec<Tuple>>();
+                if !idx_list.is_empty() {
+                    let idx_space_id = idx_list[0].field::<u32>(0)?.unwrap();
+                    if idx_space_id == self.id {
+                        let idx_id = idx_list[0].field::<u32>(1)?.unwrap();
+                        idx_id + 1
+                    } else {
+                        defaut_new_idx_id
+                    }
+                } else {
+                    defaut_new_idx_id
+                }
+            },
+        };
+    }
+
     /// Find index by name.
     ///
     /// This function performs SELECT request to `_vindex` system space.
@@ -392,6 +573,7 @@ impl Space {
             Some(Index::new(self.id, index_id))
         }
     }
+
 
     /// Returns index with id = 0
     #[inline(always)]

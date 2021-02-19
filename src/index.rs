@@ -84,6 +84,8 @@ impl Index {
         Index { space_id, index_id }
     }
 
+    pub fn drop(&self) -> Result<(), Error> {}
+
     /// Get a tuple from index by the key.
     ///
     /// Please note that this function works much more faster than [select](#method.select)

@@ -62,3 +62,7 @@ pub fn revoke_object_priveleges(obj_type: &str, obj_id: u32) -> Result<(), Error
 
     Ok(())
 }
+
+pub fn space_sequence_alter_prepare() -> Result<(), Error> {}
+
+pub fn space_sequence_alter_commit() -> Result<(), Error> {}
