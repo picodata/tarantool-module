@@ -80,6 +80,21 @@ func SetInstanceUUID(o *corev1.Pod) *corev1.Pod {
 	return o
 }
 
+// Checking for a leader in the cluster Endpoint annotation
+func IsLeaderExists(ep *corev1.Endpoints) bool {
+	leader, ok := ep.Annotations["tarantool.io/leader"]
+	if !ok || leader == "" {
+		return false
+	}
+
+	for _, addr := range ep.Subsets[0].Addresses {
+		if leader == fmt.Sprintf("%s:%s", addr.IP, "8081") {
+			return true
+		}
+	}
+	return false
+}
+
 // Add creates a new Cluster Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
@@ -234,14 +249,8 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
 	}
 
-	leader, ok := ep.Annotations["tarantool.io/leader"]
-	if !ok {
-		if leader == "" {
-			reqLogger.Info("leader is not elected")
-			// return reconcile.Result{RequeueAfter: time.Duration(5000 * time.Millisecond)}, nil
-		}
-
-		leader = fmt.Sprintf("%s:%s", ep.Subsets[0].Addresses[0].IP, "8081")
+	if !IsLeaderExists(ep) {
+		leader := fmt.Sprintf("%s:%s", ep.Subsets[0].Addresses[0].IP, "8081")
 
 		if ep.Annotations == nil {
 			ep.Annotations = make(map[string]string)
@@ -262,7 +271,11 @@ func (r *ReconcileCluster) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
 	}
 
-	topologyClient := topology.NewBuiltInTopologyService(topology.WithTopologyEndpoint(fmt.Sprintf("http://%s/admin/api", leader)), topology.WithClusterID(cluster.GetName()))
+	topologyClient := topology.NewBuiltInTopologyService(
+		topology.WithTopologyEndpoint(fmt.Sprintf("http://%s/admin/api", ep.Annotations["tarantool.io/leader"])),
+		topology.WithClusterID(cluster.GetName()),
+	)
+
 	for _, sts := range stsList.Items {
 		for i := 0; i < int(*sts.Spec.Replicas); i++ {
 			pod := &corev1.Pod{}
