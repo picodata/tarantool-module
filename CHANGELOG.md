@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Integration test for cluster_controller written with envtest and ginkgo
 - Description of failover setting in the Cartridge Kubernetes guide
 - Section to troubleshooting about CrashLoopBackOff
+- Lua memory reserve for tarantool containers
 
 ### Changed
 - Requested verbs for a RBAC role Tarantool: remove all * verbs and resources

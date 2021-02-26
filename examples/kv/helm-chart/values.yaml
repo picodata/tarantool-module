@@ -4,6 +4,7 @@ ClusterEnv: dev
 ClusterName: examples-kv-cluster
 ClusterDomainName: cluster.local
 TarantoolWorkDir: /var/lib/tarantool
+LuaMemoryReserveMB: 2048
 
 image:
   repository: tarantool/tarantool-operator-examples-kv

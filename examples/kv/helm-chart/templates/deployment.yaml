@@ -83,10 +83,10 @@ spec:
           resources:
             requests:
               cpu: "{{ .CPUallocation }}"
-              memory: "{{ .MemtxMemoryMB }}M"
+              memory: "{{ add .MemtxMemoryMB $.Values.LuaMemoryReserveMB }}M"
             limits:
               cpu: "{{ .CPUallocation }}"
-              memory: "{{ .MemtxMemoryMB }}M"
+              memory: "{{ add .MemtxMemoryMB $.Values.LuaMemoryReserveMB }}M"
           ports:
             - containerPort: 3301
               protocol: TCP
