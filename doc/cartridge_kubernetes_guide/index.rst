@@ -57,11 +57,12 @@ The following tools are needed:
 
       $ minikube version
       ---
-      minikube version: v1.12.3
-      commit: 2243b4b97c131e3244c5f014faedca0d846599f5-dirty
+      minikube version: v1.17.1
+      commit: 043bdca07e54ab6e4fc0457e3064048f34133d7e
+
 
 5. **kind** (optional) is another tool for creating a local cluster. It
-   can be used instead of the minicube. Installation instructions can be
+   can be used instead of the minikube. We need the version 0.6.0 or higher. Installation instructions can be
    found
    `here <https://kind.sigs.k8s.io/docs/user/quick-start/#installation>`_.
 
@@ -184,14 +185,19 @@ Create a Kubernetes cluster of version 1.16.4 with 4GB of RAM (recommended):
 
    $ minikube start --kubernetes-version v1.16.4 --memory 4096
    ---
-   😄  minikube v1.12.3 on Ubuntu 18.10
-   ✨  Automatically selected the docker driver. Other choices: kvm2, virtualbox
+   😄  minikube v1.17.1 on Ubuntu 18.10
+   ✨  Automatically selected the docker driver. Other choices: kvm2, virtualbox, ssh
    👍  Starting control plane node minikube in cluster minikube
+   🚜  Pulling base image ...
    🔥  Creating docker container (CPUs=2, Memory=4096MB) ...
-   🐳  Preparing Kubernetes v1.16.4 on Docker 19.03.8 ...
+   🐳  Preparing Kubernetes v1.16.4 on Docker 20.10.2 ...
+       ▪ Generating certificates and keys ...
+       ▪ Booting up control plane ...
+       ▪ Configuring RBAC rules ...
    🔎  Verifying Kubernetes components...
-   🌟  Enabled addons: default-storageclass, storage-provisioner
-   🏄  Done! kubectl is now configured to use "minikube"
+   🌟  Enabled addons: storage-provisioner, default-storageclass
+   🏄  Done! kubectl is now configured to use "minikube" cluster and "default" namespace by default
+
 
 Wait for the cluster state to be *Ready*:
 
@@ -849,6 +855,74 @@ storages. You can change the size of the allocated memory using the
 ``DiskSize`` parameter in the *values.yaml* file for replica sets. The
 error can also be resolved by increasing the size of the physical
 cluster disk.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+CrashLoopBackOff status
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Pods do not start and have the status ``CrashLoopBackOff``. In short,
+this means that the container starts and crashes soon after due to an
+error in the code.
+
+.. code-block:: console
+
+   $ kubectl -n tarantool get pods
+   ---
+   NAME                                 READY   STATUS             RESTARTS   AGE
+   routers-0-0                           0/1     CrashLoopBackOff   6          8m4s
+   storages-0-0                          0/1     CrashLoopBackOff   6          8m4s
+   tarantool-operator-b54fcb6f9-2xzpn    1/1     Running            0          12m 
+
+Doing a kubectl describe pod will give us more information on that pod:
+
+.. code-block:: console
+
+   $ kubectl -n tarantool describe pod routers-0-0
+   ---
+   Events:
+     Type     Reason            Age                    From               Message
+     ----     ------            ----                   ----               -------
+     ...
+     Normal   Pulling           39m                    kubelet, minikube  Pulling image "vanyarock01/test-app:0.1.0-1-g4577716"
+     Normal   Pulled            39m                    kubelet, minikube  Successfully pulled image "vanyarock01/test-app:0.1.0-1-g4577716"
+     Normal   Created           37m (x5 over 39m)      kubelet, minikube  Created container pim-storage
+     Normal   Pulled            37m (x4 over 39m)      kubelet, minikube  Container image "vanyarock01/test-app:0.1.0-1-g4577716" already present on machine
+     Normal   Started           37m (x5 over 39m)      kubelet, minikube  Started container pim-storage
+     Warning  BackOff           4m25s (x157 over 38m)  kubelet, minikube  Back-off restarting failed container
+
+We see that the container cannot start. Rather, the container starts,
+but after starting it stops due to an internal error. To understand what
+is happening to him, let's see it's logs:
+
+.. code-block:: console
+
+   $ kubectl -n tarantool logs routers-0-0
+   ---
+   2021-02-28 15:18:59.866 [1] main/103/init.lua I> Using advertise_uri "routers-0-0.test-app.tarantool.svc.cluster.local:3301"
+   2021-02-28 15:18:59.866 [1] main/103/init.lua I> Membership encryption enabled
+   2021-02-28 15:18:59.963 [1] main/103/init.lua I> Probe uri was successful
+   2021-02-28 15:18:59.964 [1] main/103/init.lua I> Membership BROADCAST sent to 127.0.0.1:3302
+   2021-02-28 15:19:00.061 [1] main/103/init.lua I> Membership BROADCAST sent to 172.17.255.255:3302
+   2021-02-28 15:19:00.062 [1] main/103/init.lua I> Membership BROADCAST sent to 127.0.0.1:3301
+   2021-02-28 15:19:00.063 [1] main/103/init.lua I> Membership BROADCAST sent to 172.17.255.255:3301
+   2021-02-28 15:19:00.064 [1] main/103/init.lua I> Membership BROADCAST sent to 127.0.0.1:3300
+   2021-02-28 15:19:00.065 [1] main/103/init.lua I> Membership BROADCAST sent to 172.17.255.255:3300
+   2021-02-28 15:19:00.066 [1] main/107/http/0.0.0.0:8081 I> started
+   2021-02-28 15:19:00.069 [1] main/103/init.lua I> Listening HTTP on 0.0.0.0:8081
+   2021-02-28 15:19:00.361 [1] main/108/remote_control/0.0.0.0:3301 I> started
+   2021-02-28 15:19:00.361 [1] main/103/init.lua I> Remote control bound to 0.0.0.0:3301
+   2021-02-28 15:19:00.362 [1] main/103/init.lua I> Remote control ready to accept connections
+   2021-02-28 15:19:00.362 [1] main/103/init.lua I> Instance state changed:  -> Unconfigured
+   2021-02-28 15:19:00.365 [1] main/103/init.lua I> server alias routers-0-0
+   2021-02-28 15:19:00.365 [1] main/103/init.lua I> advertise uri routers-0-0.test-app.tarantool.svc.cluster.local:3301
+   2021-02-28 15:19:00.365 [1] main/103/init.lua I> working directory /var/lib/tarantool/test-app.routers-0-0
+   2021-02-28 15:19:00.365 [1] main utils.c:1014 E> LuajitError: /usr/share/tarantool/test-app/init.lua:42: unhandled error
+   2021-02-28 15:19:00.365 [1] main F> fatal error, exiting the event loop
+
+We see that the application crashes with an error: ``unhandled error``.
+This is an example of an error. In reality, there can be any other error
+that leads to the crash of the Tarantool instance. Fix the bug in the
+application and update the application to the new version.
 
 .. _cartridge_kubernetes_customization:
 
