@@ -95,7 +95,14 @@ var _ = Describe("role_controller unit testing", func() {
 				sts := &appsv1.StatefulSet{}
 				Eventually(
 					func() bool {
-						return k8sClient.Get(ctx, client.ObjectKey{Name: stsName, Namespace: namespace}, sts) == nil
+						if k8sClient.Get(ctx, client.ObjectKey{Name: stsName, Namespace: namespace}, sts) != nil {
+							return false
+						}
+						if sts.ObjectMeta.Annotations["tarantool.io/rolesToAssign"] == "" ||
+							sts.Spec.Template.Annotations["tarantool.io/rolesToAssign"] == "" {
+							return false
+						}
+						return true
 					},
 					time.Second*10, time.Millisecond*500,
 				).Should(BeTrue())

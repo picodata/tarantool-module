@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Not working update of replicaset roles
 - Not working update of container env vars
 - Problem with a non-existent leader of cluster
+- Flaky role_controller unit test
 
 ## [0.0.8] - 2020-12-16
 
