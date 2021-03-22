@@ -924,6 +924,165 @@ This is an example of an error. In reality, there can be any other error
 that leads to the crash of the Tarantool instance. Fix the bug in the
 application and update the application to the new version.
 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Recreating replicas
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You may need to recreate the replicas: delete existing replicas,
+create new ones and join them back to the replicaset.
+Recreating replicas may be necessary when, for example, replication breaks down.
+
+Let's see how to do this. For example, you have a ``storage`` role:
+
+.. code-block:: yaml
+
+   RoleConfig:
+     ...
+
+     - RoleName: storage
+       ReplicaCount: 3
+       ReplicaSetCount: 2
+       DiskSize: 1Gi
+       CPUallocation: 0.1
+       MemtxMemoryMB: 512
+       RolesToAssign:
+         - vshard-storage
+
+Based on this description, after installation you will have the following pods:
+
+.. code-block:: console
+
+   $ kubectl -n tarantool get pods
+   NAME                                  READY   STATUS    RESTARTS   AGE
+   ---
+   ...
+   storage-0-0                           1/1     Running   0          2m42s
+   storage-0-1                           1/1     Running   0          106s
+   storage-0-2                           1/1     Running   0          80s
+   storage-1-0                           1/1     Running   0          2m42s
+   storage-1-1                           1/1     Running   0          111s
+   storage-1-2                           1/1     Running   0          83s
+   tarantool-operator-7879d99ccb-6vrmg   1/1     Running   0          13m
+
+Let's try to reduce the number of replicas in the storage replicaset. To do
+so, change the ``ReplicaCount`` number for the ``storage`` role from ``3`` to ``2``
+and run ``upgrade``:
+
+.. code-block:: console
+
+   $ helm upgrade -f values.yaml test-app tarantool/cartridge --namespace tarantool --version 0.0.8
+   ---
+   Release "test-app" has been upgraded. Happy Helming!
+   NAME: test-app
+   LAST DEPLOYED: Tue Mar  2 11:45:29 2021
+   NAMESPACE: tarantool
+   STATUS: deployed
+   REVISION: 2
+
+You will see that ``storage-0-2`` and ``storage-1-2`` become "Terminating"
+and then disappear from the pods list:
+
+.. code-block:: console
+
+   $ kubectl -n tarantool get pods
+   ---
+   NAME                                  READY   STATUS        RESTARTS   AGE
+   ...
+   storage-0-0                           1/1     Running       0          12m
+   storage-0-1                           1/1     Running       0          11m
+   storage-0-2                           0/1     Terminating   0          11m
+   storage-1-0                           1/1     Running       0          12m
+   storage-1-1                           1/1     Running       0          11m
+   storage-1-2                           0/1     Terminating   0          11m
+   tarantool-operator-xxx-yyy            1/1     Running       0          17m
+
+Let's check what the cluster looks like on the web UI:
+
+.. code-block:: console
+
+   $ kubectl -n tarantool port-forward storage-0-0 8081:8081
+   ---
+   Forwarding from 127.0.0.1:8081 -> 8081
+   Forwarding from [::1]:8081 -> 8081
+
+.. image:: images/kubernetes-recreating-replicas-5px.png
+   :align: left
+   :scale: 70%
+   :alt: Replicas storage-0-2 and storage-1-2 have a note "Server status is 'dead'" next to them.
+
+Here we have turned off every third replica of the ``storage`` role.
+Note that we did not expel these replicas from the cluster. If we want to
+return them and not lose data, return the required number of replicas
+of the storage role and run ``upgrade`` again.
+
+However, if you need to delete some replicas' data, you can delete
+the corresponding :abbr:`PVC (persistent volume claim)` before upgrading.
+
+.. code-block:: console
+
+   $ kubectl -n tarantool get pvc
+   ---
+   NAME              STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+   ...
+   www-storage-0-0   Bound    pvc-729c4827-e10e-4ede-b546-c72642935441   1Gi        RWO            standard       157m
+   www-storage-0-1   Bound    pvc-6b2cfed2-171f-4b56-b290-3013b8472039   1Gi        RWO            standard       156m
+   www-storage-0-2   Bound    pvc-147b0505-5380-4419-8d86-97db6a74775c   1Gi        RWO            standard       156m
+   www-storage-1-0   Bound    pvc-788ad781-343b-43fe-867d-44432b1eabee   1Gi        RWO            standard       157m
+   www-storage-1-1   Bound    pvc-4c8b334e-cf49-411b-8c4f-1c97e9baa93e   1Gi        RWO            standard       156m
+   www-storage-1-2   Bound    pvc-c67d32c0-7d7b-4803-908e-065150f31189   1Gi        RWO            standard       156m
+
+It can be seen that the PVC pods that we deleted still exist. Let's remove data of the ``storage-1-2``:
+
+.. code-block:: console
+   
+   $ kubectl -n tarantool delete pvc www-storage-1-2
+   ---
+   persistentvolumeclaim "www-storage-1-2" deleted
+
+Now you need to return the value ``3`` in the ``ReplicaCount`` field of the storage role and run ``upgrade``:
+
+.. code-block:: console
+
+   $ helm upgrade -f values.yaml test-app tarantool/cartridge --namespace tarantool --version 0.0.8
+   ---
+   Release "test-app" has been upgraded. Happy Helming!
+   NAME: test-app
+   LAST DEPLOYED: Tue Mar  2 14:42:06 2021
+   NAMESPACE: tarantool
+   STATUS: deployed
+   REVISION: 3
+
+After a while, new pods will be up and configured.
+The pod whose data was deleted may get stuck in the ``unconfigured``
+state. If this happens, try to restart it:
+
+.. code-block:: console
+
+   $ kubectl -n tarantool delete pod storage-1-2
+   ---
+   pod "storage-1-2" deleted
+
+Why does it work? The Tarantool operator does not expel nodes from the cluster,
+but only "shuts them down". Therefore, it is impossible to reduce the
+number of replicas in this way. But you can recreate it, since the UID
+of each instance is generated based on its name, for example ``storage-1-2``.
+This ensures that the new instance with the given name replaces the old one.
+
+This method is recommended only when there is no other way.
+It has its own limitations:
+
+-   Restarting nodes is possible only in descending order of the number in the replicaset.
+    If you have a replicaset with ``node-0-0``, ``node-0-1``, ``node-0-2``, and ``node-0-3``,
+    and you want to recreate only ``node-0-1``, then the nodes ``node-0-1``, ``node-0-2``,
+    and ``node-0-3`` will also restart with it.
+-   All nodes that belong to the selected role will be restarted.
+    It isn't possible to select a specific replicaset and only restart its instances.
+-   If the replicaset leader number is more than the number of restarted replica,
+    restarting can stop the leader.
+    It will make the replicaset unable to receive new write requests.
+    Please be very careful with reconnecting replicas.
+
+
 .. _cartridge_kubernetes_customization:
 
 --------------------------------------------------------------------------------

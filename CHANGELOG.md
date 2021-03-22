@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Description of failover setting in the Cartridge Kubernetes guide
 - Section to troubleshooting about CrashLoopBackOff
 - Lua memory reserve for tarantool containers
+- Guide to troubleshooting about replicas recreating
 
 ### Changed
 - Requested verbs for a RBAC role Tarantool: remove all * verbs and resources
