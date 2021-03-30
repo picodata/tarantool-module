@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.0.8] - 2021-03-30
+
 ### Added
 - Integration test for cluster_controller written with envtest and ginkgo
 - Description of failover setting in the Cartridge Kubernetes guide
