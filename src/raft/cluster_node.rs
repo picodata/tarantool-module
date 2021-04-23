@@ -11,9 +11,10 @@ use crate::fiber::Cond;
 use crate::raft::NodeOptions;
 
 use super::fsm::Command;
+use super::storage::Storage;
 
 pub struct ClusterNodeState {
-    node: RefCell<RawNode<raft::storage::MemStorage>>,
+    node: RefCell<RawNode<Storage>>,
     timeout: Duration,
     remaining_timeout: Cell<Duration>,
     recv_queue: RefCell<VecDeque<RecvMessage>>,
@@ -37,7 +38,7 @@ impl ClusterNodeState {
             id,
             ..Default::default()
         };
-        let storage = raft::storage::MemStorage::new();
+        let storage = Storage::new()?;
         let mut node = RawNode::with_default_logger(&raft_config, storage)?;
 
         for id in peers {
@@ -99,18 +100,18 @@ impl ClusterNodeState {
             // if this is a snapshot: we need to apply the snapshot at first
             let snapshot = ready.snapshot();
             if !snapshot.is_empty() {
-                store.wl().apply_snapshot(snapshot.clone())?;
+                store.apply_snapshot(snapshot.clone())?;
             }
 
             // append entries to the Raft log
             let entries = ready.entries();
             if !entries.is_empty() {
-                store.wl().append(entries)?;
+                store.append(entries)?;
             }
 
             // if Raft hard-state changed: we need to persist it
             if let Some(hs) = ready.hs() {
-                store.wl().set_hardstate(hs.clone());
+                store.set_hard_state(hs.clone());
             }
 
             for msgs in ready.take_messages() {
@@ -139,7 +140,7 @@ impl ClusterNodeState {
                             conf_change.merge_from_bytes(&entry.data)?;
 
                             let conf_state = node.apply_conf_change(&conf_change)?;
-                            node.mut_store().wl().set_conf_state(conf_state);
+                            node.mut_store().set_conf_state(conf_state);
                         }
                         _ => {}
                     }
