@@ -19,7 +19,7 @@ The following tools are needed:
 
 1. **cartridge-cli** is a utility for managing Cartridge applications.
    We need the version 2.3.0 or higher. Installation instructions are available
-   `here <https://github.com/tarantool/cartridge-cli#installation>`_.
+   `here <https://github.com/tarantool/cartridge-cli#installation>`__.
    If the installation is successful, the *cartridge* utility will be available
    in the system.
 
@@ -31,7 +31,7 @@ The following tools are needed:
 
 2. **kubectl** is a Kubernetes cluster management tool. We need the
    version 1.16 or higher. Installation instructions can be found
-   `here <https://kubernetes.io/docs/tasks/tools/install-kubectl/>`_.
+   `here <https://kubernetes.io/docs/tasks/tools/install-kubectl/>`__.
 
    .. code-block:: console
 
@@ -41,7 +41,7 @@ The following tools are needed:
 
 3. **helm** is a package manager for Kubernetes apps. We need the
    version 3.3.x. Installation instructions can be found
-   `here <https://helm.sh/docs/intro/install/>`_.
+   `here <https://helm.sh/docs/intro/install/>`__.
 
    .. code-block:: console
 
@@ -51,7 +51,7 @@ The following tools are needed:
 
 4. **minikube** is a tool for creating a local Kubernetes cluster. We
    need the version 1.12 or higher. Installation instructions can be found
-   `here <https://minikube.sigs.k8s.io/docs/start/>`_.
+   `here <https://minikube.sigs.k8s.io/docs/start/>`__.
 
    .. code-block:: console
 
@@ -64,7 +64,7 @@ The following tools are needed:
 5. **kind** (optional) is another tool for creating a local cluster. It
    can be used instead of the minikube. We need the version 0.6.0 or higher. Installation instructions can be
    found
-   `here <https://kind.sigs.k8s.io/docs/user/quick-start/#installation>`_.
+   `here <https://kind.sigs.k8s.io/docs/user/quick-start/#installation>`__.
 
    .. code-block:: console
 
@@ -712,7 +712,8 @@ If you need to remove the Tarantool Kubernetes operator, execute:
 Failover
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Failover - replicaset leader selection mechanism. You can read more about it `here <https://www.tarantool.io/en/doc/latest/book/cartridge/topics/failover/>`_.
+Failover - replicaset leader selection mechanism. You can read more about it
+`here <https://www.tarantool.io/en/doc/latest/book/cartridge/topics/failover/>`__.
 
 .. NOTE::
 
@@ -774,13 +775,13 @@ The etcd cluster is deployed independently, if you don't have it - the easiest w
 
 We'll need a list of available etc cluster IP`s, the prefix for storage keys and credentials (user name and password).
 
-How to set up stateful failover can be found on the documentation `page <https://www.tarantool.io/en/doc/latest/book/cartridge/topics/failover/#failover-configuration>`_.
+How to set up stateful failover can be found on the documentation `page <https://www.tarantool.io/en/doc/latest/book/cartridge/topics/failover/#failover-configuration>`__.
 
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 Stateboard
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-How to install a stateboard can be found on this documentation `page <https://www.tarantool.io/en/doc/latest/book/cartridge/topics/failover/#stateboard-configuration>`_.
+How to install a stateboard can be found on this documentation `page <https://www.tarantool.io/en/doc/latest/book/cartridge/topics/failover/#stateboard-configuration>`__.
 
 .. _cartridge_kubernetes_troubleshooting:
 
@@ -1103,7 +1104,7 @@ containers inside one pod that share common resources such as disk
 storage and network interfaces. Such containers are called sidecar.
 
 Learn more about this architectural pattern
-`here <https://www.magalix.com/blog/the-sidecar-pattern>`_.
+`here <https://www.magalix.com/blog/the-sidecar-pattern>`__.
 
 For implementation on Kubernetes, it is necessary to expand the
 container park in the description of the required resource. Let's try to
@@ -1114,7 +1115,7 @@ article.
 
 To do this, you will need to change the ``tarantool/cartridge`` chart. You
 can find it
-`here <https://github.com/tarantool/tarantool-operator/tree/master/examples/kv/helm-chart>`_.
+`here <https://github.com/tarantool/tarantool-operator/tree/master/examples/kv/helm-chart>`__.
 Add a new container with ``nginx`` to the ``ReplicasetTemplate`` which can be
 found in the ``templates/deployment.yaml`` file.
 
