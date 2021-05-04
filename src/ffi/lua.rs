@@ -1,5 +1,6 @@
 #![allow(non_camel_case_types)]
-use std::os::raw::{c_double, c_int, c_schar};
+
+use std::os::raw::{c_double, c_int, c_longlong, c_schar, c_ulonglong};
 use std::ptr::{null, null_mut};
 
 /// Module provides FFI bindings for the following constants,
@@ -8,7 +9,13 @@ use std::ptr::{null, null_mut};
 /// 2. lauxlib
 /// 3. Lua utitlites, implemented in Tarantool
 
+pub type lua_Integer = c_longlong;
+pub type lua_Unsigned = c_ulonglong;
+pub type lua_Number = c_double;
+
 pub const LUA_GLOBALSINDEX: c_int = -10002;
+
+pub const LUA_MINSTACK: c_int = 20;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -53,6 +60,8 @@ extern "C" {
     pub fn lua_gettable(l: *mut lua_State, idx: c_int);
     pub fn lua_settable(l: *mut lua_State, idx: c_int);
     pub fn lua_remove(l: *mut lua_State, idx: c_int);
+
+    pub fn lua_rawset(state: *mut lua_State, index: c_int);
 
     // lauxlib functions.
     pub fn luaL_register(l: *mut lua_State, libname: *const c_schar, lr: *const luaL_Reg);

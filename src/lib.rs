@@ -174,6 +174,7 @@ pub mod ffi;
 pub mod fiber;
 pub mod index;
 pub mod log;
+pub mod lua;
 pub mod net_box;
 pub mod raft;
 pub mod schema;
