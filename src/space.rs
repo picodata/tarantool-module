@@ -217,6 +217,7 @@ pub struct Privilege {
 
 impl AsTuple for Privilege {}
 
+#[derive(Copy, Clone)]
 pub struct Space {
     id: u32,
 }
