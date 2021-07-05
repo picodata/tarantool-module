@@ -85,3 +85,6 @@ deploy/*
 
 ci/helm-chart/templates/crds/tarantool.io_*s_crd.yaml
 ci/helm-chart/templates/crds/tarantool_*_cr.yaml
+
+doc/locale/en/
+doc/output/

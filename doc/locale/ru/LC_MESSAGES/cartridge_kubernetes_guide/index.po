@@ -1,0 +1,807 @@
+
+msgid "Tarantool Cartridge on Kubernetes"
+msgstr ""
+
+msgid ""
+"This guide covers the full life cycle of a Tarantool Cartridge app--from "
+"developing the app to operating it on Kubernetes."
+msgstr ""
+
+msgid "Contents"
+msgstr ""
+
+msgid "Installation tools"
+msgstr ""
+
+msgid "The following tools are needed:"
+msgstr ""
+
+msgid ""
+"**cartridge-cli** is a utility for managing Cartridge applications. We need "
+"the version 2.3.0 or higher. Installation instructions are available `here "
+"<https://github.com/tarantool/cartridge-cli#installation>`__. If the "
+"installation is successful, the *cartridge* utility will be available in the"
+" system."
+msgstr ""
+
+msgid ""
+"**kubectl** is a Kubernetes cluster management tool. We need the version "
+"1.16 or higher. Installation instructions can be found `here "
+"<https://kubernetes.io/docs/tasks/tools/install-kubectl/>`__."
+msgstr ""
+
+msgid ""
+"**helm** is a package manager for Kubernetes apps. We need the version "
+"3.3.x. Installation instructions can be found `here "
+"<https://helm.sh/docs/intro/install/>`__."
+msgstr ""
+
+msgid ""
+"**minikube** is a tool for creating a local Kubernetes cluster. We need the "
+"version 1.12 or higher. Installation instructions can be found `here "
+"<https://minikube.sigs.k8s.io/docs/start/>`__."
+msgstr ""
+
+msgid ""
+"**kind** (optional) is another tool for creating a local cluster. It can be "
+"used instead of the minikube. We need the version 0.6.0 or higher. "
+"Installation instructions can be found `here "
+"<https://kind.sigs.k8s.io/docs/user/quick-start/#installation>`__."
+msgstr ""
+
+msgid "Creating an application"
+msgstr ""
+
+msgid ""
+"Let's create a Cartridge application named ``test-app`` using ``cartridge-"
+"cli``:"
+msgstr ""
+
+msgid "In the ``test-app`` directory, we get the app created from a template:"
+msgstr ""
+
+msgid ""
+"The app is fully functional and can respond to the HTTP GET request "
+"``/hello``."
+msgstr ""
+
+msgid "Check the cartridge version in *test-app-scm-1.rockspec*:"
+msgstr ""
+
+msgid ""
+"The version of Cartridge must be **>= 2.3.0**. Starting from this version, "
+"Cartridge waits for an instance to become available on its DNS address "
+"during the instance start. This is required for correct operations on "
+"Kubernetes. For versions below 2.3.0, an application must be customized "
+"independently. See the `example <https://github.com/tarantool/tarantool-"
+"operator/blob/master/examples/kv/key-value-store/init.lua#L27-L71>`_ of how "
+"to do this."
+msgstr ""
+
+msgid "Building the application"
+msgstr ""
+
+msgid "Let's create a Docker image using ``cartridge-cli``:"
+msgstr ""
+
+msgid "Upload the image to the Docker registry:"
+msgstr ""
+
+msgid ""
+"You must be logged in via ``docker login`` and have access rights to the "
+"target registry."
+msgstr ""
+
+msgid "Creating a Kubernetes cluster"
+msgstr ""
+
+msgid ""
+"If you have a ready-made cluster in the cloud, you can use it. If not, we "
+"suggest two ways of how to create a local cluster:"
+msgstr ""
+
+msgid "using :ref:`minikube <cartridge_kubernetes_creating_cluster_minikube>`"
+msgstr ""
+
+msgid "using :ref:`kind <cartridge_kubernetes_creating_cluster_kind>`."
+msgstr ""
+
+msgid "Using *minikube*"
+msgstr ""
+
+msgid ""
+"Create a Kubernetes cluster of version 1.16.4 with 4GB of RAM (recommended):"
+msgstr ""
+
+msgid "Wait for the cluster state to be *Ready*:"
+msgstr ""
+
+msgid "Using *kind*"
+msgstr ""
+
+msgid ""
+"Create a Kubernetes cluster of version 1.16.4 by using the *kind* utility as"
+" an alternative to *minikube*:"
+msgstr ""
+
+msgid "Let's check the cluster status:"
+msgstr ""
+
+msgid "Launch the application"
+msgstr ""
+
+msgid ""
+"To install the Tarantool Kubernetes operator and deploy the cluster, we will"
+" use the ``helm`` utility. Charts are published in our repository. Let’s add"
+" it:"
+msgstr ""
+
+msgid "Two charts are available in the repository:"
+msgstr ""
+
+msgid ""
+"The ``tarantool/tarantool-operator`` chart installs and configures the "
+"operator that manages Tarantool Cartridge clusters."
+msgstr ""
+
+msgid ""
+"The ``tarantool/cartridge`` chart is a template for creating Tarantool "
+"Cartridge clusters. With the default settings, this chart deploys an example"
+" application consisting of 3 instances. The chart works only in conjunction "
+"with the Tarantool Kubernetes operator."
+msgstr ""
+
+msgid ""
+"Use the same version with both charts. If you set the ``tarantool-operator``"
+" chart to version 0.0.8, set the ``cartridge`` chart to the same version "
+"0.0.8."
+msgstr ""
+
+msgid "Install *tarantool-operator* in the *tarantool* namespace:"
+msgstr ""
+
+msgid "Let's wait until a pod with the operator is ready to work:"
+msgstr ""
+
+msgid ""
+"In the meantime, let’s talk about what the Tarantool operator is and why it "
+"is needed."
+msgstr ""
+
+msgid "Tarantool Kubernetes operator"
+msgstr ""
+
+msgid ""
+"This is a Kubernetes application that can manage Tarantool Cartridge "
+"resources."
+msgstr ""
+
+msgid "What does this mean for us?"
+msgstr ""
+
+msgid ""
+"We don't need to know how to perform administrative actions such as joining "
+"a node or creating a replica set. The operator knows how to do this better, "
+"and if you set the value for its desired system configuration, it begins to "
+"bring the cluster to the desired state."
+msgstr ""
+
+msgid ""
+"The Tarantool Kubernetes operator itself is an implementation of the "
+"Kubernetes Operator design pattern. It offers the automation of work with "
+"user resources using controllers that respond to various events and changes."
+msgstr ""
+
+msgid "The following links can help you understand this pattern:"
+msgstr ""
+
+msgid ""
+"`Official description on kubernetes.io "
+"<https://kubernetes.io/docs/concepts/extend-kubernetes/operator/>`_;"
+msgstr ""
+
+msgid ""
+"`Overview from the creators of the pattern (CoreOS) "
+"<https://coreos.com/operators/>`_;"
+msgstr ""
+
+msgid ""
+"`Post on Habr from Lamoda about the development of the operator "
+"<https://habr.com/ru/company/lamoda/blog/446648/>`_."
+msgstr ""
+
+msgid ""
+"In the meantime, our pod with ``tarantool-operator`` went into a *Running* "
+"state. The next step is to install the app using the ``tarantool/cartridge``"
+" helm chart. To do this, prepare a description of the desired system."
+msgstr ""
+
+msgid "Deploying a Tarantool Cartridge application"
+msgstr ""
+
+msgid ""
+"After you have deployed the cluster and installed the operator, you can move"
+" to the next step--launching the app."
+msgstr ""
+
+msgid ""
+"We will deploy the app using the ``tarantool/cartridge`` chart. This is a "
+"template. Run it with the default settings and get our example application "
+"that has 3 instances. If you define your own settings, you can deploy any "
+"application of any topology using the Tarantool Cartridge."
+msgstr ""
+
+msgid ""
+"Let's have a look at the settings in the ``values.yaml`` file. Comments "
+"provide a description of each parameter:"
+msgstr ""
+
+msgid "With this configuration we will get the following:"
+msgstr ""
+
+msgid "A Tarantool Cartridge cluster called ``test-app``."
+msgstr ""
+
+msgid "Two replica sets in the cluster: ``routers`` and ``storages``."
+msgstr ""
+
+msgid "One Tarantool instance in the ``routers`` replica set."
+msgstr ""
+
+msgid "Two instances, master and replica, in the ``storages`` replica set."
+msgstr ""
+
+msgid ""
+"Each replica set performs the roles listed in the ``RolesToAssign`` "
+"parameter."
+msgstr ""
+
+msgid "Install the app:"
+msgstr ""
+
+msgid "Let's wait for all the pods to launch:"
+msgstr ""
+
+msgid ""
+"To check the cluster, we forward ports from one of the pods and go to the "
+"Cartridge dashboard:"
+msgstr ""
+
+msgid ""
+"Now the Tarantool Cartridge Web UI is available at "
+"``http://localhost:8081``."
+msgstr ""
+
+msgid "Cluster management"
+msgstr ""
+
+msgid "Adding a new replica"
+msgstr ""
+
+msgid "To increase the number of replicas in a replica set:"
+msgstr ""
+
+msgid "Change the configuration in the ``values.yaml`` file."
+msgstr ""
+
+msgid "Update the app using the ``helm upgrade`` command."
+msgstr ""
+
+msgid ""
+"The ``ReplicaCount`` parameter is responsible for the number of instances in"
+" a replica set. Set it to ``3`` for the ``storages`` replica set:"
+msgstr ""
+
+msgid "Update the app:"
+msgstr ""
+
+msgid ""
+"Let's wait until all the new pods go into the **Running** state and are "
+"displayed in the Cartridge Web UI."
+msgstr ""
+
+msgid "The ``storages`` replica set has 3 instances: 1 master and 2 replicas."
+msgstr ""
+
+msgid "Adding a shard (replica set)"
+msgstr ""
+
+msgid ""
+"The ``ReplicaSetCount`` parameter defines the number of replicas of the same"
+" type."
+msgstr ""
+
+msgid "Let's increase the number of the ``routers`` replica sets to ``2``:"
+msgstr ""
+
+msgid "Let's wait for the new pod to start:"
+msgstr ""
+
+msgid "Updating application version"
+msgstr ""
+
+msgid ""
+"Currently, the app logic contains one HTTP endpoint ``/hello`` that returns "
+"the string ``Hello world!`` in response to a GET request."
+msgstr ""
+
+msgid "To check this out, let's forward the ports to the desired node:"
+msgstr ""
+
+msgid "And then execute the request:"
+msgstr ""
+
+msgid ""
+"Let's add another endpoint that will return the string \"Hello world, new "
+"version of the app!\". To do this, add another ``httpd:route`` in the "
+"``init`` function in the ``app/roles/custom.lua`` role:"
+msgstr ""
+
+msgid "Pack the new version of the app:"
+msgstr ""
+
+msgid "Upload the new image version to the Docker registry:"
+msgstr ""
+
+msgid ""
+"Update the ``values.yaml`` configuration file by specifying a new "
+"``image.tag``:"
+msgstr ""
+
+msgid "Update the app on Kubernetes:"
+msgstr ""
+
+msgid ""
+"Tarantool Kubernetes operator uses the **OnDelete** update policy. This "
+"means that the update has reached the cluster, but the pods will update the "
+"app image only after a restart:"
+msgstr ""
+
+msgid "Lets wait for the pods to start again and check the update:"
+msgstr ""
+
+msgid "Running multiple Tarantool Cartridge clusters in different namespaces"
+msgstr ""
+
+msgid ""
+"Tarantool Kubernetes operator can manage Tarantool Cartridge clusters only "
+"in its own namespace. Therefore, to deploy multiple Cartridge clusters in "
+"different namespaces you need to deploy an operator in each of them."
+msgstr ""
+
+msgid ""
+"To install an operator in several namespaces, just specify the required "
+"namespace during installation:"
+msgstr ""
+
+msgid ""
+"These commands set the operator to the namespace ``NS_1`` and the namespace "
+"``NS_2``. Then, in each of them, you can run a Tarantool Cartridge cluster."
+msgstr ""
+
+msgid ""
+"Finally, we have two namespaces. Each has an operator and a Tarantool "
+"Cartridge cluster."
+msgstr ""
+
+msgid "Deleting a cluster"
+msgstr ""
+
+msgid "To remove a cluster, execute the following command:"
+msgstr ""
+
+msgid ""
+"After a while, all the pods of our application will disappear. Among the "
+"pods in the ``tarantool`` namespace, only the Tarantool Kubernetes operator "
+"will remain."
+msgstr ""
+
+msgid "If you need to remove the Tarantool Kubernetes operator, execute:"
+msgstr ""
+
+msgid ""
+"``helm uninstall`` does not remove persistent volumes. To remove them, you "
+"need to additionally perform the following:"
+msgstr ""
+
+msgid "Failover"
+msgstr ""
+
+msgid ""
+"Failover - replicaset leader selection mechanism. You can read more about it"
+" `here "
+"<https://www.tarantool.io/en/doc/latest/book/cartridge/topics/failover/>`__."
+msgstr ""
+
+msgid ""
+"The ability to configure failover via kubernetes manifests will appear later"
+msgstr ""
+
+msgid "Eventual mode"
+msgstr ""
+
+msgid "Default mode. Uses SWIM protocol to detect failures."
+msgstr ""
+
+msgid "Stateful mode"
+msgstr ""
+
+msgid ""
+"Uses external storage for coordination. To work, you need to enable a "
+"``failover-coordinator`` role on several instances."
+msgstr ""
+
+msgid ""
+"To do this, add the role in *values.yml* to the description of the "
+"replicasets:"
+msgstr ""
+
+msgid ""
+"Ability to update the roles is available in the Tarantool operator version "
+"later than 0.0.8"
+msgstr ""
+
+msgid "And run upgrading:"
+msgstr ""
+
+msgid ""
+"After we have at least one active role ``failover-coordinator``, we can "
+"enable stateful mode. It has two state providers: etcd and stateboard."
+msgstr ""
+
+msgid "etcd"
+msgstr ""
+
+msgid ""
+"The etcd cluster is deployed independently, if you don't have it - the "
+"easiest way to install etcd is `etcd-operator "
+"<https://github.com/helm/charts/tree/master/stable/etcd-operator>`_ with "
+"helm chart."
+msgstr ""
+
+msgid ""
+"We'll need a list of available etc cluster IP`s, the prefix for storage keys"
+" and credentials (user name and password)."
+msgstr ""
+
+msgid ""
+"How to set up stateful failover can be found on the documentation `page "
+"<https://www.tarantool.io/en/doc/latest/book/cartridge/topics/failover/#failover-"
+"configuration>`__."
+msgstr ""
+
+msgid "Stateboard"
+msgstr ""
+
+msgid ""
+"How to install a stateboard can be found on this documentation `page "
+"<https://www.tarantool.io/en/doc/latest/book/cartridge/topics/failover/#stateboard-"
+"configuration>`__."
+msgstr ""
+
+msgid "Troubleshooting"
+msgstr ""
+
+msgid ""
+"When creating, updating, or scaling a cluster, errors may occur due to lack "
+"of physical resources."
+msgstr ""
+
+msgid "Let's examine possible error indications, root causes and solutions."
+msgstr ""
+
+msgid "Insufficient CPU"
+msgstr ""
+
+msgid ""
+"After executing ``helm install / upgrade`` the pods remain in the "
+"**Pending** state."
+msgstr ""
+
+msgid "It looks like this:"
+msgstr ""
+
+msgid "Let's take a look at the events of one of the pending pods:"
+msgstr ""
+
+msgid ""
+"It is now clear that we don't have enough CPU. You can reduce the allocated "
+"CPU size in the ``values.yaml`` configuration file--the ``CPUallocation`` "
+"parameter."
+msgstr ""
+
+msgid "Insufficient disk space"
+msgstr ""
+
+msgid ""
+"After executing ``helm install/upgrade`` the pods remain in the "
+"**ContainerCreating** state. Let's take a look at the events:"
+msgstr ""
+
+msgid ""
+"Such events indicate that there is not enough disk space to create storages."
+" You can change the size of the allocated memory using the ``DiskSize`` "
+"parameter in the *values.yaml* file for replica sets. The error can also be "
+"resolved by increasing the size of the physical cluster disk."
+msgstr ""
+
+msgid "CrashLoopBackOff status"
+msgstr ""
+
+msgid ""
+"Pods do not start and have the status ``CrashLoopBackOff``. In short, this "
+"means that the container starts and crashes soon after due to an error in "
+"the code."
+msgstr ""
+
+msgid ""
+"Doing a kubectl describe pod will give us more information on that pod:"
+msgstr ""
+
+msgid ""
+"We see that the container cannot start. Rather, the container starts, but "
+"after starting it stops due to an internal error. To understand what is "
+"happening to him, let's see it's logs:"
+msgstr ""
+
+msgid ""
+"We see that the application crashes with an error: ``unhandled error``. This"
+" is an example of an error. In reality, there can be any other error that "
+"leads to the crash of the Tarantool instance. Fix the bug in the application"
+" and update the application to the new version."
+msgstr ""
+
+msgid "Recreating replicas"
+msgstr ""
+
+msgid ""
+"You may need to recreate the replicas: delete existing replicas, create new "
+"ones and join them back to the replicaset. Recreating replicas may be "
+"necessary when, for example, replication breaks down."
+msgstr ""
+
+msgid "Let's see how to do this. For example, you have a ``storage`` role:"
+msgstr ""
+
+msgid ""
+"Based on this description, after installation you will have the following "
+"pods:"
+msgstr ""
+
+msgid ""
+"Let's try to reduce the number of replicas in the storage replicaset. To do "
+"so, change the ``ReplicaCount`` number for the ``storage`` role from ``3`` "
+"to ``2`` and run ``upgrade``:"
+msgstr ""
+
+msgid ""
+"You will see that ``storage-0-2`` and ``storage-1-2`` become \"Terminating\""
+" and then disappear from the pods list:"
+msgstr ""
+
+msgid "Let's check what the cluster looks like on the web UI:"
+msgstr ""
+
+msgid ""
+"Replicas storage-0-2 and storage-1-2 have a note \"Server status is 'dead'\""
+" next to them."
+msgstr ""
+
+msgid ""
+"Here we have turned off every third replica of the ``storage`` role. Note "
+"that we did not expel these replicas from the cluster. If we want to return "
+"them and not lose data, return the required number of replicas of the "
+"storage role and run ``upgrade`` again."
+msgstr ""
+
+msgid ""
+"However, if you need to delete some replicas' data, you can delete the "
+"corresponding :abbr:`PVC (persistent volume claim)` before upgrading."
+msgstr ""
+
+msgid ""
+"It can be seen that the PVC pods that we deleted still exist. Let's remove "
+"data of the ``storage-1-2``:"
+msgstr ""
+
+msgid ""
+"Now you need to return the value ``3`` in the ``ReplicaCount`` field of the "
+"storage role and run ``upgrade``:"
+msgstr ""
+
+msgid ""
+"After a while, new pods will be up and configured. The pod whose data was "
+"deleted may get stuck in the ``unconfigured`` state. If this happens, try to"
+" restart it:"
+msgstr ""
+
+msgid ""
+"Why does it work? The Tarantool operator does not expel nodes from the "
+"cluster, but only \"shuts them down\". Therefore, it is impossible to reduce"
+" the number of replicas in this way. But you can recreate it, since the UID "
+"of each instance is generated based on its name, for example "
+"``storage-1-2``. This ensures that the new instance with the given name "
+"replaces the old one."
+msgstr ""
+
+msgid ""
+"This method is recommended only when there is no other way. It has its own "
+"limitations:"
+msgstr ""
+
+msgid ""
+"Restarting nodes is possible only in descending order of the number in the "
+"replicaset. If you have a replicaset with ``node-0-0``, ``node-0-1``, "
+"``node-0-2``, and ``node-0-3``, and you want to recreate only ``node-0-1``, "
+"then the nodes ``node-0-1``, ``node-0-2``, and ``node-0-3`` will also "
+"restart with it."
+msgstr ""
+
+msgid ""
+"All nodes that belong to the selected role will be restarted. It isn't "
+"possible to select a specific replicaset and only restart its instances."
+msgstr ""
+
+msgid ""
+"If the replicaset leader number is more than the number of restarted "
+"replica, restarting can stop the leader. It will make the replicaset unable "
+"to receive new write requests. Please be very careful with reconnecting "
+"replicas."
+msgstr ""
+
+msgid "Customization"
+msgstr ""
+
+msgid ""
+"For most cases, the ``tarantool/cartridge`` helm chart is enough for you. "
+"However, if customization is required, you can continue to use the chart by "
+"making your own changes. You can also ``deployment.yaml`` and ``kubectl`` "
+"instead of ``helm``."
+msgstr ""
+
+msgid "Sidecar containers"
+msgstr ""
+
+msgid ""
+"What are they? With Kubernetes, it is possible to create several containers "
+"inside one pod that share common resources such as disk storage and network "
+"interfaces. Such containers are called sidecar."
+msgstr ""
+
+msgid ""
+"Learn more about this architectural pattern `here "
+"<https://www.magalix.com/blog/the-sidecar-pattern>`__."
+msgstr ""
+
+msgid ""
+"For implementation on Kubernetes, it is necessary to expand the container "
+"park in the description of the required resource. Let's try to add another "
+"service container with ``nginx`` to each pod containing a container with a "
+"Tarantool instance based on `this <https://kubernetes.io/docs/tasks/access-"
+"application-cluster/communicate-containers-same-pod-shared-volume/>`_ "
+"article."
+msgstr ""
+
+msgid ""
+"To do this, you will need to change the ``tarantool/cartridge`` chart. You "
+"can find it `here <https://github.com/tarantool/tarantool-"
+"operator/tree/master/examples/kv/helm-chart>`__. Add a new container with "
+"``nginx`` to the ``ReplicasetTemplate`` which can be found in the "
+"``templates/deployment.yaml`` file."
+msgstr ""
+
+msgid ""
+"It is important to describe additional containers strictly after the pim-"
+"storage container. Otherwise, problems may occur when updating the version "
+"of the application."
+msgstr ""
+
+msgid ""
+"By default, the Tarantool Kubernetes operator chooses the first one in the "
+"list as the application container."
+msgstr ""
+
+msgid ""
+"Now, let's start the installation specifying the path to the directory with "
+"the customized chart:"
+msgstr ""
+
+msgid "If everything goes well, it will be visible in the pod list:"
+msgstr ""
+
+msgid "``READY 2/2`` means that 2 containers are ready inside the pod."
+msgstr ""
+
+msgid "Installation in an internal network"
+msgstr ""
+
+msgid "Delivery of tools"
+msgstr ""
+
+msgid ""
+"We need to bring the ``tarantool-cartridge`` and ``tarantool-operator`` "
+"charts and the image of your application inside the internal network."
+msgstr ""
+
+msgid "You can download the charts from the following links:"
+msgstr ""
+
+msgid ""
+"`tarantool-operator v0.0.8 <https://github.com/tarantool/tarantool-"
+"operator/releases/download/tarantool-operator-0.0.8/tarantool-"
+"operator-0.0.8.tgz>`_"
+msgstr ""
+
+msgid ""
+"`cartridge v0.0.8 <https://github.com/tarantool/tarantool-"
+"operator/releases/download/cartridge-0.0.8/cartridge-0.0.8.tgz>`_."
+msgstr ""
+
+msgid ""
+"Next, you need to pack a Docker image with the ``tarantool-operator``. "
+"First, let's pull the required version from the Docker Hub:"
+msgstr ""
+
+msgid "And pack it into the archive:"
+msgstr ""
+
+msgid ""
+"After delivering the archive with the container to the target location, you "
+"need to load the image to your Docker:"
+msgstr ""
+
+msgid ""
+"All that remains is to push the image to the internal Docker registry. We "
+"will use an example Docker registry hosted on ``localhost:5000``:"
+msgstr ""
+
+msgid ""
+"You can deliver the image with the application using the method described "
+"above."
+msgstr ""
+
+msgid "Installing the Tarantool Kubernetes operator"
+msgstr ""
+
+msgid ""
+"Let's describe the custom operator values in the ``operator_values.yaml`` "
+"file:"
+msgstr ""
+
+msgid ""
+"And install the operator specifying the path to the archive with chart:"
+msgstr ""
+
+msgid "Check the installation:"
+msgstr ""
+
+msgid "Installing the Tarantool Cartridge app"
+msgstr ""
+
+msgid ""
+"We have pushed the app image to the local Docker registry beforehand. What "
+"remains is to customize the ``values.yaml`` file by specifying the available"
+" repository:"
+msgstr ""
+
+msgid ""
+"The complete configuration of the ``values.yaml`` can be found in the "
+"instructions for installing the Tarantool Cartridge application described in"
+" the guide earlier."
+msgstr ""
+
+msgid "It remains to unpack the Cartridge chart:"
+msgstr ""
+
+msgid "And run the installation by specifying the path to the chart:"
+msgstr ""
+
+msgid ""
+"Let's take a look at the pods to make sure the installation is successful:"
+msgstr ""
+
+msgid "image2"
+msgstr ""
+
+msgid "image3"
+msgstr ""

@@ -1,0 +1,24 @@
+name: Destroy-deployments
+
+on:
+  pull_request:
+    paths:
+      - 'doc/**/*'
+    types:
+      - closed
+jobs:
+  destroy-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Set branch name from source branch
+        run: echo "BRANCH_NAME=${GITHUB_HEAD_REF##*/}" >> $GITHUB_ENV
+
+      - name: Remove dev server deployment at ${{env.DEPLOYMENT_NAME}}
+        uses: strumwolf/delete-deployment-environment@v2
+        with:
+          token: "${{ secrets.TARANTOOLBOT_TOKEN }}"
+          environment: "translation-${{env.BRANCH_NAME}}"
