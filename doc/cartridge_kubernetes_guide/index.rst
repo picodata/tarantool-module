@@ -713,7 +713,7 @@ Failover
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Failover - replicaset leader selection mechanism. You can read more about it
-`here <https://www.tarantool.io/en/doc/latest/book/cartridge/topics/failover/>`__.
+:ref:`in the Cartridge documentation <cartridge-failover>`.
 
 .. NOTE::
 
@@ -775,13 +775,14 @@ The etcd cluster is deployed independently, if you don't have it - the easiest w
 
 We'll need a list of available etc cluster IP`s, the prefix for storage keys and credentials (user name and password).
 
-How to set up stateful failover can be found on the documentation `page <https://www.tarantool.io/en/doc/latest/book/cartridge/topics/failover/#failover-configuration>`__.
+Read more about :ref:`setting up stateful failover <failover-configuration>`.
 
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 Stateboard
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-How to install a stateboard can be found on this documentation `page <https://www.tarantool.io/en/doc/latest/book/cartridge/topics/failover/#stateboard-configuration>`__.
+Read about :ref:`installing a stateboard <stateboard-configuration>`
+in the Cartridge documentation.
 
 .. _cartridge_kubernetes_troubleshooting:
 
