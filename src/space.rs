@@ -240,6 +240,14 @@ impl Space {
         return crate::schema::space::drop_space(self.id);
     }
 
+    /// Create space struct by space ID
+    ///
+    /// - `id' - space ID
+    /// Returns space with passed ID
+    pub fn new_from_id(id: u32) -> Self {
+        Self { id }
+    }
+
     /// Find space by name.
     ///
     /// This function performs SELECT request to `_vspace` system space.
