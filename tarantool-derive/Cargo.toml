@@ -1,0 +1,19 @@
+[package]
+name = "tarantool-derive"
+description = "Tarantool rust bindings (derive proc macros)"
+version = "0.4.1"
+authors = [
+    "Dmitriy Koltsov <dkoltsov@picodata.io>",
+    "Anton Melnikov <volt0@picodata.io>"
+]
+edition = "2018"
+license = "BSD-2-Clause"
+repository = "https://github.com/picodata/tarantool-module"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = "1.0.76"
+quote = "1.0.9"
+proc-macro2 = "1.0.29"

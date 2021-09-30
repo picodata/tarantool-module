@@ -33,6 +33,8 @@ impl luaL_Reg {
 
 pub type lua_CFunction = Option<unsafe extern "C" fn(l: *mut lua_State) -> c_int>;
 
+pub const LUA_TNIL: c_int = 0;
+
 extern "C" {
     // Lua C API functions.
     pub fn lua_newthread(l: *mut lua_State) -> *mut lua_State;
@@ -52,6 +54,8 @@ extern "C" {
     pub fn lua_createtable(l: *mut lua_State, narr: c_int, nrec: c_int);
     pub fn lua_gettable(l: *mut lua_State, idx: c_int);
     pub fn lua_settable(l: *mut lua_State, idx: c_int);
+    pub fn lua_type(state: *mut lua_State, index: c_int) -> c_int;
+    pub fn lua_pcall(l: *mut lua_State, nargs: c_int, nresults: c_int, msgh: c_int) -> c_int;
     pub fn lua_remove(l: *mut lua_State, idx: c_int);
 
     // lauxlib functions.
@@ -66,6 +70,16 @@ extern "C" {
 #[inline(always)]
 pub unsafe fn lua_getglobal(state: *mut lua_State, s: *const c_schar) {
     lua_getfield(state, LUA_GLOBALSINDEX, s);
+}
+
+#[inline(always)]
+pub unsafe fn lua_pop(state: *mut lua_State, n: c_int) {
+    lua_settop(state, -n - 1);
+}
+
+#[inline(always)]
+pub unsafe fn lua_isnil(state: *mut lua_State, index: c_int) -> bool {
+    lua_type(state, index) == LUA_TNIL
 }
 
 #[inline(always)]

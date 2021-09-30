@@ -1,11 +1,13 @@
 [workspace]
 members = [
     "tarantool",
+    "tarantool-derive",
     "tests",
     "examples/easy",
     "examples/harder",
     "examples/hardest",
     "examples/read",
     "examples/write",
-    "examples/cluster_node"
+    "examples/cluster_node",
+    "examples/interact_with_lua"
 ]
