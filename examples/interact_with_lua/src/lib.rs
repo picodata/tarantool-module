@@ -2,6 +2,7 @@
 extern crate tarantool_derive;
 
 use std::os::raw::c_int;
+
 use tarantool::lua::{LuaState, ToLuaTable};
 use tarantool::tuple::{FunctionArgs, FunctionCtx};
 
@@ -14,6 +15,9 @@ struct Args {
 #[derive(ToLuaTable)]
 struct Args2(i32, i32);
 
+#[derive(ToLuaTable)]
+struct RequireArgs(&'static str);
+
 #[no_mangle]
 pub extern "C" fn run(_: FunctionCtx, _: FunctionArgs) -> c_int {
     let lua = LuaState::global();
@@ -23,6 +27,9 @@ pub extern "C" fn run(_: FunctionCtx, _: FunctionArgs) -> c_int {
 
     let result: i32 = lua.call("sum", &Args2(97, 98)).unwrap();
     assert_eq!(result, 195);
+
+    let result: i32 = lua.call("require", &RequireArgs("fiber")).unwrap();
+    dbg!(result);
 
     0
 }

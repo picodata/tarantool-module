@@ -1,8 +1,8 @@
 use std::ffi::{CStr, CString};
 
 use crate::ffi::lua::{
-    luaT_state, lua_State, lua_getglobal, lua_gettop, lua_isnil, lua_pcall, lua_pop,
-    lua_pushinteger, lua_tointeger, lua_tostring,
+    luaT_state, lua_State, lua_getglobal, lua_isnil, lua_pcall, lua_pop, lua_pushinteger,
+    lua_pushstring, lua_tointeger, lua_tostring,
 };
 
 pub struct LuaState {
@@ -37,6 +37,12 @@ impl LuaState {
         let result = R::from_lua_value(self).map_err(|e| LuaCallError::GetResult(e))?;
         Ok(result)
     }
+}
+
+pub enum LuaValue {
+    Number(f64),
+    String(String),
+    // ...
 }
 
 #[derive(Debug, Fail)]
@@ -76,6 +82,14 @@ pub trait ToLuaValue {
 impl ToLuaValue for i32 {
     fn push_lua_value(&self, state: &LuaState) -> Result<(), ToLuaConversionError> {
         unsafe { lua_pushinteger(state.inner, (*self) as isize) }
+        Ok(())
+    }
+}
+
+impl ToLuaValue for &str {
+    fn push_lua_value(&self, state: &LuaState) -> Result<(), ToLuaConversionError> {
+        let name = CString::new(*self).expect("incorrect string");
+        unsafe { lua_pushstring(state.inner, name.into_raw()) };
         Ok(())
     }
 }
