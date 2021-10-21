@@ -325,3 +325,252 @@ pub fn test_multiple_unit_deferred() {
     let res = res.borrow().iter().copied().collect::<Vec<_>>();
     assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);
 }
+
+use tarantool::{ffi::lua as ffi, hlua::*};
+
+macro_rules! c_ptr {
+    ($s:literal) => {
+        ::std::concat![$s, "\0"].as_bytes().as_ptr() as *mut i8
+    }
+}
+
+// f: FnOnce() -> T
+// rc_f = Rc::new(f)                    : rc_f -*> RcBox { 1, 1, f }
+// ud = ffi::lua_newuserdata(lua, size) : ud -> LuaUserData {}
+//                                      : lua@{top} -> LuaUserData {}
+//
+// call_wrapper({ f, dropped? }) : f.call(); drop(f); true -> dropped?
+//   gc_wrapper({ f, dropped? }) : if !dropped? { drop(f) }
+//
+struct FuncOnce<F>(F);
+
+type FuncOnceUserData<F> = Option<F>;
+
+impl<'lua, L, F, T> Push<L> for FuncOnce<F>
+where
+    L: AsMutLua<'lua>,
+    F: FnOnce() -> T,
+    T: for<'a> Push<&'a mut InsideCallback>
+{
+    type Err = Void;
+
+    fn push_to_lua(self, mut lua: L) -> Result<PushGuard<L>, (Void, L)> {
+        unsafe {
+            let lptr = lua.as_mut_lua().state_ptr();
+            // pushing the function pointer as a userdata
+            let FuncOnce(f) = self;
+            push_userdata(lptr, f);
+
+            // pushing wrapper as a closure
+            ffi::lua_pushcclosure(lptr, wrap_call_once::<F, T>, 1);
+            Ok(PushGuard::new(lua, 1))
+        }
+    }
+}
+
+impl<'lua, F, T, L> PushOne<L> for FuncOnce<F>
+where
+    L: AsMutLua<'lua>,
+    F: FnOnce() -> T,
+    T: for<'a> Push<&'a mut InsideCallback>
+{}
+
+unsafe extern "C" fn wrap_call_once<F, T>(lua: *mut ffi::lua_State) -> i32
+where
+    F: FnOnce() -> T,
+    T: for<'a> Push<&'a mut InsideCallback>,
+{
+    // loading the object that we want to call from the Lua context
+    let ud_ptr = ffi::lua_touserdata(lua, ffi::lua_upvalueindex(1));
+    let maybe_ud = (ud_ptr as *mut FuncOnceUserData<F>).as_mut();
+
+    // creating a temporary Lua context in order to pass it to push &
+    // read functions
+    let mut cb_lua = InsideCallback { lua: LuaContext(lua) };
+
+    let ud = maybe_ud.unwrap_or_else(|| {
+        // lua_touserdata returned NULL
+        ffi::luaL_error(lua, c_ptr!("failed to extract upvalue"));
+        unreachable!();
+    });
+
+    // put None back into userdata
+    let f = ud.take().unwrap_or_else(|| {
+        // userdata contains None
+        ffi::luaL_error(
+            lua, c_ptr!("rust FnOnce callback was called more than once")
+        );
+        unreachable!();
+    });
+
+    // call f and drop it afterwards
+    let res = f();
+
+    // return results to lua
+    push_userdata(lua, res);
+    1
+}
+
+unsafe fn push_userdata<T>(lua: *mut ffi::lua_State, value: T) {
+    let ud_ptr = ffi::lua_newuserdata(lua, std::mem::size_of::<Option<T>>());
+    std::ptr::write(ud_ptr as *mut Option<T>, Some(value));
+
+    if std::mem::needs_drop::<T>() {
+        // Creating a metatable.
+        ffi::lua_newtable(lua);
+
+        // Index "__gc" in the metatable calls the object's destructor.
+        ffi::lua_pushstring(lua, c_ptr!("__gc"));
+        ffi::lua_pushcfunction(lua, wrap_gc::<T>);
+        ffi::lua_settable(lua, -3);
+
+        ffi::lua_setmetatable(lua, -2);
+    }
+
+    /// A callback for the "__gc" event. It checks if the value was moved out and if
+    /// not it drops the value.
+    unsafe extern "C" fn wrap_gc<T>(lua: *mut ffi::lua_State) -> i32 {
+        let ud_ptr = ffi::lua_touserdata(lua, 1);
+        let ud = (ud_ptr as *mut Option<T>)
+            .as_mut()
+            .expect("__gc called with userdata pointing to NULL");
+        drop(ud.take());
+
+        0
+    }
+}
+
+pub fn func_once_gc() {
+    static mut DROPPED_TIMES: isize = 0;
+    static mut CALLED_TIMES: isize = 0;
+
+    struct Foo;
+    impl Drop for Foo {
+        fn drop(&mut self) {
+            unsafe { DROPPED_TIMES += 1; }
+        }
+    }
+    let foo = Foo;
+    {
+        Lua::new()
+            .set("drop_foo", FuncOnce(move || {
+                unsafe { CALLED_TIMES += 1 };
+                drop(foo)
+            }));
+    }
+    assert_eq!(unsafe { DROPPED_TIMES }, 1);
+    assert_eq!(unsafe { CALLED_TIMES }, 0);
+}
+
+pub fn func_once_call() {
+    static mut DROPPED_TIMES: isize = 0;
+    static mut CALLED_TIMES: isize = 0;
+
+    struct Foo;
+    impl Drop for Foo {
+        fn drop(&mut self) {
+            unsafe { DROPPED_TIMES += 1; }
+        }
+    }
+    let foo = Foo;
+    let res: i32 = {
+        let mut lua = Lua::new();
+        lua.set("drop_foo", FuncOnce(move || {
+            unsafe { CALLED_TIMES += 1 };
+            drop(foo);
+            13
+        }));
+        lua.execute("return drop_foo()").unwrap()
+    };
+    assert_eq!(unsafe { DROPPED_TIMES }, 1);
+    assert_eq!(unsafe { CALLED_TIMES }, 1);
+    assert_eq!(res, 13);
+}
+
+pub fn func_once_call_twice() {
+    static mut DROPPED_TIMES: isize = 0;
+    static mut CALLED_TIMES: isize = 0;
+
+    struct Foo;
+    impl Drop for Foo {
+        fn drop(&mut self) {
+            unsafe { DROPPED_TIMES += 1; }
+        }
+    }
+
+    let foo = Foo;
+    let msg = {
+        let mut lua = Lua::new();
+        lua.set("drop_foo", FuncOnce(move || {
+            unsafe { CALLED_TIMES += 1 };
+            drop(foo)
+        }));
+        lua.execute::<()>("drop_foo()").unwrap();
+        match lua.execute::<()>("drop_foo()").unwrap_err() {
+            LuaError::ExecutionError(msg) => msg,
+            _ => panic!("unexpected error kind"),
+        }
+    };
+    assert_eq!(unsafe { DROPPED_TIMES }, 1);
+    assert_eq!(unsafe { CALLED_TIMES }, 1);
+    assert_eq!(&msg, "[string \"chunk\"]:1: rust FnOnce callback was called more than once");
+}
+
+struct GlobalRef {
+    reference: i32,
+}
+
+impl GlobalRef {
+    fn new<'lua, L>(mut l: L) -> Self
+    where
+        L: AsMutLua<'lua>,
+    {
+        let reference = unsafe {
+            ffi::luaL_ref(l.as_mut_lua().state_ptr(), ffi::LUA_GLOBALSINDEX)
+        };
+        Self { reference }
+    }
+}
+
+pub fn test_multiple_deferred_correct() {
+    let mut res = vec![];
+    let mut references = vec![];
+    let mut lua = crate::hlua::global();
+    for v in vec![vec![1, 2], vec![3, 4], vec![5, 6]] {
+        let mut require: LuaFunction<_> = lua.get("require").unwrap();
+        let mut fiber_module: LuaTable<_> = require.call_with_args(()).unwrap();
+        let mut fiber_new: LuaFunction<_> = fiber_module.get("new").unwrap();
+        let fiber_func = FuncOnce(
+            move || v.into_iter().map(|e| e + 1).collect::<Vec<_>>()
+        );
+        let mut fiber: LuaTable<_> = fiber_new.call_with_args(fiber_func).unwrap();
+        let () = fiber.method("set_joinable", true).unwrap();
+        references.push(fiber.into_ref().unwrap());
+
+        // unsafe {
+        //     let lptr = lua.as_mut_lua().state_ptr();
+        //     ffi::lua_getglobal(lptr, c_ptr!("require"));
+        //     ffi::lua_pushstring(lptr, c_ptr!("fiber"));
+        //     if ffi::lua_pcall(lptr, 1, 1, 0) == ffi::LUA_ERRRUN {
+        //         panic!(
+        //             "{:?}",
+        //             std::ffi::CStr::from_ptr(ffi::lua_tostring(lptr, -1)),
+        //         )
+        //     }
+        // };
+        // fibers.push(
+        //     fiber::defer(move || {
+        //         v.into_iter().map(|e| e + 1).collect::<Vec<_>>()
+        //     })
+        // )
+    }
+    res.push(1);
+    let mut registry = LuaTable::registry(lua);
+    for r in references {
+        let fiber: LuaTable<_> = registry.get(r).unwrap();
+        let res: Vec<i32> = fiber.method("join", ()).unwrap();
+    }
+    res.push(8);
+    assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);
+}
+

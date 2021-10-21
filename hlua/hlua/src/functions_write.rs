@@ -7,6 +7,7 @@ use crate::{
     LuaContext,
     LuaRead,
     Push,
+    PushNoErr,
     PushGuard,
     PushOne,
     Void,
@@ -335,7 +336,7 @@ impl_function_ext!(A, B, C, D, E, F, G, H, I, J);
 /// Lua variable. This type is here to enforce this restriction.
 #[derive(Debug)]
 pub struct InsideCallback {
-    lua: LuaContext,
+    pub lua: LuaContext,
 }
 
 unsafe impl<'a, 'lua> AsLua<'lua> for &'a InsideCallback {

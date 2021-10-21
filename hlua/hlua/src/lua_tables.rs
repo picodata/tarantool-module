@@ -5,11 +5,18 @@ use crate::{
     AsLua,
     AsMutLua,
     Push,
+    PushNoErr,
     PushGuard,
     PushOne,
     LuaRead,
+    LuaError,
+    LuaFunctionCallError,
     Void,
 };
+
+pub struct GlobalRef {
+    reference: i32,
+}
 
 /// Represents a table stored in the Lua context.
 ///
@@ -173,6 +180,86 @@ impl<'lua, L> LuaTable<L>
         }
     }
 
+    fn method_impl<'l, I, A, R, E>(
+        &'l mut self,
+        name: I,
+        args: A,
+        return_count: u32,
+    ) -> Result<R, LuaFunctionCallError<E>>
+    where
+        I: for<'i> PushOne<&'i mut &'l mut LuaTable<L>, Err = E>,
+        A: for<'r> Push<&'r mut LuaTable<L>, Err = E>,
+        R: for<'c> LuaRead<PushGuard<&'c mut LuaTable<L>>>,
+        E: Into<Void>,
+    {
+        unsafe {
+            // Because of a weird borrow error, we need to push the index by
+            // borrowing `&mut &mut L` instead of `&mut L`. `self` matches
+            // `&mut L`, so in theory we could do `&mut self`.  But in practice
+            // `self` isn't mutable, so we need to move it into `me` first.
+            // TODO: remove this by simplifying the PushOne requirement;
+            //       however this is complex because of the empty_array method
+            let mut me = self;
+
+            // put the method onto the stack
+            name.push_no_err(&mut me).assert_one_and_forget();
+            ffi::lua_gettable(me.as_mut_lua().0, me.offset(-1));
+
+            // push the current table onto the stack as the first argument
+            ffi::lua_pushvalue(me.as_mut_lua().0, me.offset(-1));
+
+            let num_pushed = match args.push_to_lua(&mut me) {
+                Ok(g) => g.forget_internal(),
+                Err((err, _)) =>
+                    return Err(LuaFunctionCallError::PushError(err)),
+            };
+            let pcall_return_value = ffi::lua_pcall(
+                me.as_mut_lua().0,
+                num_pushed + 1,
+                return_count as i32,
+                0,
+            );
+
+            let raw_lua = me.as_lua();
+            let pushed_value = PushGuard {
+                lua: me,
+                size: return_count as i32,
+                raw_lua: raw_lua,
+            };
+
+            match pcall_return_value {
+                0 => LuaRead::lua_read(pushed_value)
+                        .map_err(|_| LuaError::WrongType.into()),
+                ffi::LUA_ERRMEM => panic!("lua_pcall returned LUA_ERRMEM"),
+                ffi::LUA_ERRRUN => {
+                    let error_msg: String = LuaRead::lua_read(pushed_value)
+                        .ok()
+                        .expect("can't find error message at the top of the Lua stack");
+                    Err(LuaError::ExecutionError(error_msg).into())
+                }
+                _ => panic!(
+                    "Unknown error code returned by lua_pcall: {}",
+                    pcall_return_value,
+                ),
+            }
+        }
+    }
+
+    #[inline]
+    pub fn method<'l, R, I, A, E>(
+        &'l mut self,
+        name: I,
+        args: A,
+    ) -> Result<R, LuaFunctionCallError<E>>
+    where
+        I: for<'i> PushOne<&'i mut &'l mut LuaTable<L>, Err = E>,
+        A: for<'a> Push<&'a mut LuaTable<L>, Err = E>,
+        R: for<'r> LuaRead<PushGuard<&'r mut LuaTable<L>>>,
+        E: Into<Void>,
+    {
+        self.method_impl(name, args, 1)
+    }
+
     /// Loads a value in the table, with the result capturing the table by value.
     // TODO: doc
     #[inline]
@@ -263,6 +350,17 @@ impl<'lua, L> LuaTable<L>
             guard.forget();
             ffi::lua_settable(raw_lua, my_offset);
             Ok(())
+        }
+    }
+
+    pub fn into_ref(mut self) -> Result<i32, Self> {
+        if self.index != -1 {
+            Err(self)
+        } else {
+            let reference = unsafe {
+                ffi::luaL_ref(self.table.as_mut_lua().0, ffi::LUA_REGISTRYINDEX)
+            };
+            Ok(reference)
         }
     }
 

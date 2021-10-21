@@ -250,7 +250,7 @@ pub unsafe trait AsMutLua<'lua>: AsLua<'lua> {
 /// Opaque type that contains the raw Lua context.
 // TODO: probably no longer necessary
 #[derive(Copy, Clone, Debug)]
-pub struct LuaContext(*mut ffi::lua_State);
+pub struct LuaContext(pub *mut ffi::lua_State);
 
 impl LuaContext {
     /// Return a pointer to the inner `lua_State` for this context. This is an escape hatch that
@@ -341,20 +341,33 @@ pub trait Push<L> {
     /// another implementation (for example `5.push_to_lua`) or by calling
     /// `userdata::push_userdata`.
     fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)>;
+}
 
-    /// Same as `push_to_lua` but can only succeed and is only available if `Err` is `Void`.
-    // TODO: when https://github.com/rust-lang/rust/issues/20041 is fixed, use `Self::Err == Void`
+pub trait PushNoErr<L, E>
+where
+    Self: Sized,
+    Self: Push<L, Err = E>,
+    E: Into<Void>,
+{
+
+    /// Same as `push_to_lua` but can only succeed and is only available if
+    /// `Err` is `Void`.
     #[inline]
-    fn push_no_err<E>(self, lua: L) -> PushGuard<L>
-        where Self: Sized,
-              Self: Push<L, Err = E>,
-              E: Into<Void>,
+    fn push_no_err(self, lua: L) -> PushGuard<L>
     {
         match self.push_to_lua(lua) {
             Ok(p) => p,
             Err(_) => unreachable!(),
         }
     }
+}
+
+impl<L, E, T> PushNoErr<L, E> for T
+where
+    T: Sized,
+    T: Push<L, Err = E>,
+    E: Into<Void>,
+{
 }
 
 /// Extension trait for `Push`. Guarantees that only one element will be pushed.
@@ -646,6 +659,11 @@ impl<'lua> Lua<'lua> {
     {
         let mut f = lua_functions::LuaFunction::load(self, code)?;
         f.call()
+    }
+
+    #[inline]
+    pub fn eval<'a>(&'a mut self, code: &str) -> Result<(), LuaError> {
+        lua_functions::LuaFunction::load(self, code)?.call()
     }
 
     /// Executes some Lua code on the context.

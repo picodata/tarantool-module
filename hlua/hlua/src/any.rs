@@ -2,6 +2,7 @@ use crate::{
     AsLua,
     AsMutLua,
     Push,
+    PushNoErr,
     PushGuard,
     PushOne,
     LuaRead,
