@@ -48,6 +48,40 @@ pub struct luaL_Reg {
 pub type lua_Number = libc::c_double;
 pub type lua_Integer = libc::ptrdiff_t;
 
+/// Type for C functions.
+///
+/// In order to communicate properly with Lua, a C function must use the
+/// following protocol, which defines the way parameters and results are passed:
+/// a C function receives its arguments from Lua in its stack in direct order
+/// (the first argument is pushed first). So, when the function starts,
+/// [`lua_gettop`]`(L)` returns the number of arguments received by the function.
+/// The first argument (if any) is at index 1 and its last argument is at index
+/// [`lua_gettop`](L). To return values to Lua, a C function just pushes them
+/// onto the stack, in direct order (the first result is pushed first), and
+/// returns the number of results. Any other value in the stack below the
+/// results will be properly discarded by Lua. Like a Lua function, a C function
+/// called by Lua can also return many results.
+///
+/// As an example, the following function receives a variable number of
+/// numerical arguments and returns their average and sum:
+///
+/// ```
+/// unsafe extern "C" fn foo(l: *mut lua_State) {
+///     let n = lua_gettop(l);    /* number of arguments */
+///     let mut sum: lua_Number = 0;
+///     let i: i32;
+///     for i in 1..=n {
+///         if !lua_isnumber(l, i) {
+///             lua_pushstring(l, CString::new("incorrect argument").into_raw());
+///             lua_error(l);
+///         }
+///         sum += lua_tonumber(l, i);
+///     }
+///     lua_pushnumber(l, sum / n); /* first result */
+///     lua_pushnumber(l, sum);     /* second result */
+///     return 2;                   /* number of results */
+/// }
+/// ```
 pub type lua_CFunction = unsafe extern "C" fn(l: *mut lua_State) -> c_int;
 
 pub type lua_Alloc = extern "C" fn(
@@ -80,6 +114,10 @@ extern "C" {
 
     pub fn lua_version(L: *mut lua_State) -> *const lua_Number;
 
+    /// Returns the index of the top element in the stack. Because indices start
+    /// at 1, this result is equal to the number of elements in the stack (and
+    /// so 0 means an empty stack).
+    /// *[-0, +0, -]*
     pub fn lua_gettop(l: *mut lua_State) -> c_int;
     pub fn lua_settop(l: *mut lua_State, idx: c_int);
     pub fn lua_pushboolean(l: *mut lua_State, n: c_int);
@@ -87,11 +125,26 @@ extern "C" {
     pub fn lua_pushstring(l: *mut lua_State, s: *const c_schar) -> *const c_schar;
     pub fn lua_pushinteger(l: *mut lua_State, n: isize);
     pub fn lua_pushnumber(l: *mut lua_State, n: c_double);
+
+    /// Pushes a new C closure onto the stack.
+    /// *[-n, +1, m]*
+    ///
+    /// When a C function is created, it is possible to associate some values
+    /// with it, thus creating a C closure; these values are then accessible to
+    /// the function whenever it is called. To associate values with a C
+    /// function, first these values should be pushed onto the stack (when there
+    /// are multiple values, the first value is pushed first). Then
+    /// lua_pushcclosure is called to create and push the C function onto the
+    /// stack, with the argument `n` telling how many values should be
+    /// associated with the function. lua_pushcclosure also pops these values
+    /// from the stack.
+    ///
+    /// The maximum value for `n` is 255.
     pub fn lua_pushcclosure(l: *mut lua_State, fun: lua_CFunction, n: c_int);
     pub fn lua_pushnil(l: *mut lua_State);
-    /// [-0, +1, -]
-    ///
+
     /// Pushes a copy of the element at the given valid `index` onto the stack.
+    /// *[-0, +1, -]*
     pub fn lua_pushvalue(l: *mut lua_State, index: c_int);
     pub fn lua_tointeger(l: *mut lua_State, idx: c_int) -> isize;
     pub fn lua_toboolean(l: *mut lua_State, idx: c_int) -> c_int;
@@ -100,20 +153,46 @@ extern "C" {
     pub fn lua_setfield(l: *mut lua_State, idx: c_int, s: *const c_schar);
     pub fn lua_getfield(l: *mut lua_State, idx: c_int, s: *const c_schar);
     pub fn lua_createtable(l: *mut lua_State, narr: c_int, nrec: c_int);
-    pub fn lua_newuserdata(l: *mut lua_State, sz: libc::size_t) -> *mut libc::c_void;
-    /// [-1, +1, e]
+
+    /// This function allocates a new block of memory with the given size,
+    /// pushes onto the stack a new full userdata with the block address, and
+    /// returns this address.
+    /// *[-0, +1, m]*
     ///
+    /// Userdata represent C values in Lua. A full userdata represents a block
+    /// of memory. It is an object (like a table): you must create it, it can
+    /// have its own metatable, and you can detect when it is being collected. A
+    /// full userdata is only equal to itself (under raw equality).
+    ///
+    /// When Lua collects a full userdata with a gc metamethod, Lua calls the
+    /// metamethod and marks the userdata as finalized. When this userdata is
+    /// collected again then Lua frees its corresponding memory.
+    pub fn lua_newuserdata(l: *mut lua_State, sz: libc::size_t) -> *mut libc::c_void;
+
     /// Pushes onto the stack the value `t[k]`, where `t` is the value at the
     /// given valid `index` and `k` is the value at the top of the stack.
+    /// *[-1, +1, e]*
     ///
     /// This function pops the key from the stack (putting the resulting value
     /// in its place). As in Lua, this function may trigger a metamethod for the
     /// "index" event
     pub fn lua_gettable(l: *mut lua_State, index: c_int);
-    pub fn lua_settable(l: *mut lua_State, idx: c_int);
+
+    /// Does the equivalent to `t[k] = v`, where `t` is the value at the given
+    /// valid `index`, `v` is the value at the top of the stack, and `k` is the
+    /// value just below the top.
+    /// *[-2, +0, e]*
+    ///
+    /// This function pops both the key and the value from the stack. As in Lua,
+    /// this function may trigger a metamethod for the "newindex" event.
+    pub fn lua_settable(l: *mut lua_State, index: c_int);
     pub fn lua_type(state: *mut lua_State, index: c_int) -> c_int;
-    pub fn lua_setmetatable(l: *mut lua_State, objindex: c_int) -> c_int;
-    pub fn lua_getmetatable(l: *mut lua_State, objindex: c_int) -> c_int;
+
+    /// Pops a table from the stack and sets it as the new metatable for the
+    /// value at the given acceptable `index`.
+    /// *[-1, +0, -]*
+    pub fn lua_setmetatable(l: *mut lua_State, index: c_int) -> c_int;
+    pub fn lua_getmetatable(l: *mut lua_State, index: c_int) -> c_int;
 
     pub fn lua_tonumberx(l: *mut lua_State, idx: c_int, isnum: *mut c_int) -> lua_Number;
     pub fn lua_tointegerx(l: *mut lua_State, idx: c_int, isnum: *mut c_int) -> lua_Integer;
@@ -163,6 +242,13 @@ pub unsafe fn lua_pop(state: *mut lua_State, n: c_int) {
 }
 
 #[inline(always)]
+/// Pushes a C function onto the stack. This function receives a pointer to a C
+/// function and pushes onto the stack a Lua value of type function that, when
+/// called, invokes the corresponding C function.
+/// `[-0, +1, m]`
+///
+/// Any function to be registered in Lua must follow the correct protocol to
+/// receive its parameters and return its results (see [`lua_CFunction`]).
 pub unsafe fn lua_pushcfunction(state: *mut lua_State, f: lua_CFunction) {
     lua_pushcclosure(state, f, 0);
 }
