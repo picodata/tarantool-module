@@ -133,7 +133,7 @@ extern "C" {
     /// so 0 means an empty stack).
     /// *[-0, +0, -]*
     pub fn lua_gettop(l: *mut lua_State) -> c_int;
-    pub fn lua_settop(l: *mut lua_State, idx: c_int);
+    pub fn lua_settop(l: *mut lua_State, index: c_int);
     pub fn lua_pushboolean(l: *mut lua_State, n: c_int);
     pub fn lua_pushlstring(l: *mut lua_State, s: *const libc::c_char, l: libc::size_t);
     pub fn lua_pushstring(l: *mut lua_State, s: *const c_schar) -> *const c_schar;
@@ -160,12 +160,17 @@ extern "C" {
     /// Pushes a copy of the element at the given valid `index` onto the stack.
     /// *[-0, +1, -]*
     pub fn lua_pushvalue(l: *mut lua_State, index: c_int);
-    pub fn lua_tointeger(l: *mut lua_State, idx: c_int) -> isize;
-    pub fn lua_toboolean(l: *mut lua_State, idx: c_int) -> c_int;
-    pub fn lua_tolstring(l: *mut lua_State, idx: c_int, len: *mut usize) -> *const c_schar;
-    pub fn lua_touserdata(l: *mut lua_State, idx: c_int) -> *mut libc::c_void;
-    pub fn lua_setfield(l: *mut lua_State, idx: c_int, s: *const c_schar);
-    pub fn lua_getfield(l: *mut lua_State, idx: c_int, s: *const c_schar);
+    pub fn lua_tointeger(l: *mut lua_State, index: c_int) -> isize;
+    pub fn lua_toboolean(l: *mut lua_State, index: c_int) -> c_int;
+    pub fn lua_tolstring(l: *mut lua_State, index: c_int, len: *mut usize) -> *const c_schar;
+
+    /// If the value at the given acceptable `index` is a full userdata, returns
+    /// its block address. If the value is a light userdata, returns its
+    /// pointer. Otherwise, returns `NULL`.
+    /// *[-0, +0, -]*
+    pub fn lua_touserdata(l: *mut lua_State, index: c_int) -> *mut libc::c_void;
+    pub fn lua_setfield(l: *mut lua_State, index: c_int, s: *const c_schar);
+    pub fn lua_getfield(l: *mut lua_State, index: c_int, s: *const c_schar);
     pub fn lua_createtable(l: *mut lua_State, narr: c_int, nrec: c_int);
 
     /// This function allocates a new block of memory with the given size,
@@ -208,20 +213,24 @@ extern "C" {
     pub fn lua_setmetatable(l: *mut lua_State, index: c_int) -> c_int;
     pub fn lua_getmetatable(l: *mut lua_State, index: c_int) -> c_int;
 
-    pub fn lua_tonumberx(l: *mut lua_State, idx: c_int, isnum: *mut c_int) -> lua_Number;
-    pub fn lua_tointegerx(l: *mut lua_State, idx: c_int, isnum: *mut c_int) -> lua_Integer;
+    pub fn lua_tonumberx(l: *mut lua_State, index: c_int, isnum: *mut c_int) -> lua_Number;
+    pub fn lua_tointegerx(l: *mut lua_State, index: c_int, isnum: *mut c_int) -> lua_Integer;
 
     pub fn lua_pcall(l: *mut lua_State, nargs: c_int, nresults: c_int, msgh: c_int) -> c_int;
     pub fn lua_load(l: *mut lua_State, reader: lua_Reader, dt: *mut libc::c_void, chunkname: *const libc::c_char, mode: *const libc::c_char) -> c_int;
     pub fn lua_dump(l: *mut lua_State, writer: lua_Writer, data: *mut libc::c_void) -> c_int;
 
+    /// Generates a Lua error. The error message (which can actually be a Lua
+    /// value of any type) must be on the stack top. This function does a long
+    /// jump, and therefore never returns. (see [`luaL_error`]).
+    /// *[-1, +0, v]*
     pub fn lua_error(l: *mut lua_State) -> c_int;
-    pub fn lua_next(l: *mut lua_State, idx: c_int) -> c_int;
+    pub fn lua_next(l: *mut lua_State, index: c_int) -> c_int;
     pub fn lua_concat(l: *mut lua_State, n: c_int);
-    pub fn lua_len(l: *mut lua_State, idx: c_int);
+    pub fn lua_len(l: *mut lua_State, index: c_int);
 
-    pub fn lua_insert(l: *mut lua_State, idx: c_int);
-    pub fn lua_remove(l: *mut lua_State, idx: c_int);
+    pub fn lua_insert(l: *mut lua_State, index: c_int);
+    pub fn lua_remove(l: *mut lua_State, index: c_int);
 
     pub fn luaopen_base(l: *mut lua_State);
     pub fn luaopen_bit(l: *mut lua_State);
@@ -236,6 +245,15 @@ extern "C" {
     // lauxlib functions.
     pub fn luaL_newstate() -> *mut lua_State;
     pub fn luaL_register(l: *mut lua_State, libname: *const c_schar, lr: *const luaL_Reg);
+
+    /// Raises an error. The error message format is given by `fmt` plus any
+    /// extra arguments, following the same rules of `lua_pushfstring`. It also
+    /// adds at the beginning of the message the file name and the line number
+    /// where the error occurred, if this information is available.
+    /// *[-0, +0, v]*
+    ///
+    /// This function never returns, but it is an idiom to use it in C functions
+    /// as return `luaL_error(args)`.
     pub fn luaL_error(l: *mut lua_State, fmt: *const c_schar, ...) -> c_int;
     pub fn luaL_openlibs(L: *mut lua_State);
 
@@ -301,23 +319,34 @@ pub unsafe fn lua_newtable(state: *mut lua_State) {
 }
 
 #[inline(always)]
+/// When a C function is created, it is possible to associate some values with
+/// it, thus creating a C closure; these values are called upvalues and are
+/// accessible to the function whenever it is called (see [`lua_pushcclosure`]).
+///
+/// Whenever a C function is called, its **upvalues** are located at specific
+/// pseudo-indices. These pseudo-indices are produced by the function
+/// `lua_upvalueindex`. The first value associated with a function is at
+/// position `lua_upvalueindex(1)`, and so on. Any access to
+/// `lua_upvalueindex(n)`, where n is greater than the number of upvalues of the
+/// current function (but not greater than 256), produces an acceptable (but
+/// invalid) index.
 pub fn lua_upvalueindex(i: c_int) -> c_int {
     LUA_GLOBALSINDEX - i
 }
 
 #[inline(always)]
-pub unsafe fn lua_isfunction(state: *mut lua_State, idx: c_int) -> bool {
-    lua_type(state, idx) == LUA_TFUNCTION
+pub unsafe fn lua_isfunction(state: *mut lua_State, index: c_int) -> bool {
+    lua_type(state, index) == LUA_TFUNCTION
 }
 
 #[inline(always)]
-pub unsafe fn lua_istable(state: *mut lua_State, idx: c_int) -> bool {
-    lua_type(state, idx) == LUA_TTABLE
+pub unsafe fn lua_istable(state: *mut lua_State, index: c_int) -> bool {
+    lua_type(state, index) == LUA_TTABLE
 }
 
 #[inline(always)]
-pub unsafe fn lua_islightuserdata(state: *mut lua_State, idx: c_int) -> bool {
-    lua_type(state, idx) == LUA_TLIGHTUSERDATA
+pub unsafe fn lua_islightuserdata(state: *mut lua_State, index: c_int) -> bool {
+    lua_type(state, index) == LUA_TLIGHTUSERDATA
 }
 
 #[inline(always)]
@@ -326,23 +355,23 @@ pub unsafe fn lua_isnil(state: *mut lua_State, index: c_int) -> bool {
 }
 
 #[inline(always)]
-pub unsafe fn lua_isboolean(state: *mut lua_State, idx: c_int) -> bool {
-    lua_type(state, idx) == LUA_TBOOLEAN
+pub unsafe fn lua_isboolean(state: *mut lua_State, index: c_int) -> bool {
+    lua_type(state, index) == LUA_TBOOLEAN
 }
 
 #[inline(always)]
-pub unsafe fn lua_isthread(state: *mut lua_State, idx: c_int) -> bool {
-    lua_type(state, idx) == LUA_TTHREAD
+pub unsafe fn lua_isthread(state: *mut lua_State, index: c_int) -> bool {
+    lua_type(state, index) == LUA_TTHREAD
 }
 
 #[inline(always)]
-pub unsafe fn lua_isnone(state: *mut lua_State, idx: c_int) -> bool {
-    lua_type(state, idx) == LUA_TNONE
+pub unsafe fn lua_isnone(state: *mut lua_State, index: c_int) -> bool {
+    lua_type(state, index) == LUA_TNONE
 }
 
 #[inline(always)]
-pub unsafe fn lua_isnoneornil(state: *mut lua_State, idx: c_int) -> bool {
-    lua_type(state, idx) <= 0
+pub unsafe fn lua_isnoneornil(state: *mut lua_State, index: c_int) -> bool {
+    lua_type(state, index) <= 0
 }
 
 #[inline(always)]
