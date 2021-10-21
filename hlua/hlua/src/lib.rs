@@ -137,6 +137,7 @@ mod rust_tables;
 mod userdata;
 mod values;
 mod tuples;
+pub mod yego;
 
 /// Main object of the library.
 ///

@@ -1,4 +1,7 @@
-use tarantool::hlua::{LuaFunction, LuaTable};
+use tarantool::{
+    hlua::{LuaFunction, LuaTable, yego::*},
+    ffi::tarantool::luaT_state,
+};
 
 pub fn print() {
     let mut lua = crate::hlua::global();
@@ -19,3 +22,10 @@ pub fn json() {
     let res: String = encode.call_with_args(table).unwrap();
     assert_eq!(res, r#"{"a":"b"}"#);
 }
+
+pub fn yego() {
+    let lua = EmptyStack(unsafe { luaT_state() });
+    let lua = lua.push_integer(420);
+    assert_eq!(lua.to_integer(Minus1), 420);
+}
+
