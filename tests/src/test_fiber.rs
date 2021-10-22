@@ -2,10 +2,13 @@ use std::{
     cell::RefCell,
     rc::Rc,
     time::Duration,
+    any::TypeId,
+    marker::PhantomData,
 };
 
-use tarantool::fiber::{
-    self, fiber_yield, is_cancelled, sleep, Cond, Fiber, FiberAttr
+use tarantool::{
+    fiber::{self, fiber_yield, is_cancelled, sleep, Cond, Fiber, FiberAttr},
+    ffi::c_void,
 };
 
 pub fn test_fiber_new() {
@@ -350,7 +353,8 @@ impl<'lua, L, F, T> Push<L> for FuncOnce<F>
 where
     L: AsMutLua<'lua>,
     F: FnOnce() -> T,
-    T: for<'a> Push<&'a mut InsideCallback>
+    T: for<'a> Push<&'a mut InsideCallback>,
+    T: 'static,
 {
     type Err = Void;
 
@@ -372,13 +376,15 @@ impl<'lua, F, T, L> PushOne<L> for FuncOnce<F>
 where
     L: AsMutLua<'lua>,
     F: FnOnce() -> T,
-    T: for<'a> Push<&'a mut InsideCallback>
+    T: for<'a> Push<&'a mut InsideCallback>,
+    T: 'static,
 {}
 
 unsafe extern "C" fn wrap_call_once<F, T>(lua: *mut ffi::lua_State) -> i32
 where
     F: FnOnce() -> T,
     T: for<'a> Push<&'a mut InsideCallback>,
+    T: 'static,
 {
     // loading the object that we want to call from the Lua context
     let ud_ptr = ffi::lua_touserdata(lua, ffi::lua_upvalueindex(1));
@@ -407,11 +413,33 @@ where
     let res = f();
 
     // return results to lua
-    push_userdata(lua, res);
+    push_userdata(lua, UserDataBox::new(res));
     1
 }
 
+struct UserDataBox<T: 'static + Sized> {
+    type_id: TypeId,
+    value: T,
+}
+
+impl<T: 'static + Sized> UserDataBox<T> {
+    const TYPE_ID: TypeId = TypeId::of::<T>();
+
+    fn new(value: T) -> Self {
+        Self { type_id: Self::TYPE_ID, value }
+    }
+
+    fn try_from_ptr(ptr: *const c_void) -> Option<Self> {
+        let tid = (ptr as *const TypeId).as_ref()?;
+        if tid != Self::TYPE_ID {
+            return None;
+        }
+        (ptr as *const )
+    }
+}
+
 unsafe fn push_userdata<T>(lua: *mut ffi::lua_State, value: T) {
+    struct 
     let ud_ptr = ffi::lua_newuserdata(lua, std::mem::size_of::<Option<T>>());
     std::ptr::write(ud_ptr as *mut Option<T>, Some(value));
 
@@ -427,8 +455,8 @@ unsafe fn push_userdata<T>(lua: *mut ffi::lua_State, value: T) {
         ffi::lua_setmetatable(lua, -2);
     }
 
-    /// A callback for the "__gc" event. It checks if the value was moved out and if
-    /// not it drops the value.
+    /// A callback for the "__gc" event. It checks if the value was moved out
+    /// and if not it drops the value.
     unsafe extern "C" fn wrap_gc<T>(lua: *mut ffi::lua_State) -> i32 {
         let ud_ptr = ffi::lua_touserdata(lua, 1);
         let ud = (ud_ptr as *mut Option<T>)
@@ -516,19 +544,29 @@ pub fn func_once_call_twice() {
     assert_eq!(&msg, "[string \"chunk\"]:1: rust FnOnce callback was called more than once");
 }
 
-struct GlobalRef {
-    reference: i32,
+struct UserDataBoxOnStack<T, L> {
+    lua: L,
+    index: i32,
+    marker: PhantomData<T>,
 }
 
-impl GlobalRef {
-    fn new<'lua, L>(mut l: L) -> Self
-    where
-        L: AsMutLua<'lua>,
-    {
-        let reference = unsafe {
-            ffi::luaL_ref(l.as_mut_lua().state_ptr(), ffi::LUA_GLOBALSINDEX)
+impl<'lua, T, L> LuaRead<L> for UserDataBox<T>
+where
+    L: AsMutLua<'lua>,
+    T: 'static,
+{
+    fn lua_read_at_position(lua: L, index: i32) -> Result<Self, L> {
+        let ud_ptr = unsafe {
+            ffi::lua_touserdata(lua.as_lua().state_ptr(), index)
         };
-        Self { reference }
+
+        if !UserDataBox::<T>::is_good(ud_ptr) {
+            return Err(lua);
+        }
+
+        UserDataBox::<T>
+
+        Ok(Self::new(value))
     }
 }
 
@@ -568,7 +606,7 @@ pub fn test_multiple_deferred_correct() {
     let mut registry = LuaTable::registry(lua);
     for r in references {
         let fiber: LuaTable<_> = registry.get(r).unwrap();
-        let res: Vec<i32> = fiber.method("join", ()).unwrap();
+        let res: UserDataBox<Vec<i32>> = fiber.method("join", ()).unwrap();
     }
     res.push(8);
     assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);

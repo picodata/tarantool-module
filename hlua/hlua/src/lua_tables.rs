@@ -14,10 +14,6 @@ use crate::{
     Void,
 };
 
-pub struct GlobalRef {
-    reference: i32,
-}
-
 /// Represents a table stored in the Lua context.
 ///
 /// Just like you can read variables as integers and strings, you can also read Lua table by
