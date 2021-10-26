@@ -3,7 +3,7 @@ use std::{
     rc::Rc,
     time::Duration,
     any::TypeId,
-    marker::PhantomData,
+    ffi::CStr,
 };
 
 use tarantool::{
@@ -337,6 +337,10 @@ macro_rules! c_ptr {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// FuncOnce
+////////////////////////////////////////////////////////////////////////////////
+
 // f: FnOnce() -> T
 // rc_f = Rc::new(f)                    : rc_f -*> RcBox { 1, 1, f }
 // ud = ffi::lua_newuserdata(lua, size) : ud -> LuaUserData {}
@@ -346,8 +350,6 @@ macro_rules! c_ptr {
 //   gc_wrapper({ f, dropped? }) : if !dropped? { drop(f) }
 //
 struct FuncOnce<F>(F);
-
-type FuncOnceUserData<F> = Option<F>;
 
 impl<'lua, L, F, T> Push<L> for FuncOnce<F>
 where
@@ -363,7 +365,7 @@ where
             let lptr = lua.as_mut_lua().state_ptr();
             // pushing the function pointer as a userdata
             let FuncOnce(f) = self;
-            push_userdata(lptr, f);
+            push_userdata(lptr, JustUserData::new(f));
 
             // pushing wrapper as a closure
             ffi::lua_pushcclosure(lptr, wrap_call_once::<F, T>, 1);
@@ -380,19 +382,23 @@ where
     T: 'static,
 {}
 
+unsafe fn push_func_once<F, T>(lua: *mut ffi::lua_State, f: F)
+where
+    F: FnOnce() -> T,
+    T: 'static,
+{
+    push_userdata(lua, JustUserData::new(f));
+    ffi::lua_pushcclosure(lua, wrap_call_once::<F, T>, 1);
+}
+
 unsafe extern "C" fn wrap_call_once<F, T>(lua: *mut ffi::lua_State) -> i32
 where
     F: FnOnce() -> T,
-    T: for<'a> Push<&'a mut InsideCallback>,
     T: 'static,
 {
     // loading the object that we want to call from the Lua context
     let ud_ptr = ffi::lua_touserdata(lua, ffi::lua_upvalueindex(1));
-    let maybe_ud = (ud_ptr as *mut FuncOnceUserData<F>).as_mut();
-
-    // creating a temporary Lua context in order to pass it to push &
-    // read functions
-    let mut cb_lua = InsideCallback { lua: LuaContext(lua) };
+    let maybe_ud = (ud_ptr as *mut JustUserData<F>).as_mut();
 
     let ud = maybe_ud.unwrap_or_else(|| {
         // lua_touserdata returned NULL
@@ -413,43 +419,167 @@ where
     let res = f();
 
     // return results to lua
-    push_userdata(lua, UserDataBox::new(res));
+    push_userdata(lua, TypedUserData::new(res));
     1
 }
 
-struct UserDataBox<T: 'static + Sized> {
+////////////////////////////////////////////////////////////////////////////////
+/// TypedUserData
+////////////////////////////////////////////////////////////////////////////////
+
+// We need `repr(C)` here so that we can use pointers as both pointer to
+// `UserDataUserDataWithTypeId` and pointer to `TypeId`
+#[repr(C)]
+struct TypedUserData<T>
+where
+    T: 'static + Sized,
+{
     type_id: TypeId,
-    value: T,
+    value: Option<T>,
 }
 
-impl<T: 'static + Sized> UserDataBox<T> {
-    const TYPE_ID: TypeId = TypeId::of::<T>();
-
+// TODO: add pointer alignment checks
+impl<T> TypedUserData<T> {
     fn new(value: T) -> Self {
-        Self { type_id: Self::TYPE_ID, value }
+        Self { type_id: TypeId::of::<T>(), value: Some(value) }
     }
 
-    fn try_from_ptr(ptr: *const c_void) -> Option<Self> {
-        let tid = (ptr as *const TypeId).as_ref()?;
-        if tid != Self::TYPE_ID {
+    fn is_good(ptr: *const c_void) -> bool
+    where
+        T: 'static,
+    {
+        unsafe {
+            (ptr as *mut TypeId).as_ref()
+        }
+            .map(|&tid| tid == TypeId::of::<T>())
+            .unwrap_or(false)
+    }
+
+    fn try_from_ptr_mut<'lua>(ptr: *mut c_void) -> Option<&'lua mut Self> {
+        if !Self::is_good(ptr) {
             return None;
         }
-        (ptr as *const )
+        unsafe { (ptr as *mut Self).as_mut() }
     }
 }
 
-unsafe fn push_userdata<T>(lua: *mut ffi::lua_State, value: T) {
-    struct 
-    let ud_ptr = ffi::lua_newuserdata(lua, std::mem::size_of::<Option<T>>());
-    std::ptr::write(ud_ptr as *mut Option<T>, Some(value));
+impl<T: 'static> UserDataContainer for TypedUserData<T> {
+    type Contained = T;
 
-    if std::mem::needs_drop::<T>() {
+    fn new(value: Self::Contained) -> Self {
+        Self {
+            type_id: TypeId::of::<Self::Contained>(),
+            value: Some(value),
+        }
+    }
+
+    fn take(&mut self) -> Option<Self::Contained> {
+        self.value.take()
+    }
+}
+
+impl<'lua, 'a, T, L> LuaRead<L> for &'a mut TypedUserData<T>
+where
+    T: 'static,
+    L: AsMutLua<'lua>,
+{
+    fn lua_read_at_position(lua: L, index: i32) -> Result<Self, L> {
+        let ud_ptr = unsafe {
+            ffi::lua_touserdata(lua.as_lua().state_ptr(), index)
+        };
+
+        if let Some(ud) = TypedUserData::<T>::try_from_ptr_mut(ud_ptr) {
+            Ok(ud)
+        } else {
+            Err(lua)
+        }
+    }
+}
+
+impl<'lua, T, L> Push<L> for TypedUserData<T>
+where
+    L: AsMutLua<'lua>,
+{
+    type Err = Void;
+
+    fn push_to_lua(self, mut lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
+        unsafe {
+            push_userdata(lua.as_mut_lua().state_ptr(), self);
+            Ok(PushGuard::new(lua, 1))
+        }
+    }
+}
+
+impl<'lua, T, L> PushOne<L> for TypedUserData<T>
+where
+    L: AsMutLua<'lua>
+{}
+
+////////////////////////////////////////////////////////////////////////////////
+/// JustUserData
+////////////////////////////////////////////////////////////////////////////////
+
+struct JustUserData<T>(Option<T>)
+where
+    T: Sized;
+
+impl<T> UserDataContainer for JustUserData<T> {
+    type Contained = T;
+
+    fn new(value: Self::Contained) -> Self {
+        Self(Some(value))
+    }
+
+    fn take(&mut self) -> Option<Self::Contained> {
+        self.0.take()
+    }
+}
+
+impl<'lua, T, L> Push<L> for JustUserData<T>
+where
+    L: AsMutLua<'lua>,
+{
+    type Err = Void;
+
+    fn push_to_lua(self, mut lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
+        unsafe {
+            push_userdata(lua.as_mut_lua().state_ptr(), self);
+            Ok(PushGuard::new(lua, 1))
+        }
+    }
+}
+
+impl<'lua, T, L> PushOne<L> for JustUserData<T>
+where
+    L: AsMutLua<'lua>
+{}
+
+////////////////////////////////////////////////////////////////////////////////
+/// UserDataContainer
+////////////////////////////////////////////////////////////////////////////////
+
+trait UserDataContainer {
+    type Contained;
+    const SIZE_OF: usize = std::mem::size_of::<Self::Contained>();
+
+    fn new(value: Self::Contained) -> Self;
+    fn take(&mut self) -> Option<Self::Contained>;
+}
+
+unsafe fn push_userdata<U>(lua: *mut ffi::lua_State, ud: U)
+where
+    U: UserDataContainer,
+{
+    let ud_ptr = ffi::lua_newuserdata(lua, U::SIZE_OF);
+    std::ptr::write(ud_ptr as *mut U, ud);
+
+    if std::mem::needs_drop::<U::Contained>() {
         // Creating a metatable.
         ffi::lua_newtable(lua);
 
         // Index "__gc" in the metatable calls the object's destructor.
         ffi::lua_pushstring(lua, c_ptr!("__gc"));
-        ffi::lua_pushcfunction(lua, wrap_gc::<T>);
+        ffi::lua_pushcfunction(lua, wrap_gc::<U>);
         ffi::lua_settable(lua, -3);
 
         ffi::lua_setmetatable(lua, -2);
@@ -457,9 +587,12 @@ unsafe fn push_userdata<T>(lua: *mut ffi::lua_State, value: T) {
 
     /// A callback for the "__gc" event. It checks if the value was moved out
     /// and if not it drops the value.
-    unsafe extern "C" fn wrap_gc<T>(lua: *mut ffi::lua_State) -> i32 {
+    unsafe extern "C" fn wrap_gc<U>(lua: *mut ffi::lua_State) -> i32
+    where
+        U: UserDataContainer,
+    {
         let ud_ptr = ffi::lua_touserdata(lua, 1);
-        let ud = (ud_ptr as *mut Option<T>)
+        let ud = (ud_ptr as *mut U)
             .as_mut()
             .expect("__gc called with userdata pointing to NULL");
         drop(ud.take());
@@ -467,6 +600,10 @@ unsafe fn push_userdata<T>(lua: *mut ffi::lua_State, value: T) {
         0
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+///
+////////////////////////////////////////////////////////////////////////////////
 
 pub fn func_once_gc() {
     static mut DROPPED_TIMES: isize = 0;
@@ -544,46 +681,53 @@ pub fn func_once_call_twice() {
     assert_eq!(&msg, "[string \"chunk\"]:1: rust FnOnce callback was called more than once");
 }
 
-struct UserDataBoxOnStack<T, L> {
-    lua: L,
-    index: i32,
-    marker: PhantomData<T>,
-}
-
-impl<'lua, T, L> LuaRead<L> for UserDataBox<T>
-where
-    L: AsMutLua<'lua>,
-    T: 'static,
-{
-    fn lua_read_at_position(lua: L, index: i32) -> Result<Self, L> {
-        let ud_ptr = unsafe {
-            ffi::lua_touserdata(lua.as_lua().state_ptr(), index)
-        };
-
-        if !UserDataBox::<T>::is_good(ud_ptr) {
-            return Err(lua);
-        }
-
-        UserDataBox::<T>
-
-        Ok(Self::new(value))
-    }
-}
-
-pub fn test_multiple_deferred_correct() {
+pub fn test_multiple_deferred_NOTcorrect() {
     let mut res = vec![];
     let mut references = vec![];
     let mut lua = crate::hlua::global();
+    let lptr = lua.as_lua().state_ptr();
     for v in vec![vec![1, 2], vec![3, 4], vec![5, 6]] {
-        let mut require: LuaFunction<_> = lua.get("require").unwrap();
-        let mut fiber_module: LuaTable<_> = require.call_with_args(()).unwrap();
-        let mut fiber_new: LuaFunction<_> = fiber_module.get("new").unwrap();
-        let fiber_func = FuncOnce(
-            move || v.into_iter().map(|e| e + 1).collect::<Vec<_>>()
-        );
-        let mut fiber: LuaTable<_> = fiber_new.call_with_args(fiber_func).unwrap();
-        let () = fiber.method("set_joinable", true).unwrap();
-        references.push(fiber.into_ref().unwrap());
+        unsafe {
+            ffi::lua_getglobal(lptr, c_ptr!("require"));
+            ffi::lua_pushstring(lptr, c_ptr!("fiber"));
+            if ffi::lua_pcall(lptr, 1, 1, 0) == ffi::LUA_ERRRUN {
+                panic!(
+                    "lua_pcall failed: {:?}",
+                    CStr::from_ptr(ffi::lua_tostring(lptr, -1)),
+                )
+            };
+            ffi::lua_getfield(lptr, -1, c_ptr!("new"));
+            push_func_once(lptr,
+                move || v.into_iter().map(|e| e + 1).collect::<Vec<_>>()
+            );
+            if ffi::lua_pcall(lptr, 1, 1, 0) == ffi::LUA_ERRRUN {
+                panic!(
+                    "lua_pcall failed: {:?}",
+                    CStr::from_ptr(ffi::lua_tostring(lptr, -1)),
+                )
+            };
+            ffi::lua_getfield(lptr, -1, c_ptr!("set_joinable"));
+            ffi::lua_pushvalue(lptr, -2);
+            ffi::lua_pushboolean(lptr, true as i32);
+            if ffi::lua_pcall(lptr, 2, 0, 0) == ffi::LUA_ERRRUN {
+                panic!(
+                    "lua_pcall failed: {:?}",
+                    CStr::from_ptr(ffi::lua_tostring(lptr, -1)),
+                )
+            };
+            let fiber_ref = ffi::luaL_ref(lptr, ffi::LUA_REGISTRYINDEX);
+            references.push(dbg!(fiber_ref));
+        }
+        // let mut require: LuaFunction<_> = lua.get("require").unwrap();
+        // let mut fiber_module: LuaTable<_> = require.call_with_args("fiber").unwrap();
+        // let mut fiber_new: LuaFunction<_> = fiber_module.get("new").unwrap();
+        // unsafe { dbg!((ffi::lua_gettop(lptr), std::ffi::CStr::from_ptr(ffi::lua_typename(lptr, ffi::lua_type(lptr, -1))))); }
+        // let fiber_func = FuncOnce(
+        //     move || v.into_iter().map(|e| e + 1).collect::<Vec<_>>()
+        // );
+        // let mut fiber: LuaTable<_> = fiber_new.call_with_args(fiber_func).unwrap();
+        // let () = fiber.method("set_joinable", true).unwrap();
+        // references.push(fiber.into_ref().unwrap());
 
         // unsafe {
         //     let lptr = lua.as_mut_lua().state_ptr();
@@ -604,9 +748,25 @@ pub fn test_multiple_deferred_correct() {
     }
     res.push(1);
     let mut registry = LuaTable::registry(lua);
-    for r in references {
-        let fiber: LuaTable<_> = registry.get(r).unwrap();
-        let res: UserDataBox<Vec<i32>> = fiber.method("join", ()).unwrap();
+    for fiber_ref in references {
+        unsafe {
+            ffi::lua_rawgeti(lptr, ffi::LUA_REGISTRYINDEX, fiber_ref);
+            ffi::lua_getfield(lptr, -1, c_ptr!("join"));
+            ffi::lua_pushvalue(lptr, -1);
+            if ffi::lua_pcall(lptr, 2, 1, 0) == ffi::LUA_ERRRUN {
+                panic!(
+                    "lua_pcall failed: {:?}",
+                    CStr::from_ptr(ffi::lua_tostring(lptr, -1)),
+                )
+            };
+            // let ud_ptr = ffi::lua_touserdata(lua.as_lua().state_ptr(), index);
+
+            // if let Some(ud) = TypedUserData::<T>::try_from_ptr_mut(ud_ptr)
+            ffi::luaL_unref(lptr, ffi::LUA_REGISTRYINDEX, fiber_ref);
+        }
+        let mut fiber: LuaTable<_> = registry.get(fiber_ref).unwrap();
+        let cur_res: &mut TypedUserData<Vec<i32>> = fiber.method("join", ()).unwrap();
+        res.extend(cur_res.take().into_iter().flatten());
     }
     res.push(8);
     assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);

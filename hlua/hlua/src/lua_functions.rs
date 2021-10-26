@@ -262,6 +262,7 @@ impl<'lua, L> LuaFunction<L>
         where A: for<'r> Push<&'r mut LuaFunction<L>, Err = E>,
               V: LuaRead<PushGuard<&'a mut L>>
     {
+        let raw_lua = self.variable.as_lua().state_ptr();
         // calling pcall pops the parameters and pushes output
         let (pcall_return_value, pushed_value) = unsafe {
             // lua_pcall pops the function, so we have to make a copy of it
@@ -284,7 +285,26 @@ impl<'lua, L> LuaFunction<L>
 
         match pcall_return_value {
             0 => match LuaRead::lua_read(pushed_value) {
-                Err(_) => Err(LuaFunctionCallError::LuaError(LuaError::WrongType)),
+                Err(_) => {
+                    eprintln!(
+                        "{r}cannot convert lua type
+> {g}{:?}{r}
+into rust type
+> {g}{:?}{c}",
+                        unsafe {
+                            std::ffi::CStr::from_ptr(
+                                ffi::lua_typename(
+                                    raw_lua, ffi::lua_type(raw_lua, -1)
+                                )
+                            )
+                        },
+                        std::any::type_name::<V>(),
+                        r = "\x1b[31m",
+                        g = "\x1b[32m",
+                        c = "\x1b[0m",
+                    );
+                    Err(LuaFunctionCallError::LuaError(LuaError::WrongType))
+                },
                 Ok(x) => Ok(x),
             },
             ffi::LUA_ERRMEM => panic!("lua_pcall returned LUA_ERRMEM"),
