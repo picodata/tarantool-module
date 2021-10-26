@@ -207,6 +207,12 @@ extern "C" {
     /// *[-0, +1, e]*
     pub fn lua_getfield(l: *mut lua_State, index: c_int, k: *const c_schar);
 
+    /// Pushes onto the stack the value `t[n]`, where `t` is the value at the
+    /// given valid `index`. The access is *raw*; that is, it does not invoke
+    /// metamethods.
+    /// *[-0, +1, -]*
+    pub fn lua_rawgeti(l: *mut lua_State, index: c_int, n: c_int);
+
     pub fn lua_createtable(l: *mut lua_State, narr: c_int, nrec: c_int);
 
     /// This function allocates a new block of memory with the given size,
