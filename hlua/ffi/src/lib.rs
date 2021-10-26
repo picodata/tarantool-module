@@ -136,6 +136,13 @@ extern "C" {
     pub fn lua_settop(l: *mut lua_State, index: c_int);
     pub fn lua_pushboolean(l: *mut lua_State, n: c_int);
     pub fn lua_pushlstring(l: *mut lua_State, s: *const libc::c_char, l: libc::size_t);
+
+    /// Pushes the zero-terminated string pointed to by `s` onto the stack. Lua
+    /// makes (or reuses) an internal copy of the given string, so the memory at
+    /// s can be freed or reused immediately after the function returns. The
+    /// string cannot contain embedded zeros; it is assumed to end at the first
+    /// zero.
+    /// *[-0, +1, m]*
     pub fn lua_pushstring(l: *mut lua_State, s: *const c_schar) -> *const c_schar;
     pub fn lua_pushinteger(l: *mut lua_State, n: isize);
     pub fn lua_pushnumber(l: *mut lua_State, n: c_double);
@@ -162,6 +169,22 @@ extern "C" {
     pub fn lua_pushvalue(l: *mut lua_State, index: c_int);
     pub fn lua_tointeger(l: *mut lua_State, index: c_int) -> isize;
     pub fn lua_toboolean(l: *mut lua_State, index: c_int) -> c_int;
+
+    /// Converts the Lua value at the given acceptable `index` to a C string. If
+    /// `len` is not NULL, it also sets `*len` with the string length. The Lua
+    /// value must be a string or a number; otherwise, the function returns
+    /// NULL. If the value is a number, then `lua_tolstring` also changes the
+    /// actual value in the stack to a string. (This change confuses
+    /// [`lua_next`] when `lua_tolstring` is applied to keys during a table
+    /// traversal.)
+    /// *[-0, +0, m]*
+    ///
+    /// `lua_tolstring` returns a fully aligned pointer to a string inside the
+    /// Lua state. This string always has a zero ('\0') after its last character
+    /// (as in C), but can contain other zeros in its body. Because Lua has
+    /// garbage collection, there is no guarantee that the pointer returned by
+    /// `lua_tolstring` will be valid after the corresponding value is removed
+    /// from the stack.
     pub fn lua_tolstring(l: *mut lua_State, index: c_int, len: *mut usize) -> *const c_schar;
 
     /// If the value at the given acceptable `index` is a full userdata, returns
@@ -169,8 +192,21 @@ extern "C" {
     /// pointer. Otherwise, returns `NULL`.
     /// *[-0, +0, -]*
     pub fn lua_touserdata(l: *mut lua_State, index: c_int) -> *mut libc::c_void;
-    pub fn lua_setfield(l: *mut lua_State, index: c_int, s: *const c_schar);
-    pub fn lua_getfield(l: *mut lua_State, index: c_int, s: *const c_schar);
+
+    /// Does the equivalent to `t[k] = v`, where `t` is the value at the given
+    /// valid index and `v` is the value at the top of the stack.
+    /// *[-1, +0, e]*
+    ///
+    /// This function pops the value from the stack. As in Lua, this function
+    /// may trigger a metamethod for the "newindex" event
+    pub fn lua_setfield(l: *mut lua_State, index: c_int, k: *const c_schar);
+
+    /// Pushes onto the stack the value `t[k]`, where `t` is the value at the
+    /// given valid `index`. As in Lua, this function may trigger a metamethod
+    /// for the "index" event
+    /// *[-0, +1, e]*
+    pub fn lua_getfield(l: *mut lua_State, index: c_int, k: *const c_schar);
+
     pub fn lua_createtable(l: *mut lua_State, narr: c_int, nrec: c_int);
 
     /// This function allocates a new block of memory with the given size,
@@ -205,7 +241,20 @@ extern "C" {
     /// This function pops both the key and the value from the stack. As in Lua,
     /// this function may trigger a metamethod for the "newindex" event.
     pub fn lua_settable(l: *mut lua_State, index: c_int);
+
+    /// Returns the type of the value in the given acceptable `index`, or
+    /// [`LUA_TNONE`] for a non-valid index (that is, an index to an "empty"
+    /// stack position). The types returned by lua_type are coded by the
+    /// following constants: [`LUA_TNIL`], [`LUA_TNUMBER`], [`LUA_TBOOLEAN`],
+    /// [`LUA_TSTRING`], [`LUA_TTABLE`], [`LUA_TFUNCTION`], [`LUA_TUSERDATA`],
+    /// [`LUA_TTHREAD`], and [`LUA_TLIGHTUSERDATA`].
+    /// *[-0, +0, -]*
     pub fn lua_type(state: *mut lua_State, index: c_int) -> c_int;
+
+    /// Returns the name of the type encoded by the value `tp`, which must be
+    /// one the values returned by [`lua_type`].
+    /// *[-0, +0, -]*
+    pub fn lua_typename(state: *mut lua_State, tp: c_int) -> *mut c_schar;
 
     /// Pops a table from the stack and sets it as the new metatable for the
     /// value at the given acceptable `index`.
@@ -216,7 +265,37 @@ extern "C" {
     pub fn lua_tonumberx(l: *mut lua_State, index: c_int, isnum: *mut c_int) -> lua_Number;
     pub fn lua_tointegerx(l: *mut lua_State, index: c_int, isnum: *mut c_int) -> lua_Integer;
 
-    pub fn lua_pcall(l: *mut lua_State, nargs: c_int, nresults: c_int, msgh: c_int) -> c_int;
+    /// Calls a function in protected mode.
+    /// *[-(nargs + 1), +(nresults|1), -]*
+    ///
+    /// Both `nargs` and `nresults` have the same meaning as in `lua_call`. If
+    /// there are no errors during the call, `lua_pcall` behaves exactly like
+    /// `lua_call`.  However, if there is any error, `lua_pcall` catches it,
+    /// pushes a single value on the stack (the error message), and returns an
+    /// error code. Like lua_call, `lua_pcall` always removes the function and
+    /// its arguments from the stack.
+    ///
+    /// If `errfunc` is 0, then the error message returned on the stack is
+    /// exactly the original error message. Otherwise, `errfunc` is the stack
+    /// index of an error handler function. (In the current implementation, this
+    /// index cannot be a pseudo-index.) In case of runtime errors, this
+    /// function will be called with the error message and its return value will
+    /// be the message returned on the stack by `lua_pcall`.
+    ///
+    /// Typically, the error handler function is used to add more debug
+    /// information to the error message, such as a stack traceback. Such
+    /// information cannot be gathered after the return of `lua_pcall`, since by
+    /// then the stack has unwound.
+    ///
+    /// The `lua_pcall` function returns 0 in case of success or one of the
+    /// following error codes:
+    /// - [`LUA_ERRRUN`]: a runtime error.
+    ///
+    /// - [`LUA_ERRMEM`]: memory allocation error. For such errors, Lua does not
+    ///                   call the error handler function.
+    ///
+    /// - [`LUA_ERRERR`]: error while running the error handler function.
+    pub fn lua_pcall(l: *mut lua_State, nargs: c_int, nresults: c_int, errfunc: c_int) -> c_int;
     pub fn lua_load(l: *mut lua_State, reader: lua_Reader, dt: *mut libc::c_void, chunkname: *const libc::c_char, mode: *const libc::c_char) -> c_int;
     pub fn lua_dump(l: *mut lua_State, writer: lua_Writer, data: *mut libc::c_void) -> c_int;
 
@@ -282,13 +361,17 @@ extern "C" {
 }
 
 #[inline(always)]
-pub unsafe fn lua_getglobal(state: *mut lua_State, s: *const c_schar) {
-    lua_getfield(state, LUA_GLOBALSINDEX, s);
+/// Pushes onto the stack the value of the global `name`.
+/// *[-0, +1, e]*
+pub unsafe fn lua_getglobal(state: *mut lua_State, name: *const c_schar) {
+    lua_getfield(state, LUA_GLOBALSINDEX, name);
 }
 
 #[inline(always)]
-pub unsafe fn lua_setglobal(state: *mut lua_State, s: *const c_schar) {
-    lua_setfield(state, LUA_GLOBALSINDEX, s);
+/// Pops a value from the stack and sets it as the new value of global `name`.
+/// *[-1, +0, e]*
+pub unsafe fn lua_setglobal(state: *mut lua_State, name: *const c_schar) {
+    lua_setfield(state, LUA_GLOBALSINDEX, name);
 }
 
 #[inline(always)]
