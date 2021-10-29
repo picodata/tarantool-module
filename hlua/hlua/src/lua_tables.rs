@@ -77,11 +77,11 @@ macro_rules! lua_pop {
     }
 }
 
-fn common_call<'lua, Ret, Args, L> (
-    lua_state :& 'lua mut  L,
+fn common_call<'selftime, 'lua, Ret, Args, L> (
+    lua_state :& 'selftime mut  L,
     top_of_stack : i32,
     args : Args ) -> Ret
-where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'lua mut L> >,
+where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> >,
       Args : Push<L>,
       L : AsMutLua<'lua> {
     let raw_lua = lua_state.as_lua().state_ptr();
@@ -125,14 +125,15 @@ where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'lua mut L> >,
     };
 }
 
-fn lua_table_call<'lua, Ret, Args, L> (
-    lua_state :& 'lua mut  L,
+fn lua_table_call<'selftime, 'lua, Ret, Args, L> (
+    lua_state :& 'selftime mut  L,
     table_stack_pos : i32,
     function_name : String,
     args : Args ) -> Ret
-where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'lua mut L> >,
+where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> >,
       Args : Push<L>,
-      L : AsMutLua<'lua> {
+      L : AsMutLua<'lua>
+      {
     let raw_lua = lua_state.as_lua().state_ptr();
     let top_of_stack = unsafe { ffi::lua_gettop( raw_lua ) };
     unsafe {
@@ -143,7 +144,7 @@ where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'lua mut L> >,
         ffi::lua_gettable ( raw_lua, table_stack_pos );
         ffi::lua_pushvalue( raw_lua, table_stack_pos ); // копируем таблицу на вершину стека, потому что это первый параметр функции - self
     }
-    common_call::<'lua, Ret, Args, L>(lua_state, top_of_stack, args )
+    common_call::<'selftime, 'lua, Ret, Args, L>(lua_state, top_of_stack, args )
 }
 
 
@@ -500,14 +501,14 @@ impl<'lua, L> LuaTable<L>
             index: ffi::LUA_REGISTRYINDEX,
         }
     }
-    fn call<Ret, Args> (
-        & 'lua mut self,
+    fn call<'selftime, Ret, Args> (
+        & 'selftime mut self,
         function_name : String,
         args : Args ) -> Ret
-    where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'lua mut L> > ,
+    where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> > ,
                  Args : Push<L>,
                  L : AsMutLua<'lua> {
-      lua_table_call::< 'lua, Ret, Args, L >( & mut self.table, self.index, function_name, args )
+      lua_table_call::< 'selftime, 'lua, Ret, Args, L >( & mut self.table, self.index, function_name, args )
     }
 }
 
