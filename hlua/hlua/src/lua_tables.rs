@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+pub extern crate ffi;
 
 use crate::{
     Lua,
@@ -77,8 +78,9 @@ macro_rules! lua_pop {
     }
 }
 
-fn common_call<'selftime, 'lua, Ret, Args, L> (
+pub fn common_call<'selftime, 'lua, Ret, Args, L> (
     lua_state :& 'selftime mut  L,
+    number_of_additional_args : i32,
     top_of_stack : i32,
     args : Args ) -> Ret
 where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> >,
@@ -86,9 +88,12 @@ where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> >,
       L : AsMutLua<'lua> {
     let raw_lua = lua_state.as_lua().state_ptr();
     lua_push!( lua_state, args,  (panic!("Push args error!!!" ) ) );
-    let numargs = unsafe { ffi::lua_gettop( raw_lua ) as i32 } - top_of_stack - 2 ;
+    let numargs = unsafe { ffi::lua_gettop( raw_lua ) as i32 } - top_of_stack - 2 + number_of_additional_args ;
+    if !unsafe { ffi::lua_isfunction(raw_lua, -numargs - 1) } {
+        panic!("Stack corrupted");
+    }
     let pcall_error = unsafe {
-        ffi::lua_pcall( raw_lua, numargs as i32, ffi::LUA_MULTRET , 0 )
+        ffi::lua_pcall( raw_lua, numargs as i32, ffi::LUA_MULTRET as i32 , 0 as i32 )
     };
     if ( pcall_error as i64 ) != 0 {
         static NAMESBYCODES : &'static [&'static str] = &[
@@ -105,9 +110,8 @@ where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> >,
     if new_top_of_stack < top_of_stack {
         panic!("Wrong return arguments number!!! Lua stack corrupted!!!");
     }
+    let number_of_retvalues : i32 = new_top_of_stack - top_of_stack;
 
-    //let mut me = lua_state;
-    //let new_raw_lua = me.as_lua();
     let new_raw_lua = lua_state.as_lua();
     let new_lua = PushGuard {
         //lua: me,
@@ -116,7 +120,7 @@ where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> >,
         raw_lua: new_raw_lua,
     };
     //match <Ret as LuaRead< PushGuard<L> > >::lua_read( new_lua ) {
-    match LuaRead::lua_read( new_lua ) {
+    match LuaRead::lua_read_at_position( new_lua, -number_of_retvalues ) {
         Ok(ret_value) => {
             unsafe { ffi::lua_settop( raw_lua, top_of_stack ); };
             return ret_value;
@@ -125,7 +129,7 @@ where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> >,
     };
 }
 
-fn lua_table_call<'selftime, 'lua, Ret, Args, L> (
+pub fn lua_table_call<'selftime, 'lua, Ret, Args, L> (
     lua_state :& 'selftime mut  L,
     table_stack_pos : i32,
     function_name : String,
@@ -135,6 +139,9 @@ where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> >,
       L : AsMutLua<'lua>
       {
     let raw_lua = lua_state.as_lua().state_ptr();
+    if !unsafe { ffi::lua_istable( raw_lua, table_stack_pos ) } {
+        panic!("Lua table method call: Lua table not found!!!");
+    }
     let top_of_stack = unsafe { ffi::lua_gettop( raw_lua ) };
     unsafe {
         ffi::lua_pushlstring(
@@ -145,6 +152,10 @@ where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> >,
         ffi::lua_pushvalue( raw_lua, table_stack_pos ); // копируем таблицу на вершину стека, потому что это первый параметр функции - self
     }
     common_call::<'selftime, 'lua, Ret, Args, L>(lua_state, top_of_stack, args )
+        lua_state, 
+        1, // number of additional args => there is the only one additional arg - table as self
+        top_of_stack, 
+        args )
 }
 
 
@@ -191,9 +202,10 @@ impl<'lua, L> LuaRead<L> for LuaTable<L>
     #[inline]
     fn lua_read_at_position(mut lua: L, index: i32) -> Result<LuaTable<L>, L> {
         if unsafe { ffi::lua_istable(lua.as_mut_lua().0, index) } {
+            let lua_stack_top : i32 =  unsafe { ffi::lua_gettop( lua.as_mut_lua().0 ) as i32 };
             Ok(LuaTable {
                 table: lua,
-                index: index,
+                index: index + lua_stack_top + 1,
             })
         } else {
             Err(lua)
@@ -501,7 +513,7 @@ impl<'lua, L> LuaTable<L>
             index: ffi::LUA_REGISTRYINDEX,
         }
     }
-    fn call<'selftime, Ret, Args> (
+    pub fn call<'selftime, Ret, Args> (
         & 'selftime mut self,
         function_name : String,
         args : Args ) -> Ret
@@ -514,10 +526,14 @@ impl<'lua, L> LuaTable<L>
 
 
 
-fn lua_tables_call_test() {
+
+pub fn lua_tables_call_test() {
     let mut lua = Lua::new();
+    lua.execute::<()>(r#"
+    a={}
+    a["foo"] = function ( any_number, any_string ) return 1 , 3 end"#).unwrap();
     let mut table: LuaTable<_> = lua.get("a").unwrap();
-    let res: (u16, u32) = table.call( String::from("foo"), (1, "bar"));
+    let res: (u16, u32) = table.call( String::from("foo"), (1, "bar") );
     println!("{} {}", res.0, res.1 );
 }
 
