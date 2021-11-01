@@ -487,6 +487,46 @@ where
     }
 }
 
+pub struct LuaFiberHandle<State> {
+    lua_ref: i32,
+    state: State,
+}
+
+impl<State> LuaFiberHandle<State>
+where
+    State: Joinable,
+{
+    pub fn join(self) -> Result<State::Output> {
+        self.state.join(self.lua_ref)
+    }
+}
+
+pub trait Joinable {
+    type Output;
+
+    fn join<F>(self, fiber_proxy: F) -> Result<Self::Output>;
+}
+
+impl<State> LuaFiberHandle<State>
+where
+    State: Cancellable,
+{
+    pub fn wakeup(&self) {
+        unsafe {
+            impl_details::lua_fiber_wakeup(self.lua_ref)
+        }
+    }
+
+    pub fn cancel(self) -> Result<()> {
+        let Self { lua_ref, .. } = self;
+        unsafe {
+            impl_details::lua_fiber_cancel(lua_ref)
+        }
+    }
+}
+
+pub trait Cancellable {}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// LuaJoinHandle
 ////////////////////////////////////////////////////////////////////////////////
@@ -591,6 +631,37 @@ mod impl_details {
         assert_ne!(lua::lua_toboolean(lptr, -2), 0);
 
         Ok(guard)
+    }
+
+    pub unsafe fn lua_fiber_wakeup(f_ref: i32) {
+        let mut lua = Lua::from_existing_state(ffi::luaT_state(), false);
+        let lptr = lua.as_mut_lua().state_ptr();
+        lua::lua_rawgeti(lptr, lua::LUA_REGISTRYINDEX, f_ref);
+        lua::lua_getfield(lptr, -1, c_ptr!("wakeup"));
+        lua::lua_pushvalue(lptr, -2);
+
+        guarded_pcall(lptr, 1, 0).unwrap();
+
+        // pop the fiber instance
+        lua::lua_pop(lptr, 1)
+    }
+
+    pub unsafe fn lua_fiber_cancel(f_ref: i32) -> Result<()> {
+        let mut lua = Lua::from_existing_state(ffi::luaT_state(), false);
+        let lptr = lua.as_mut_lua().state_ptr();
+        lua::lua_rawgeti(lptr, lua::LUA_REGISTRYINDEX, f_ref);
+        lua::lua_getfield(lptr, -1, c_ptr!("cancel"));
+        lua::lua_pushvalue(lptr, -2);
+
+        // fiber instance can now be garbage collected by lua
+        lua::luaL_unref(lptr, lua::LUA_REGISTRYINDEX, f_ref);
+
+        guarded_pcall(lptr, 1, 0)
+            .map_err(|e| {
+                // Pop the fiber value from the stack
+                lua::lua_pop(lptr, 1);
+                e
+            })
     }
 }
 
