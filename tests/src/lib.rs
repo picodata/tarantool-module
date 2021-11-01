@@ -189,6 +189,9 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 hlua::lua_functions::call_and_read_table,
                 hlua::lua_functions::lua_function_returns_function,
                 hlua::lua_functions::execute_from_reader_errors_if_cant_read,
+                hlua::lua_functions::test_list_error,
+                hlua::lua_functions::test_display_error,
+                hlua::lua_functions::test_error_iterations,
 
                 hlua::lua_tables::iterable,
                 hlua::lua_tables::iterable_multipletimes,
@@ -199,6 +202,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 hlua::lua_tables::by_value,
                 hlua::lua_tables::registry,
                 hlua::lua_tables::registry_metatable,
+                hlua::lua_tables::lua_tables_call_test,
+                hlua::lua_tables::test_errors_during_call_method,
 
                 hlua::functions_write::simple_function,
                 hlua::functions_write::one_argument,

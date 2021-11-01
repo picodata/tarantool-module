@@ -8,7 +8,6 @@ macro_rules! implement_lua_push {
                 Ok($crate::push_userdata(self, lua, $cb))
             }
         }
-        
         impl<'lua, L> $crate::PushOne<L> for $ty where L: $crate::AsMutLua<'lua> {
         }
     };

@@ -621,26 +621,9 @@ mod impl_details {
         // check fiber return code
         assert_ne!(lua::lua_toboolean(lptr, -2), 0);
 
+        // fiber object and the 2 return values will need to be poped
         Ok(guard)
     }
-
-    // pub(super) unsafe fn lua_fiber_set_joinable_and_unref(f_ref: i32) -> Result<()> {
-    //     let mut l = Lua::from_existing_state(ffi::luaT_state(), false);
-    //     let lptr = l.as_mut_lua().state_ptr();
-    //     let top_before = lua::lua_gettop(lptr);
-
-    //     lua::lua_rawgeti(lptr, lua::LUA_REGISTRYINDEX, f_ref);
-    //     lua::lua_getfield(lptr, -1, c_ptr!("set_joinable"));
-    //     lua::lua_pushvalue(lptr, -2);
-    //     lua::lua_pushboolean(lptr, false as _);
-
-    //     // fiber instance can now be garbage collected by lua
-    //     lua::luaL_unref(lptr, lua::LUA_REGISTRYINDEX, f_ref);
-
-    //     let res = guarded_pcall(lptr, 2, 0);
-    //     lua::lua_settop(lptr, top_before);
-    //     res
-    // }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -13,6 +13,7 @@ use tarantool::hlua::{
     LuaFunction
 };
 use tarantool::util::IntoClones;
+
 use tarantool::ffi::lua;
 
 pub fn test_fiber_new() {
@@ -350,7 +351,9 @@ fn fiber_csw() -> i32 {
         unsafe { FUNCTION_DEFINED = true; }
     }
 
-    return lua.get::<LuaFunction<_>, _>("fiber_csw").unwrap().call().unwrap();
+    let ret : (i32,) = lua.get::<LuaFunction<_>, _>("fiber_csw").unwrap().call().unwrap();
+    ret.0
+    //return lua.get::<LuaFunction<_>, _>("fiber_csw").unwrap().call().unwrap();
 }
 
 struct LuaStackIntegrityGuard {
@@ -613,3 +616,4 @@ pub fn deferred_with_cond() {
         f.join()
     }
 }
+

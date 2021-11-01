@@ -51,7 +51,6 @@ pub unsafe fn push_some_userdata<T>(lua: *mut ffi::lua_State, value: T) {
     }
 }
 
-
 // Called when an object inside Lua is being dropped.
 #[inline]
 extern "C" fn destructor_wrapper<T>(lua: *mut ffi::lua_State) -> libc::c_int {

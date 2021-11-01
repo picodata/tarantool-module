@@ -6,7 +6,46 @@ use crate::{
     PushGuard,
     LuaRead,
     Void,
+    LuaContext,
+    LuaError,
+    LuaFunctionCallError,
+    reflection::ReflectionCode,
+    reflection::get_name_of_type,
+    wrap_ret_type_error,
+    verify_ret_type,
+    text_lua_error_wrap,
+    get_lua_type_code,
+    refl_get_reflection_type_code_of,
+    make_collection,
 };
+
+
+pub struct TupleWrap<E>(pub E);
+
+pub trait VerifyLuaTuple{
+   fn check(
+       raw_lua : * mut ffi::lua_State,
+       stackpos: i32,
+       number_elements : i32,
+       error : & mut LuaError);
+}
+
+impl VerifyLuaTuple for ()
+{
+    #[inline(always)]
+    fn check(
+        _raw_lua : * mut ffi::lua_State,
+        _stackpos: i32,
+        number_lua_elements : i32,
+        error : & mut LuaError ) ->()
+    {
+        if number_lua_elements != 0 {
+            error.add( &LuaError::ExecutionError(format!(
+                "Unexpected number of result values!!! (expected 0, got {}) 3",
+                number_lua_elements) ) );
+        }
+    }
+}
 
 macro_rules! tuple_impl {
     ($ty:ident) => (
@@ -26,6 +65,34 @@ macro_rules! tuple_impl {
             #[inline]
             fn lua_read_at_position(lua: LU, index: i32) -> Result<($ty,), LU> {
                 LuaRead::lua_read_at_position(lua, index).map(|v| (v,))
+            }
+        }
+        #[allow(unused_assignments)]
+        #[allow(non_snake_case)]
+        impl<$ty> VerifyLuaTuple for ($ty,)
+        {
+            #[inline(always)]
+            fn check(
+                raw_lua : * mut ffi::lua_State,
+                stackpos: i32,
+                number_lua_elements : i32,
+                error : & mut LuaError ) ->()
+            {
+                let mut len_of_tuple = 1;
+                if len_of_tuple != number_lua_elements {
+                    len_of_tuple = if get_name_of_type::<$ty>() != "((),)" {
+                        len_of_tuple
+                    } else {
+                        0
+                    };
+                    if number_lua_elements != number_lua_elements   {
+                        error.add( &LuaError::ExecutionError(format!(
+                            "Unexpected number of result values!!! (expected 1, got {}) 1",
+                            number_lua_elements) ) );
+                        return;
+                    }
+                }
+                verify_ret_type!( $ty, raw_lua, stackpos, len_of_tuple, 0, error );
             }
         }
     );
@@ -78,7 +145,7 @@ macro_rules! tuple_impl {
             LuaRead<LU> for ($first, $($other),+) where LU: AsLua<'lua>
         {
             #[inline]
-            fn lua_read_at_position(mut lua: LU, index: i32) -> Result<($first, $($other),+), LU> {
+            fn lua_read_at_position(mut lua: LU, index: i32) -> Result<($first, $($other),+), LU> {                
                 let mut i = index;
 
                 let $first: $first = match LuaRead::lua_read_at_position(&mut lua, i) {
@@ -100,12 +167,51 @@ macro_rules! tuple_impl {
 
             }
         }
+        #[allow(unused_assignments)]
+        #[allow(non_snake_case)]
+        impl<$first, $($other),+>
+        VerifyLuaTuple for ($first, $($other),+)
+        {
+            //type ErrorReaction = FnMut( LuaFunctionCallError<LuaError> )-> ();
+            #[inline(always)]
+            fn check(
+                raw_lua : * mut ffi::lua_State,
+                stackpos: i32,
+                number_lua_elements : i32,
+                error : & mut LuaError ) ->()
+            {
+                let mut len_of_tuple = 1;
+                $(
+                    // без этой строчки он ругается. как подавить ошибку дешевле?
+                    let str2 = std::any::type_name::<$other>().to_string();
+                    len_of_tuple += 1;
+                )+
+                if len_of_tuple != number_lua_elements {
+                    error.add( &LuaError::ExecutionError(format!(
+                        "Unexpected number of result values!!! (expected {}, got {}) 2",
+                        len_of_tuple,
+                        number_lua_elements) ) );
+                    return;
+                }
+                verify_ret_type!( $first, raw_lua, stackpos, len_of_tuple, 1, error );
+                let mut offset = len_of_tuple;
+                let mut index = 1;
+                $(
+                    offset -= 1;
+                    index += 1;
+                    verify_ret_type!( $other, raw_lua, stackpos, offset, index, error );
+                    let str2 = std::any::type_name::<$other>().to_string();
+                    len_of_tuple += 1;
+                )+
+            }
+        }
 
         tuple_impl!($($other),+);
     );
 }
 
 tuple_impl!(A, B, C, D, E, F, G, H, I, J, K, L, M);
+
 
 /// Error that can happen when pushing multiple values at once.
 // TODO: implement Error on that thing

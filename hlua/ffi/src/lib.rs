@@ -43,10 +43,10 @@ pub const LUA_TUSERDATA: c_int = 7;
 pub const LUA_TTHREAD: c_int = 8;
 
 pub const LUA_MINSTACK: c_int = 20;
-pub const LUA_MULTRET: c_int = -1;
 
 pub const LUA_NOREF: c_int = -2;
 pub const LUA_REFNIL: c_int = -1;
+pub const LUA_MULTRET: c_int = -1;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]

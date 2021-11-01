@@ -15,7 +15,19 @@ use crate::{
     PushGuard,
     PushOne,
     Void,
+    reflection::GetTypeCodeTrait,
+    reflection::ReflectionCode,
+    reflection::get_name_of_type,
+    common_calls::common_call,
+    tuples::VerifyLuaTuple,
+    tuples::TupleWrap,
+    refl_get_reflection_type_code_of,
+    make_collection,
+    verify_ret_type,
+    wrap_ret_type_error,
+    get_lua_type_code,
 };
+
 
 /// Wrapper around a `&str`. When pushed, the content will be parsed as Lua code and turned into a
 /// function.
@@ -141,7 +153,7 @@ impl<'lua, L, R> Push<L> for LuaCodeFromReader<R>
 
             if read_data.triggered_error.is_some() {
                 let error = read_data.triggered_error.unwrap();
-                return Err((LuaError::ReadError(error), pushed_value.into_inner()));
+                return Err((LuaError::ReadError(std::sync::Arc::new(error)), pushed_value.into_inner()));
             }
 
             if load_return_value == 0 {
@@ -212,6 +224,7 @@ unsafe impl<'lua, L> AsMutLua<'lua> for LuaFunction<L>
     }
 }
 
+
 impl<'lua, L> LuaFunction<L>
     where L: AsMutLua<'lua>
 {
@@ -225,7 +238,7 @@ impl<'lua, L> LuaFunction<L>
     /// > **Note**: In order to pass parameters, see `call_with_args` instead.
     #[inline]
     pub fn call<'a, V>(&'a mut self) -> Result<V, LuaError>
-        where V: LuaRead<PushGuard<&'a mut L>>
+        where V: LuaRead< PushGuard<&'a mut L> > + VerifyLuaTuple
     {
         match self.call_with_args(()) {
             Ok(v) => Ok(v),
@@ -258,53 +271,45 @@ impl<'lua, L> LuaFunction<L>
     /// assert_eq!(result, 14);
     /// ```
     #[inline]
-    pub fn call_with_args<'a, V, A, E>(&'a mut self, args: A) -> Result<V, LuaFunctionCallError<E>>
-        where A: for<'r> Push<&'r mut LuaFunction<L>, Err = E>,
-              V: LuaRead<PushGuard<&'a mut L>>
+    pub fn call_with_args<'selftime, 'comcol_lua, 'a, Ret, Args, E>(&'a mut self, args: Args) -> Result<Ret, LuaFunctionCallError<LuaError>>
+        where Args: for<'r> Push<&'r mut LuaFunction<L>, Err = E> + Push<L>,
+        Ret : LuaRead< PushGuard<&'a mut L> > + VerifyLuaTuple
     {
-        // calling pcall pops the parameters and pushes output
-        let (pcall_return_value, pushed_value) = unsafe {
-            // lua_pcall pops the function, so we have to make a copy of it
-            ffi::lua_pushvalue(self.variable.as_mut_lua().0, -1);
-            let num_pushed = match args.push_to_lua(self) {
-                Ok(g) => g.forget_internal(),
-                Err((err, _)) => return Err(LuaFunctionCallError::PushError(err)),
-            };
-            let pcall_return_value = ffi::lua_pcall(self.variable.as_mut_lua().0, num_pushed, 1, 0);     // TODO: num ret values
-
-            let raw_lua = self.variable.as_lua();
-            let guard = PushGuard {
-                lua: &mut self.variable,
-                size: 1,
-                raw_lua: raw_lua,
-            };
-
-            (pcall_return_value, guard)
-        };
-
-        match pcall_return_value {
-            0 => match LuaRead::lua_read(pushed_value) {
-                Err(lua) => Err(LuaFunctionCallError::LuaError(LuaError::WrongType{
-                    rust_expected: std::any::type_name::<V>().to_string(),
-                    lua_actual: unsafe {
-                        let lua_type = ffi::lua_type(lua.raw_lua.state_ptr(), -1);
-                        let typename = ffi::lua_typename(lua.raw_lua.state_ptr(), lua_type);
-                        std::ffi::CStr::from_ptr(typename).to_string_lossy().into_owned()
+        let le : LuaError = LuaError::NoError;
+        let mut err_ret : LuaFunctionCallError< LuaError > =
+        LuaFunctionCallError::LuaError( le );
+        let err_reaction  = |error : LuaFunctionCallError< LuaError > | -> () {
+            use LuaFunctionCallError::*;
+            match err_ret {
+                PushError(_) => unreachable!(),
+                LuaError( ref mut lua_err ) => {
+                    match error {
+                        LuaError( ref to_add ) => {
+                            lua_err.add( to_add )
+                        },
+                        PushError(_) => unreachable!(),
                     }
-                })),
-                Ok(x) => Ok(x),
-            },
-            ffi::LUA_ERRMEM => panic!("lua_pcall returned LUA_ERRMEM"),
-            ffi::LUA_ERRRUN => {
-                let error_msg: String = LuaRead::lua_read(pushed_value)
-                    .ok()
-                    .expect("can't find error message at the top of the Lua stack");
-                Err(LuaFunctionCallError::LuaError(LuaError::ExecutionError(error_msg)))
+                }
             }
-            _ => panic!("Unknown error code returned by lua_pcall: {}", pcall_return_value),
+            err_ret = error;
+        };
+        let raw_lua = self.variable.as_lua();
+        
+        // lua_pcall pops the function, so we have to make a copy of it
+        let top_of_stack = unsafe { ffi::lua_gettop( raw_lua.state_ptr() ) }; // top of stack BEFORE pushing function        
+        unsafe { ffi::lua_pushvalue(self.variable.as_mut_lua().0, -1) };
+        if let Some(ret) = common_call::< 'a, 'lua, Ret, Args, L, _ >(
+            & mut self.variable,
+            0, // no additional args
+            top_of_stack,// top of stack BEFORE pushing function
+            err_reaction,
+            args
+        ) {
+            return Result::Ok( ret );
+        } else {
+            return Result::Err( err_ret );
         }
     }
-
     /// Builds a new `LuaFunction` from the code of a reader.
     ///
     /// Returns an error if reading from the `Read` object fails or if there is a syntax error in
@@ -353,6 +358,15 @@ pub enum LuaFunctionCallError<E> {
     PushError(E),
 }
 
+impl<E> LuaFunctionCallError<E> {
+    pub fn unwrap_lua_err(self) -> LuaError {
+        match self {
+            LuaFunctionCallError::PushError( _v ) => unreachable!(),
+            LuaFunctionCallError::LuaError( v ) => v,
+        }
+    }
+}
+
 impl<E> fmt::Display for LuaFunctionCallError<E>
     where E: fmt::Display
 {
@@ -389,7 +403,7 @@ impl<E> Error for LuaFunctionCallError<E>
     fn description(&self) -> &str {
         match *self {
             LuaFunctionCallError::LuaError(_) => "Lua error",
-            LuaFunctionCallError::PushError(_) => "error while pushing arguments",
+            LuaFunctionCallError::PushError(_) => "Error while pushing arguments",
         }
     }
 
@@ -456,24 +470,24 @@ mod tests {
     fn basic() {
         let mut lua = Lua::new();
         let mut f = LuaFunction::load(&mut lua, "return 5;").unwrap();
-        let val: i32 = f.call().unwrap();
-        assert_eq!(val, 5);
+        let val: (i32,) = f.call().unwrap();
+        assert_eq!(val.0, 5);
     }
 
     #[test]
     fn args() {
         let mut lua = Lua::new();
         lua.execute::<()>("function foo(a) return a * 5 end").unwrap();
-        let val: i32 = lua.get::<LuaFunction<_>, _>("foo").unwrap().call_with_args(3).unwrap();
-        assert_eq!(val, 15);
+        let val: (i32,) = lua.get::<LuaFunction<_>, _>("foo").unwrap().call_with_args(3).unwrap();
+        assert_eq!(val.0, 15);
     }
 
     #[test]
     fn args_in_order() {
         let mut lua = Lua::new();
         lua.execute::<()>("function foo(a, b) return a - b end").unwrap();
-        let val: i32 = lua.get::<LuaFunction<_>, _>("foo").unwrap().call_with_args((5, 3)).unwrap();
-        assert_eq!(val, 2);
+        let val: (i32,) = lua.get::<LuaFunction<_>, _>("foo").unwrap().call_with_args((5, 3)).unwrap();
+        assert_eq!(val.0, 2);
     }
 
     #[test]
@@ -509,8 +523,8 @@ mod tests {
     fn call_and_read_table() {
         let mut lua = Lua::new();
         let mut f = LuaFunction::load(&mut lua, "return {1, 2, 3};").unwrap();
-        let mut val: LuaTable<_> = f.call().unwrap();
-        assert_eq!(val.get::<u8, _, _>(2).unwrap(), 2);
+        let mut val: (LuaTable<_>,) = f.call().unwrap();
+        assert_eq!(val.0.get::<(u8,), _, _>(2).unwrap().0, 2);
     }
 
     #[test]
@@ -518,9 +532,9 @@ mod tests {
         let mut lua = Lua::new();
         lua.execute::<()>("function foo() return 5 end").unwrap();
         let mut bar = LuaFunction::load(&mut lua, "return foo;").unwrap();
-        let mut foo: LuaFunction<_> = bar.call().unwrap();
-        let val: i32 = foo.call().unwrap();
-        assert_eq!(val, 5);
+        let mut foo: (LuaFunction<_>,) = bar.call().unwrap();
+        let val: (i32,) = foo.0.call().unwrap();
+        assert_eq!(val.0, 5);
     }
 
     #[test]
