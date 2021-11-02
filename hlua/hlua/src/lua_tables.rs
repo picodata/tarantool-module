@@ -53,26 +53,30 @@ macro_rules! lua_push {
     }
 }
 
-unsafe fn dereference_and_corrupt_mut_ref< 'lifetime, RType>( refr : & mut RType) -> RType
-where RType : 'lifetime {
-    let mut ret : RType = std::mem::MaybeUninit::zeroed().assume_init();
+unsafe fn dereference_and_corrupt_mut_ref< 'a, R>( refr : & mut R) -> R
+where
+    R : 'a
+{
+    let mut ret : R = std::mem::MaybeUninit::zeroed().assume_init();
     std::mem::swap( refr, & mut ret );
     ret
 }
 
-macro_rules! lua_pop {
-    ($lua:expr, $value:expr,$error_reaction:expr ) => {
-        unsafe {
-            match ($value).push_to_lua( dereference_and_corrupt_mut_ref( $lua ) ) {
-                Ok(mut guard) => {
-                    unsafe {
-                        std::mem::swap($lua , & mut guard.lua );
-                        guard.forget();
-                    }
-                }
-                Err((_lua_push_error, _)) => {
-                    $error_reaction;
-                }
+macro_rules! lua_get {
+    ($lua:expr, $number_of_retvalues:expr, $success_reaction:expr, $error_reaction:expr ) => {
+        {
+            let new_raw_lua = $lua.as_lua();
+            let new_lua = PushGuard {
+                lua: $lua,
+                size: 0,
+                raw_lua: new_raw_lua,
+            };
+            match LuaRead::lua_read_at_position( new_lua, -$number_of_retvalues ) {
+                Ok(ret_value) => {
+                    $success_reaction;
+                    return ret_value;
+                },
+                Err(_lua) => { $error_reaction; },
             };
         }
     }
@@ -82,10 +86,13 @@ pub fn common_call<'selftime, 'lua, Ret, Args, L> (
     lua_state :& 'selftime mut  L,
     number_of_additional_args : i32,
     top_of_stack : i32,
-    args : Args ) -> Ret
-where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> >,
-      Args : Push<L>,
-      L : AsMutLua<'lua> {
+    args : Args,
+) -> Ret
+where
+    Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> >,
+    Args : Push<L>,
+    L : AsMutLua<'lua>
+{
     let raw_lua = lua_state.as_lua().state_ptr();
     lua_push!( lua_state, args,  (panic!("Push args error!!!" ) ) );
     let numargs = unsafe { ffi::lua_gettop( raw_lua ) as i32 } - top_of_stack - 2 + number_of_additional_args ;
@@ -95,15 +102,15 @@ where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> >,
     let pcall_error = unsafe {
         ffi::lua_pcall( raw_lua, numargs as i32, ffi::LUA_MULTRET as i32 , 0 as i32 )
     };
+    static NAMESBYCODES : &'static [&'static str] = &[
+        "", // LUA_OK = 0
+        "", // LUA_YIELD = 1
+        "Runtime error!!!", // LUA_ERRRUN = 2
+        "", // LUA_ERRSYNTAX = 3
+        "Memory allocation error!!!" , // LUA_ERRMEM = 4
+        "Error handling function failed!!!" //LUA_ERRERR = 5
+    ];
     if ( pcall_error as i64 ) != 0 {
-        static NAMESBYCODES : &'static [&'static str] = &[
-            "", // LUA_OK = 0
-            "", // LUA_YIELD = 1
-            "Runtime error!!!", // LUA_ERRRUN = 2
-            "", // LUA_ERRSYNTAX = 3
-            "Memory allocation error!!!" , // LUA_ERRMEM = 4
-            "Error handling function failed!!!" //LUA_ERRERR = 5
-        ];
         panic!("Call failed: {}", NAMESBYCODES[pcall_error as usize]);
     }
     let new_top_of_stack = unsafe { ffi::lua_gettop( raw_lua ) };
@@ -111,22 +118,12 @@ where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> >,
         panic!("Wrong return arguments number!!! Lua stack corrupted!!!");
     }
     let number_of_retvalues : i32 = new_top_of_stack - top_of_stack;
-
-    let new_raw_lua = lua_state.as_lua();
-    let new_lua = PushGuard {
-        //lua: me,
-        lua: lua_state,
-        size: 0,
-        raw_lua: new_raw_lua,
-    };
-    //match <Ret as LuaRead< PushGuard<L> > >::lua_read( new_lua ) {
-    match LuaRead::lua_read_at_position( new_lua, -number_of_retvalues ) {
-        Ok(ret_value) => {
-            unsafe { ffi::lua_settop( raw_lua, top_of_stack ); };
-            return ret_value;
-        },
-        Err(_lua) => { unreachable!("Can't pop result"); },
-    };
+    lua_get!(
+        lua_state,
+        number_of_retvalues,
+        unsafe { ffi::lua_settop( raw_lua, top_of_stack ); }, // on success
+        unreachable!("Can't pop result") // on error
+    )
 }
 
 pub fn lua_table_call<'selftime, 'lua, Ret, Args, L> (
@@ -137,7 +134,7 @@ pub fn lua_table_call<'selftime, 'lua, Ret, Args, L> (
 where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> >,
       Args : Push<L>,
       L : AsMutLua<'lua>
-      {
+{
     let raw_lua = lua_state.as_lua().state_ptr();
     if !unsafe { ffi::lua_istable( raw_lua, table_stack_pos ) } {
         panic!("Lua table method call: Lua table not found!!!");
@@ -146,15 +143,17 @@ where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> >,
     unsafe {
         ffi::lua_pushlstring(
             raw_lua,
-            function_name.as_bytes().as_ptr() as *const _,
-            function_name.as_bytes().len() as libc::size_t );
+            function_name.as_ptr() as *const _,
+            function_name.len()
+        );
         ffi::lua_gettable ( raw_lua, table_stack_pos );
-        ffi::lua_pushvalue( raw_lua, table_stack_pos ); // копируем таблицу на вершину стека, потому что это первый параметр функции - self
+        // Copy the table to the top of the stack, because it will be used as the first argument of the function -- self
+        ffi::lua_pushvalue( raw_lua, table_stack_pos );
     }
-    common_call::<'selftime, 'lua, Ret, Args, L>(lua_state, top_of_stack, args )
-        lua_state, 
+    common_call::<'selftime, 'lua, Ret, Args, L>(
+        lua_state,
         1, // number of additional args => there is the only one additional arg - table as self
-        top_of_stack, 
+        top_of_stack,
         args )
 }
 
