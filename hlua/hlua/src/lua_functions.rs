@@ -374,7 +374,7 @@ impl<'lua, L> LuaFunction<L>
     #[inline]
     pub fn call_with_args<'a, V, A, E>(&'a mut self, args: A) -> Result<V, LuaFunctionCallError<E>>
         where A: for<'r> Push<&'r mut LuaFunction<L>, Err = E>,
-              V: LuaRead<PushGuard<&'a mut L>>
+              V: LuaRead<PushGuard<&'a mut L>>// + std::default::Default
     {
         let raw_lua = self.variable.as_lua();
         // calling pcall pops the parameters and pushes output
@@ -419,15 +419,14 @@ impl<'lua, L> LuaFunction<L>
                     
                     //let TYPEID : &'static std::any::TypeId = refl_get_typeid_ref_by_type!(V);
                     
-                    let TYPEID : &'static std::any::TypeId = {
-                        lazy_static! {
-                            static ref TYPE_VAR : V = {
+                    let TYPEID : &'static std::any::TypeId = {                        
+                            static TYPE_VAR : V = once_cell::sync::Lazy::new( ||{
                                 <V as std::default::Default>::default()
-                            };
-                            static ref TYPEID_VAR : std::any::TypeId = {
+                            } );
+                            static TYPEID_VAR : std::any::TypeId = once_cell::sync::Lazy::new(|| {
                                 <V as std::any::Any>::type_id(&TYPE_VAR)
-                            };
-                        }
+                            } );
+                        
                         &TYPEID_VAR
                     };
                     //let rustexpected_code = get_lua_type_code!(TYPEID) as i32;
