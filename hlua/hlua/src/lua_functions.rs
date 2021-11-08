@@ -417,7 +417,19 @@ impl<'lua, L> LuaFunction<L>
                     //let is_error = false;
                     let lua_type_code = unsafe {ffi::lua_type( raw_lua.state_ptr(), -1 ) };
                     
-                    let TYPEID : &'static std::any::TypeId = refl_get_typeid_ref_by_type!(V);
+                    //let TYPEID : &'static std::any::TypeId = refl_get_typeid_ref_by_type!(V);
+                    
+                    let TYPEID : &'static std::any::TypeId = {
+                        lazy_static! {
+                            static ref TYPE_VAR : V = {
+                                <V as std::default::Default>::default()
+                            };
+                            static ref TYPEID_VAR : std::any::TypeId = {
+                                <V as std::any::Any>::type_id(&TYPE_VAR)
+                            };
+                        }
+                        &TYPEID_VAR
+                    };
                     //let rustexpected_code = get_lua_type_code!(TYPEID) as i32;
                     let rustexpected_code : i32 = 0;
                     if rustexpected_code != (ffi::LUA_TNONE as i32) &&
