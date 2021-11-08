@@ -420,6 +420,7 @@ pub enum LuaError {
     WrongType{
         rust_expected: String,
         lua_actual: String,
+        index : i32,
     },
     CommonError {
         internal : Box< LinkedList< LuaError > >,
@@ -534,8 +535,15 @@ impl fmt::Display for LuaError {
             ReadError(ref e) => write!(f, "Read error: {}", e),
             WrongType{
                 rust_expected: ref e1,
-                lua_actual: ref e2
-            } => write!(f, "Wrong type returned by Lua: {} expected, got {}", e1, e2),
+                lua_actual: ref e2,
+                index: ref e3,
+            } => {
+                if *e3 > 0i32 {
+                    write!(f, "Wrong type at position {} returned by Lua: {} expected, got {}", e3, e1, e2)
+                } else {
+                    write!(f, "Wrong type returned by Lua: {} expected, got {}", e1, e2)
+                }
+            },
             CommonError{internal: ref list} => {
                 if list.is_empty() { panic!("LuaError corrupted!!! Empty error list!"); }
                 let err_entry : &LuaError = list.back().unwrap();
@@ -557,7 +565,7 @@ impl Error for LuaError {
             SyntaxError(ref s) => &s,
             ExecutionError(ref s) => &s,
             ReadError(_) => "read error",
-            WrongType{rust_expected: _, lua_actual: _} => "wrong type returned by Lua",
+            WrongType{rust_expected: _, lua_actual: _, index: _} => "wrong type returned by Lua",
             CommonError{internal: ref list} => {
                 if list.is_empty() { panic!("LuaError corrupted!!! Empty error list!"); }
                 let err_entry : &LuaError = list.front().unwrap();
@@ -577,7 +585,7 @@ impl Error for LuaError {
             SyntaxError(_) => None,
             ExecutionError(_) => None,
             ReadError(ref e) => Some(e),
-            WrongType{rust_expected: _, lua_actual: _} => None,
+            WrongType{rust_expected: _, lua_actual: _, index: _} => None,
             CommonError{internal: ref list} => {
                 if list.is_empty() { panic!("LuaError corrupted!!! Empty error list!"); }
                 let err_entry : &LuaError = list.front().unwrap();

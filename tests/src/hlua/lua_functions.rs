@@ -49,7 +49,7 @@ pub fn check_types() {
     let mut f = LuaFunction::load(&mut lua, "return 12").unwrap();
     let err = f.call::<bool>().unwrap_err();
     match err {
-        LuaError::WrongType{ref rust_expected, ref lua_actual} => {
+        LuaError::WrongType{ref rust_expected, ref lua_actual, index : _} => {
             assert_eq!(rust_expected, "bool");
             assert_eq!(lua_actual, "number");
         },
@@ -106,13 +106,13 @@ pub fn execute_from_reader_errors_if_cant_read() {
 pub fn test_list_error()  {
     let mut err = LuaError::NoError;
     assert_eq!( err.is_collection(), false );
-    err.add( &LuaError::WrongType{ rust_expected : "Type1".to_string(), lua_actual : "LType1".to_string()  } );
+    err.add( &LuaError::WrongType{ rust_expected : "Type1".to_string(), lua_actual : "LType1".to_string(), index: 1  } );
     assert_eq!( err.is_collection(), false );
-    err.add( &LuaError::WrongType{ rust_expected : "Type2".to_string(), lua_actual : "LType2".to_string()  } );
+    err.add( &LuaError::WrongType{ rust_expected : "Type2".to_string(), lua_actual : "LType2".to_string(), index: 2  } );
     assert_eq!( err.is_collection(), true );
-    err.add( &LuaError::WrongType{ rust_expected : "Type3".to_string(), lua_actual : "LType3".to_string()  } );
-    err.add( &LuaError::WrongType{ rust_expected : "Type4".to_string(), lua_actual : "LType4".to_string()  } );
-    err.add( &LuaError::WrongType{ rust_expected : "Type5".to_string(), lua_actual : "LType5".to_string()  } );
+    err.add( &LuaError::WrongType{ rust_expected : "Type3".to_string(), lua_actual : "LType3".to_string(), index: 3  } );
+    err.add( &LuaError::WrongType{ rust_expected : "Type4".to_string(), lua_actual : "LType4".to_string(), index: 4  } );
+    err.add( &LuaError::WrongType{ rust_expected : "Type5".to_string(), lua_actual : "LType5".to_string(), index: 5  } );
     assert!( err.is_collection() );
     assert_eq!( err.get_collection().len(), 5 );
     static EXPECTED : &'static [&'static str] = &[
@@ -131,13 +131,14 @@ pub fn test_list_error()  {
     ];
     let mut counter = 0;
     for elem in err.iter() {
-        if let LuaError::WrongType{ rust_expected : exp_var, lua_actual : act_val } = elem {
+        if let LuaError::WrongType{ rust_expected : exp_var, lua_actual : act_val, index: ind } = elem {
             assert_eq!( exp_var, EXPECTED[counter] );
             assert_eq!( act_val, ACTUAL[counter] );
+            assert_eq!( *ind, counter as i32 + 1 );
         } else {
             assert!( false );
-        }
-        counter = counter + 1;
+        }        counter = counter + 1;
+
     }
 }
 
@@ -147,7 +148,7 @@ pub fn test_display_error()  {
     let err3 = LuaError::ExecutionError("333".to_string());
     let _file = std::fs::File::open("/aaa/f.txt/NKOhm2P1W3ivOfvffLdh6mkj0MiUcKJR0977VZoS");
     let err4 = LuaError::ReadError(std::sync::Arc::new(std::io::Error::last_os_error()));
-    let err5 = LuaError::WrongType{ rust_expected: "4444".to_string(), lua_actual: "aaaa".to_string() };
+    let err5 = LuaError::WrongType{ rust_expected: "4444".to_string(), lua_actual: "aaaa".to_string(), index: 0 };
     assert_eq!( format!("{}",err1), "No Error".to_string() );
     assert_eq!( format!("{}",err2), "Syntax error: 22".to_string() );
     assert_eq!( format!("{}",err3), "Execution error: 333".to_string() );

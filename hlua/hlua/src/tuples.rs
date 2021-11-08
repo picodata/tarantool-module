@@ -79,6 +79,10 @@ macro_rules! tuple_impl {
         {
             #[inline]
             fn lua_read_at_position(mut lua: LU, index: i32) -> Result<($first, $($other),+), LU> {
+                /*let mut check_index = 1;
+                $(
+
+                )+*/
                 let mut i = index;
 
                 let $first: $first = match LuaRead::lua_read_at_position(&mut lua, i) {

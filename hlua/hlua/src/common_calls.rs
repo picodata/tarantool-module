@@ -30,6 +30,7 @@ macro_rules! lua_push {
     }
 }
 
+#[inline(always)]
 unsafe fn dereference_and_corrupt_mut_ref< 'a, R>( refr : & mut R) -> R
 where
     R : 'a
@@ -90,6 +91,7 @@ macro_rules! text_lua_error_wrap {
     };
 }
 
+#[inline(always)]
 pub fn common_call<'selftime, 'lua, Ret, Args, L, ErrorReaction> (
     lua_state :& 'selftime mut  L,
     number_of_additional_args : i32,
@@ -159,4 +161,65 @@ where
         error_reaction( text_lua_error_wrap!("Read return valued failed!!!", ExecutionError) ), // on error
         Ret // expected type
     )
+}
+
+
+#[macro_export]
+macro_rules! wrap_ret_type_error {
+    ($expected_type:ty, $lua_code:expr, $offset:expr, $raw_lua:expr, $ind:expr) => {
+        LuaError::WrongType{
+            rust_expected: std::any::type_name::<V>().to_string(),
+            lua_actual: unsafe {
+                let lua_type = ffi::lua_type( $raw_lua.state_ptr(), -($offset) );
+                let typename = ffi::lua_typename($raw_lua.state_ptr(), lua_type);
+                std::ffi::CStr::from_ptr(typename).to_string_lossy().into_owned()
+            },
+            index : $ind,
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! get_lua_type_code {
+    ($luatype:ty) => {
+        {
+            static TYPEID : &'static [i32] = &[
+                ffi::LUA_TNONE   as i32, //Nchar       = 0,
+                ffi::LUA_TNUMBER as i32, //Nu8         = 1,
+                ffi::LUA_TNUMBER as i32, //Ni8         = 2,
+                ffi::LUA_TNUMBER as i32, //Nu16        = 3,
+                ffi::LUA_TNUMBER as i32, //Ni16        = 4,
+                ffi::LUA_TNUMBER as i32, //Nu32        = 5,
+                ffi::LUA_TNUMBER as i32, //Ni32        = 6,
+                ffi::LUA_TNONE   as i32, //Nu64        = 7,
+                ffi::LUA_TNONE   as i32, //Ni64        = 8,
+                ffi::LUA_TNONE   as i32, //Nu128       = 9,
+                ffi::LUA_TNONE   as i32, //Ni128       = 10,
+                ffi::LUA_TNUMBER as i32, //Nf32        = 11,
+                ffi::LUA_TNUMBER as i32, //Nf64        = 12,
+                ffi::LUA_TNUMBER as i32, //Nisize      = 13,
+                ffi::LUA_TNUMBER as i32, //Nusize      = 14,
+                ffi::LUA_TBOOLEAN as i32, //Nbool       = 15,
+                ffi::LUA_TSTRING as i32, //NString     = 16,
+                ffi::LUA_TNONE as i32, // any other type
+            ];
+            static MAX_TYPE_CODE : i32 =  ReflectionCode::NString as i32 + 1;
+            let luatype_code : ReflectionCode = refl_get_reflection_type_code_of!($luatype);
+            TYPEID[ std::cmp::min(luatype_code as i32,MAX_TYPE_CODE) as usize ]
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! verify_ret_type {
+    ($expected_type:ty, $raw_lua:expr, $offset:expr, $ind:expr, $out_error:expr ) => {
+        let lua_type_code = unsafe {ffi::lua_type( $raw_lua.state_ptr(), -($offset) ) };
+        let rustexpected_code = get_lua_type_code!($expected_type) as i32;
+        println!("exp {} , lua {}", lua_type_code, rustexpected_code );
+        if ( rustexpected_code != (ffi::LUA_TNONE as i32) &&
+             rustexpected_code != lua_type_code ) {
+            // wrong error type
+            $out_error.add( &wrap_ret_type_error!( $expected_type, lua_type_code, $offset, $raw_lua, $ind ) );
+        }
+    };
 }
