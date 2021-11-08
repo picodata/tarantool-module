@@ -29,11 +29,11 @@ pub enum ReflectionCode {
 
 #[macro_export]
 macro_rules! refl_internal_hash_by_typeid {
-    ($typeid_var:expr) => {
+    ($typeid_var_reference:expr) => {
         {
             use std::collections::hash_map::DefaultHasher;
             let mut hasher : DefaultHasher = DefaultHasher::new();
-            <std::any::TypeId as std::hash::Hash>::hash(& $typeid_var, & mut hasher);
+            <std::any::TypeId as std::hash::Hash>::hash($typeid_var_reference, & mut hasher);
             <DefaultHasher as std::hash::Hasher>::finish(&hasher)
         }
     }
@@ -45,21 +45,28 @@ struct StaticInit<'a, Type > {
 }
 
 #[macro_export]
+macro_rules! refl_get_typeid_ref_by_type {
+    ($type:ty) => {
+        {
+            lazy_static! {
+                static ref TYPE_VAR : $type = {
+                    <$type as std::default::Default>::default()
+                };
+                static ref TYPEID_VAR : std::any::TypeId = {
+                    <$type as std::any::Any>::type_id(&TYPE_VAR)
+                };
+            }
+            &TYPEID_VAR
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! refl_internal_hash_of {
     ($type:ty) =>
     {
         {
-            lazy_static! {
-                static ref type_var : $type = {
-                    <$type as std::default::Default>::default()
-                };
-                static ref typeid_var : std::any::TypeId = {<$type as std::any::Any>::type_id(&type_var) };
-            }
-            //const type_var : StaticInit<'static, $type> = StaticInit{ data : &<$type as std::default::Default>::default() };
-            //static type_var: $type ;//= unsafe { std::mem::MaybeUninit::zeroed().assume_init() };//std::default::Default::default();
-            //let static_ptr : * 'static const std::any::TypeId = &typeid_var;
-            //let ptr : * const
-            refl_internal_hash_by_typeid!( typeid_var )
+            refl_internal_hash_by_typeid!( refl_get_typeid_ref_by_type!($type) )
         }
     }
 }
@@ -135,8 +142,10 @@ macro_rules! refl_get_reflection_type_code_by_typeid {
 macro_rules! refl_get_reflection_type_code_of {
     ($type:ty) => {
         {
-            let current_type_hash = refl_internal_hash_of!($type);
-            refl_get_reflection_type_code_by_typeid!( current_type_hash )
+            let a : &'static std::any::TypeId = refl_get_typeid_ref_by_type!($type);
+            //let a : &'static std::any::TypeId = refl_get_typeid_ref_by_type!(u128);
+            refl_get_reflection_type_code_by_typeid!( a )
+            //refl_get_reflection_type_code_by_typeid!( refl_get_typeid_ref_by_type!($type) )
         }
     }
 }

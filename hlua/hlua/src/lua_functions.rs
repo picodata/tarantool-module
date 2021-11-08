@@ -22,6 +22,7 @@ use crate::{
     refl_get_reflection_type_code_by_typeid,
     refl_get_reflection_type_code_of,
     refl_internal_hash_by_typeid,
+    refl_get_typeid_ref_by_type,
     refl_internal_hash_of,
     make_collection,
     reflection::refl_get_internal_types_hashes,
@@ -266,7 +267,7 @@ macro_rules! get_lua_type_code {
 
 //pub const LUA_UNSUPPORTED_TYPE: i32 = -65535;
 macro_rules! get_lua_type_code {
-    ($luatype:ty) => {
+    ($luatype:expr) => {
         {
             static TYPEID : &'static [i32] = &[
                 ffi::LUA_TNONE   as i32, //Nchar       = 0,
@@ -284,13 +285,16 @@ macro_rules! get_lua_type_code {
                 ffi::LUA_TNUMBER as i32, //Nf64        = 12,
                 ffi::LUA_TNUMBER as i32, //Nisize      = 13,
                 ffi::LUA_TNUMBER as i32, //Nusize      = 14,
-                ffi::LUA_TNUMBER as i32, //Nbool       = 15,
+                ffi::LUA_TBOOLEAN as i32, //Nbool       = 15,
                 ffi::LUA_TSTRING as i32, //NString     = 16,
                 ffi::LUA_TNONE as i32, // any other type
             ];
             static MAX_TYPE_CODE : i32 =  ReflectionCode::NString as i32 + 1;
-            let luatype_code = refl_get_reflection_type_code_of!($luatype);
-            TYPEID[ std::cmp::min(luatype_code,MAX_TYPE_CODE) as usize ]
+            //let luatype_code = refl_get_reflection_type_code_of!($luatype);
+            //let a : &'static std::any::TypeId = refl_get_typeid_ref_by_type!(u128);
+            let luatype_code = refl_get_reflection_type_code_by_typeid!( $luatype );
+            //let luatype_code = refl_get_reflection_type_code_of!(u128);
+            TYPEID[ std::cmp::min(luatype_code as i32,MAX_TYPE_CODE) as usize ]
         }
     }
 }
@@ -298,11 +302,9 @@ macro_rules! get_lua_type_code {
 //std::any::Any::TypeId
 macro_rules! verify_ret_type {
     ($expected_type:ty, $raw_lua:expr, $offset:expr, $out_error:expr ) => {
-        //let luatype = std::any::TypeId::of::<$expected_type>();
-        //let is_error = false;
         let lua_type_code = unsafe {ffi::lua_type( $raw_lua.state_ptr(), -($offset) ) };
-        //let rustexpected_code = get_lua_type_code!($expected_type) as i32;
-        let rustexpected_code : i32 = 0;
+        let rustexpected_code = get_lua_type_code!($expected_type) as i32;
+        //let rustexpected_code : i32 = 0;
         if ( rustexpected_code != (ffi::LUA_TNONE as i32) &&
              rustexpected_code == lua_type_code ) {
             // wrong error type
@@ -408,7 +410,23 @@ impl<'lua, L> LuaFunction<L>
             },*/
             {
                let err = LuaError::NoError;
-               verify_ret_type!( V, raw_lua, -1, err );
+               
+                //($expected_type:ty, $raw_lua:expr, $offset:expr, $out_error:expr )
+                {
+                    //let luatype = std::any::TypeId::of::<$expected_type>();
+                    //let is_error = false;
+                    let lua_type_code = unsafe {ffi::lua_type( raw_lua.state_ptr(), -1 ) };
+                    
+                    let TYPEID : &'static std::any::TypeId = refl_get_typeid_ref_by_type!(V);
+                    //let rustexpected_code = get_lua_type_code!(TYPEID) as i32;
+                    let rustexpected_code : i32 = 0;
+                    if rustexpected_code != (ffi::LUA_TNONE as i32) &&
+                        rustexpected_code == lua_type_code {
+                        // wrong error type
+                        //$out_error.add( &wrap_ret_type_error!( $expected_type, lua_type_code, $offset, $raw_lua ) );
+                    }
+                }
+               //verify_ret_type!( V, raw_lua, 1, err );
                if err.is_no_error() {
                    match LuaRead::lua_read(pushed_value) {
                        Ok(x) => Ok(x),
