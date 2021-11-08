@@ -113,6 +113,8 @@ use std::error::Error;
 use std::fmt;
 use std::convert::From;
 use std::io;
+use std::collections::LinkedList;
+use std::sync::Arc;
 
 pub use any::{AnyHashableLuaValue, AnyLuaString, AnyLuaValue};
 pub use functions_write::{Function, InsideCallback};
@@ -125,9 +127,14 @@ pub use lua_tables::LuaTable;
 pub use lua_tables::LuaTableIterator;
 pub use tuples::TuplePushError;
 pub use userdata::UserdataOnStack;
-pub use userdata::{push_userdata, read_userdata};
+pub use userdata::{push_userdata, read_userdata, push_some_userdata};
 pub use values::StringInLua;
 
+// Needed for `lua_error` macro
+pub use ffi::luaL_error;
+
+mod common_calls;
+mod reflection;
 mod any;
 mod functions_write;
 mod lua_functions;
@@ -369,7 +376,7 @@ pub trait PushOne<L>: Push<L> {}
 
 /// Type that cannot be instantiated.
 ///
-/// Will be replaced with `!` eventually (https://github.com/rust-lang/rust/issues/35121).
+/// Will be replaced with `!` eventually (<https://github.com/rust-lang/rust/issues/35121>).
 #[derive(Debug, Copy, Clone)]
 pub enum Void {}
 
@@ -394,9 +401,11 @@ pub trait LuaRead<L>: Sized {
     fn lua_read_at_position(lua: L, index: i32) -> Result<Self, L>;
 }
 
+
 /// Error that can happen when executing Lua code.
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum LuaError {
+    NoError,
     /// There was a syntax error when parsing the Lua code.
     SyntaxError(String),
 
@@ -405,14 +414,115 @@ pub enum LuaError {
     ExecutionError(String),
 
     /// There was an IoError while reading the source code to execute.
-    ReadError(IoError),
+    ReadError( Arc<IoError> ),
 
     /// The call to `execute` has requested the wrong type of data.
     WrongType{
         rust_expected: String,
         lua_actual: String,
     },
+    CommonError {
+        internal : Box< LinkedList< LuaError > >,
+    },
 }
+/*
+impl std::clone::Clone for LuaError {
+    fn clone(&self) -> Self {
+        use LuaError::*;
+        match *self {
+            SyntaxError( ref val )   => LuaError::SyntaxError   ( val.clone() ),
+            ExecutionError( ref val )=> LuaError::ExecutionError( val.clone() ),
+            ReadError( ref val )     => LuaError::ReadError     ( *val ),
+            WrongType { rust_expected: exp, lua_actual: act } => LuaError::WrongType{ rust_expected:exp.clone(), lua_actual: act.clone() },
+            CommonError{ internal : list } => LuaError::CommonError{ internal: list.clone() },
+        }
+    }
+}*/
+
+impl LuaError {
+    pub fn get(&self) -> LuaError {
+        use LuaError::*;
+        match &self {
+            CommonError{internal: ref list} => {
+                if list.is_empty() { panic!("LuaError corrupted!!! Empty error list!"); }
+                let err_entry : &LuaError = list.front().unwrap();
+                match err_entry {
+                    CommonError{internal: _} => { panic!("LuaError corrupted!!! Nested error list!"); },
+                    _ => err_entry.clone(),
+                }
+            },
+            _ => return self.clone()
+        }
+    }
+    pub fn add(& mut self, err_value : &LuaError) {
+        use LuaError::*;
+        match self {
+            CommonError{internal: ref mut list} => {
+                if list.is_empty() { panic!("LuaError corrupted!!! Empty error list!"); }
+                match err_value {
+                    CommonError{internal: ref _a} => { panic!("LuaError corrupted!!! Nested error list!"); },
+                    _ => {
+                        list.push_back( err_value.clone() );
+                    }
+                }
+            },
+            LuaError::NoError => {
+                *self=err_value.clone();
+            }
+            _ => {
+                let old : LuaError = self.clone();
+                let mut list : Box::< LinkedList<LuaError> > = Box::new( LinkedList::<LuaError>::new() );
+                list.as_mut().push_back( old );
+                list.as_mut().push_back( err_value.clone() );
+                *self = CommonError{ internal : list };
+            }
+        }
+    }
+    pub fn is_collection( &self ) -> bool {
+        match &self {
+            LuaError::CommonError{ internal : ref _val } => true,
+            _ => false,
+        }
+    }
+    pub fn is_no_error( &self ) -> bool {
+        match &self {
+            LuaError::NoError => true,
+            _ => false,
+        }
+    }
+    pub fn get_collection( &self ) -> &LinkedList::<LuaError> {
+        match &self {
+            LuaError::CommonError{ internal : ref boxlist } => boxlist.as_ref(),
+            _ => {panic!("Single error, not a collection of errors!!!");},
+        }
+    }
+    pub fn get_mut_collection( & mut self ) -> & mut LinkedList::<LuaError> {
+        match self {
+            LuaError::CommonError{ internal : ref mut boxlist } => boxlist.as_mut(),
+            _ => {panic!("Single error, not a collection of errors!!!");},
+        }
+    }
+    pub fn iter<'a>( &'a self ) -> LuaErrorIter<'a> {
+        if self.is_collection() {
+            LuaErrorIter {
+                internal : LuaErrorIteratorInternal {
+                    data : LuaErrorIteratorEnum::IterConst(
+                        self.get_collection().iter()
+                    )
+                }
+            }
+        } else {
+            LuaErrorIter {
+                internal : LuaErrorIteratorInternal {
+                    data : LuaErrorIteratorEnum::ConstRef(
+                        &self
+                    )
+                }
+            }
+        }
+    }
+}
+
 
 impl fmt::Display for LuaError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -426,6 +536,15 @@ impl fmt::Display for LuaError {
                 rust_expected: ref e1,
                 lua_actual: ref e2
             } => write!(f, "Wrong type returned by Lua: {} expected, got {}", e1, e2),
+            CommonError{internal: ref list} => {
+                if list.is_empty() { panic!("LuaError corrupted!!! Empty error list!"); }
+                let err_entry : &LuaError = list.back().unwrap();
+                match err_entry {
+                    CommonError{internal: _} => { panic!("LuaError corrupted!!! Nested error list!"); },
+                    _ => err_entry.fmt(f),
+                }
+            },
+            LuaError::NoError => write!(f, "No Error")
         }
     }
 }
@@ -439,6 +558,15 @@ impl Error for LuaError {
             ExecutionError(ref s) => &s,
             ReadError(_) => "read error",
             WrongType{rust_expected: _, lua_actual: _} => "wrong type returned by Lua",
+            CommonError{internal: ref list} => {
+                if list.is_empty() { panic!("LuaError corrupted!!! Empty error list!"); }
+                let err_entry : &LuaError = list.front().unwrap();
+                match err_entry {
+                    CommonError{internal: ref _a} => { panic!("LuaError corrupted!!! Nested error list!");},
+                    _ => err_entry.description(),
+                }
+            },
+            NoError => "no error"
         }
     }
 
@@ -450,13 +578,79 @@ impl Error for LuaError {
             ExecutionError(_) => None,
             ReadError(ref e) => Some(e),
             WrongType{rust_expected: _, lua_actual: _} => None,
+            CommonError{internal: ref list} => {
+                if list.is_empty() { panic!("LuaError corrupted!!! Empty error list!"); }
+                let err_entry : &LuaError = list.front().unwrap();
+                match err_entry {
+                    CommonError{internal: _} => { panic!("LuaError corrupted!!! Nested error list!"); },
+                    _ => err_entry.cause(),
+                }
+            },
+            _ => None,
         }
+    }
+}
+
+
+enum LuaErrorIteratorEnum<'a> {
+    PostEnd,
+    ConstRef( &'a LuaError ),
+    IterConst( std::collections::linked_list::Iter<'a, LuaError> )
+}
+
+pub struct LuaErrorIteratorInternal<'a> {
+    data : LuaErrorIteratorEnum::<'a>,
+}
+
+impl<'a> LuaErrorIteratorInternal<'a> {
+    fn common_next(&'a mut self) -> std::option::Option<&'a LuaError> {
+        use LuaErrorIteratorEnum::*;
+        //let data : &'a mut LuaErrorIteratorEnum::<'a> = & mut self.data;
+        match self.data {
+            ConstRef( ref err ) => {
+                if err.is_collection() {
+                    let mut iter = err.get_collection().iter();
+                    let ret = iter.next();
+                    self.data = IterConst(iter);
+                    ret
+                } else {
+                    let ret = Some( *err );
+                    *self = LuaErrorIteratorInternal{ data :LuaErrorIteratorEnum::PostEnd };
+                    ret
+                }
+            },
+            IterConst( ref mut itr ) => {
+                let value = itr.next();
+                if value.is_none() {
+                    *self = LuaErrorIteratorInternal{ data :LuaErrorIteratorEnum::PostEnd };
+                    return None;
+                }
+                value
+            },
+            LuaErrorIteratorEnum::PostEnd => None, // WHY ANY PATTERN???
+        }
+    }
+}
+
+pub struct LuaErrorIter<'a> {
+    pub internal: LuaErrorIteratorInternal<'a>,
+}
+
+impl<'a> std::iter::Iterator for LuaErrorIter<'a> {
+    type Item = &'a LuaError;
+    fn next(& mut self) -> std::option::Option<&'a LuaError> {
+        // We can't define fn next(&'a mute self) because prototype of function defined in std::iter::Iterator
+        // That why we cast one lifetime to other lifetime
+        let meptr : * mut LuaErrorIter<'a> = unsafe {std::mem::transmute( self as * mut LuaErrorIter<'a>) };
+        let me : &'a mut  LuaErrorIter<'a> = unsafe { & mut *meptr};
+        let ret : std::option::Option<&'a LuaError> = me.internal.common_next();
+        ret
     }
 }
 
 impl From<io::Error> for LuaError {
     fn from(e: io::Error) -> Self {
-        LuaError::ReadError(e)
+        LuaError::ReadError(Arc::new(e))
     }
 }
 
@@ -520,7 +714,7 @@ impl<'lua> Lua<'lua> {
     /// Opens all standard Lua libraries.
     ///
     /// See the reference for the standard library here:
-    /// https://www.lua.org/manual/5.2/manual.html#6
+    /// <https://www.lua.org/manual/5.2/manual.html#6>
     ///
     /// This is done by calling `luaL_openlibs`.
     ///
@@ -538,7 +732,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens base library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_base
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_base>
     #[inline]
     pub fn open_base(&mut self) {
         unsafe { ffi::luaopen_base(self.lua.0) }
@@ -546,7 +740,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens bit32 library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_bit32
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_bit32>
     #[inline]
     pub fn open_bit(&mut self) {
         unsafe { ffi::luaopen_bit(self.lua.0) }
@@ -554,7 +748,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens debug library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_debug
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_debug>
     #[inline]
     pub fn open_debug(&mut self) {
         unsafe { ffi::luaopen_debug(self.lua.0) }
@@ -562,7 +756,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens io library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_io
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_io>
     #[inline]
     pub fn open_io(&mut self) {
         unsafe { ffi::luaopen_io(self.lua.0) }
@@ -570,7 +764,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens math library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_math
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_math>
     #[inline]
     pub fn open_math(&mut self) {
         unsafe { ffi::luaopen_math(self.lua.0) }
@@ -578,7 +772,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens os library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_os
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_os>
     #[inline]
     pub fn open_os(&mut self) {
         unsafe { ffi::luaopen_os(self.lua.0) }
@@ -586,7 +780,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens package library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_package
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_package>
     #[inline]
     pub fn open_package(&mut self) {
         unsafe { ffi::luaopen_package(self.lua.0) }
@@ -594,7 +788,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens string library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_string
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_string>
     #[inline]
     pub fn open_string(&mut self) {
         unsafe { ffi::luaopen_string(self.lua.0) }
@@ -602,7 +796,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens table library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_table
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_table>
     #[inline]
     pub fn open_table(&mut self) {
         unsafe { ffi::luaopen_table(self.lua.0) }

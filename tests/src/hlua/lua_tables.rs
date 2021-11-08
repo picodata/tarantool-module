@@ -148,3 +148,40 @@ pub fn registry_metatable() {
     let mut metatable = registry.get_or_create_metatable();
     metatable.set(3, "hello");
 }
+
+pub fn lua_tables_call_test() {
+    let mut lua = Lua::new();
+    lua.execute::<()>(r#"
+    a={}
+    a["foo"] = function ( any_number, any_string ) return 1 , 3 end"#).unwrap();
+    let mut table: LuaTable<_> = lua.get("a").unwrap();
+    let res: (u16, u32) = table.call_unchecked( String::from("foo"), (1, "bar") );
+    assert_eq!( res.0, 1 );
+    assert_eq!( res.1, 3 );
+}
+
+pub fn test_errors_during_call_method()  {
+    let mut lua = Lua::new();
+    lua.execute::<()>(r#"
+    a={}
+    a["foo"] = function ( any_number, any_string ) return 1 , "info", 3, "failed" end"#).unwrap();
+    let mut table: LuaTable<_> = lua.get("a").unwrap();
+    // Execution error: Read return valued failed!!! - не соответствие числа возвращаемых аргументов
+    let res : Result<(String, u16, String, u32), _> =
+                          table.call_checked( String::from("foo"), (1, "bar") );
+    let err_container = res.expect_err("Expected error");
+    //let err_container : Result<(u16, u32), err_container> = res.expect_err("Expected error");
+    let err_list : tarantool::hlua::LuaError = match err_container {
+        tarantool::hlua::LuaFunctionCallError::PushError(_) => unreachable!(),
+        tarantool::hlua::LuaFunctionCallError::LuaError( luaerr ) => luaerr,
+    };
+    let mut counter = 0;
+    for err in err_list.iter() {
+        println!("aabbcc {}", err );
+        //assert!( counter < EXPECTED.len() );
+        //if counter > EXPECTED.len() {break;}
+        counter = counter + 1;
+    }
+    //assert_eq!( res.0, 1 );
+    //assert_eq!( res.1, 3 );
+}

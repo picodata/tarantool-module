@@ -5,6 +5,8 @@ use std::io::Read;
 use std::io::Error as IoError;
 use std::ptr;
 
+extern crate lazy_static;
+use lazy_static::lazy_static;
 use crate::{
     AsLua,
     AsMutLua,
@@ -15,7 +17,17 @@ use crate::{
     PushGuard,
     PushOne,
     Void,
+    reflection::GetTypeCodeTrait,
+    reflection::ReflectionCode,
+    refl_get_reflection_type_code_by_typeid,
+    refl_get_reflection_type_code_of,
+    refl_internal_hash_by_typeid,
+    refl_internal_hash_of,
+    make_collection,
+    reflection::refl_get_internal_types_hashes,
+    //reflection::refl_get_reflection_type_code,
 };
+
 
 /// Wrapper around a `&str`. When pushed, the content will be parsed as Lua code and turned into a
 /// function.
@@ -141,7 +153,7 @@ impl<'lua, L, R> Push<L> for LuaCodeFromReader<R>
 
             if read_data.triggered_error.is_some() {
                 let error = read_data.triggered_error.unwrap();
-                return Err((LuaError::ReadError(error), pushed_value.into_inner()));
+                return Err((LuaError::ReadError(std::sync::Arc::new(error)), pushed_value.into_inner()));
             }
 
             if load_return_value == 0 {
@@ -212,6 +224,106 @@ unsafe impl<'lua, L> AsMutLua<'lua> for LuaFunction<L>
     }
 }
 
+macro_rules! wrap_ret_type_error {
+    ($expected_type:ty, $lua_code:expr, $offset:expr, $raw_lua:expr) => {
+        LuaError::WrongType{
+            rust_expected: std::any::type_name::<V>().to_string(),
+            lua_actual: unsafe {
+                let lua_type = ffi::lua_type( $raw_lua.state_ptr(), -($offset) );
+                let typename = ffi::lua_typename($raw_lua.state_ptr(), lua_type);
+                std::ffi::CStr::from_ptr(typename).to_string_lossy().into_owned()
+            }
+        }
+    };
+}
+
+// пытался без рефлекшна - не вышло.
+/*
+macro_rules! get_lua_type_code {
+    ($luatype:ty) => {
+        {
+            static TYPEID_STRING = std::any::TypeId::of::<String>();
+            let luatype_typeid = std::any::TypeId::of::<$luatype>();
+            match luatype_typeid {
+                TYPEID_STRING => ffi::LUA_TSTRING as i32,
+                std::any::TypeId::of::<i8>() => ffi::LUA_TNUMBER as i32,
+                std::any::TypeId::of::<u8>() => ffi::LUA_TNUMBER as i32,
+                std::any::TypeId::of::<i16>() => ffi::LUA_TNUMBER as i32,
+                std::any::TypeId::of::<u16>() => ffi::LUA_TNUMBER as i32,
+                std::any::TypeId::of::<i32>() => ffi::LUA_TNUMBER as i32,
+                std::any::TypeId::of::<i32>() => ffi::LUA_TNUMBER as i32,
+                std::any::TypeId::of::<i64>() => ffi::LUA_TNUMBER as i32,
+                std::any::TypeId::of::<u64>() => ffi::LUA_TNUMBER as i32,
+                std::any::TypeId::of::<f32>() => ffi::LUA_TNUMBER as i32,
+                std::any::TypeId::of::<f64>() => ffi::LUA_TNUMBER as i32,
+                std::any::TypeId::of::<bool>() => ffi::LUA_TNUMBER as i32,
+                _ => ffi::LUA_TNONE as i32,
+            }
+        }
+    };
+}
+*/
+
+//pub const LUA_UNSUPPORTED_TYPE: i32 = -65535;
+macro_rules! get_lua_type_code {
+    ($luatype:ty) => {
+        {
+            static TYPEID : &'static [i32] = &[
+                ffi::LUA_TNONE   as i32, //Nchar       = 0,
+                ffi::LUA_TNUMBER as i32, //Nu8         = 1,
+                ffi::LUA_TNUMBER as i32, //Ni8         = 2,
+                ffi::LUA_TNUMBER as i32, //Nu16        = 3,
+                ffi::LUA_TNUMBER as i32, //Ni16        = 4,
+                ffi::LUA_TNUMBER as i32, //Nu32        = 5,
+                ffi::LUA_TNUMBER as i32, //Ni32        = 6,
+                ffi::LUA_TNONE   as i32, //Nu64        = 7,
+                ffi::LUA_TNONE   as i32, //Ni64        = 8,
+                ffi::LUA_TNONE   as i32, //Nu128       = 9,
+                ffi::LUA_TNONE   as i32, //Ni128       = 10,
+                ffi::LUA_TNUMBER as i32, //Nf32        = 11,
+                ffi::LUA_TNUMBER as i32, //Nf64        = 12,
+                ffi::LUA_TNUMBER as i32, //Nisize      = 13,
+                ffi::LUA_TNUMBER as i32, //Nusize      = 14,
+                ffi::LUA_TNUMBER as i32, //Nbool       = 15,
+                ffi::LUA_TSTRING as i32, //NString     = 16,
+                ffi::LUA_TNONE as i32, // any other type
+            ];
+            static MAX_TYPE_CODE : i32 =  ReflectionCode::NString as i32 + 1;
+            let luatype_code = refl_get_reflection_type_code_of!($luatype);
+            TYPEID[ std::cmp::min(luatype_code,MAX_TYPE_CODE) as usize ]
+        }
+    }
+}
+
+//std::any::Any::TypeId
+macro_rules! verify_ret_type {
+    ($expected_type:ty, $raw_lua:expr, $offset:expr, $out_error:expr ) => {
+        //let luatype = std::any::TypeId::of::<$expected_type>();
+        //let is_error = false;
+        let lua_type_code = ffi::lua_type( $raw_lua.state_ptr(), -($offset) );
+        //let rustexpected_code = get_lua_type_code!($expected_type) as i32;
+        let rustexpected_code : i32 = 0;
+        if ( rustexpected_code != (ffi::LUA_TNONE as i32) &&
+             rustexpected_code == lua_type_code ) {
+            // wrong error type
+            //$out_error.add( &wrap_ret_type_error!( $expected_type, lua_type_code, $offset, $raw_lua ) );
+        }
+    };
+}
+/*
+LUA_TBOOLEAN = 1;
+LUA_TNUMBER = 3;
+LUA_TSTRING = 4;
+
+LUA_TTABLE = 5;
+
+LUA_TNIL = 0;
+LUA_TLIGHTUSERDATA = 2;
+LUA_TFUNCTION = 6;
+LUA_TUSERDATA = 7;
+LUA_TTHREAD = 8;
+*/
+
 impl<'lua, L> LuaFunction<L>
     where L: AsMutLua<'lua>
 {
@@ -262,6 +374,7 @@ impl<'lua, L> LuaFunction<L>
         where A: for<'r> Push<&'r mut LuaFunction<L>, Err = E>,
               V: LuaRead<PushGuard<&'a mut L>>
     {
+        let raw_lua = self.variable.as_lua();
         // calling pcall pops the parameters and pushes output
         let (pcall_return_value, pushed_value) = unsafe {
             // lua_pcall pops the function, so we have to make a copy of it
@@ -272,7 +385,6 @@ impl<'lua, L> LuaFunction<L>
             };
             let pcall_return_value = ffi::lua_pcall(self.variable.as_mut_lua().0, num_pushed, 1, 0);     // TODO: num ret values
 
-            let raw_lua = self.variable.as_lua();
             let guard = PushGuard {
                 lua: &mut self.variable,
                 size: 1,
@@ -283,7 +395,7 @@ impl<'lua, L> LuaFunction<L>
         };
 
         match pcall_return_value {
-            0 => match LuaRead::lua_read(pushed_value) {
+            0 => /*match LuaRead::lua_read(pushed_value) {
                 Err(lua) => Err(LuaFunctionCallError::LuaError(LuaError::WrongType{
                     rust_expected: std::any::type_name::<V>().to_string(),
                     lua_actual: unsafe {
@@ -293,6 +405,19 @@ impl<'lua, L> LuaFunction<L>
                     }
                 })),
                 Ok(x) => Ok(x),
+            },*/
+            {
+               let err = LuaError::NoError;
+               verify_ret_type!( V, raw_lua, -1, err );
+               if err.is_no_error() {
+                   match LuaRead::lua_read(pushed_value) {
+                       Ok(x) => Ok(x),
+                       Err(lua) => Err( LuaFunctionCallError::LuaError(
+                           LuaError::ExecutionError("Read failed!!!".to_string()))),
+                   }
+               } else {
+                   Err( LuaFunctionCallError::LuaError(err) )
+               }
             },
             ffi::LUA_ERRMEM => panic!("lua_pcall returned LUA_ERRMEM"),
             ffi::LUA_ERRRUN => {
@@ -350,7 +475,7 @@ pub enum LuaFunctionCallError<E> {
     /// Error while executing the function.
     LuaError(LuaError),
     /// Error while pushing one of the parameters.
-    PushError(E),
+    PushError(E)
 }
 
 impl<E> fmt::Display for LuaFunctionCallError<E>
@@ -389,7 +514,7 @@ impl<E> Error for LuaFunctionCallError<E>
     fn description(&self) -> &str {
         match *self {
             LuaFunctionCallError::LuaError(_) => "Lua error",
-            LuaFunctionCallError::PushError(_) => "error while pushing arguments",
+            LuaFunctionCallError::PushError(_) => "Error while pushing arguments",
         }
     }
 

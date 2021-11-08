@@ -187,6 +187,9 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 hlua::lua_functions::call_and_read_table,
                 hlua::lua_functions::lua_function_returns_function,
                 hlua::lua_functions::execute_from_reader_errors_if_cant_read,
+                hlua::lua_functions::test_list_error,
+                hlua::lua_functions::test_display_error,
+                hlua::lua_functions::test_error_iterations,
 
                 hlua::lua_tables::iterable,
                 hlua::lua_tables::iterable_multipletimes,
@@ -197,6 +200,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 hlua::lua_tables::by_value,
                 hlua::lua_tables::registry,
                 hlua::lua_tables::registry_metatable,
+                hlua::lua_tables::lua_tables_call_test,
+                hlua::lua_tables::test_errors_during_call_method,
 
                 hlua::functions_write::simple_function,
                 hlua::functions_write::one_argument,
@@ -284,6 +289,11 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_fiber::test_unit_deferred,
                 test_fiber::test_unit_deferred_with_attrs,
                 test_fiber::test_multiple_unit_deferred,
+                test_fiber::deferred_doesnt_yield,
+                test_fiber::immediate_yields,
+                test_fiber::start_error,
+                test_fiber::require_error,
+
                 test_box::test_space_get_by_name,
                 test_box::test_space_get_system,
                 test_box::test_index_get_by_name,
