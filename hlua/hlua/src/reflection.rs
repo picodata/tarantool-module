@@ -27,59 +27,6 @@ pub enum ReflectionCode {
     NError      = 20,
 }
 
-#[macro_export]
-macro_rules! refl_internal_hash_by_typeid {
-    ($typeid_var_reference:expr) => {
-        {
-            use std::collections::hash_map::DefaultHasher;
-            let mut hasher : DefaultHasher = DefaultHasher::new();
-            <std::any::TypeId as std::hash::Hash>::hash($typeid_var_reference, & mut hasher);
-            <DefaultHasher as std::hash::Hasher>::finish(&hasher)
-        }
-    }
-}
-//typeid() и TypeId::of
-// например,TypeId::of::<String>() == s.type_id()
-struct StaticInit<'a, Type > {
-    data: &'a Type,
-}
-
-#[macro_export]
-macro_rules! refl_get_typeid_ref_by_type {
-    ($type:ty) => {
-        {
-            lazy_static! {
-                static ref TYPE_VAR : $type = {
-                    <$type as std::default::Default>::default()
-                };
-                static ref TYPEID_VAR : std::any::TypeId = {
-                    <$type as std::any::Any>::type_id(&TYPE_VAR)
-                };
-            }
-            &TYPEID_VAR
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! refl_internal_hash_of {
-    ($type:ty) =>
-    {
-        {
-            refl_internal_hash_by_typeid!( refl_get_typeid_ref_by_type!($type) )
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! refl_internal_typehash {
-    ($typehash:expr) => {
-        {
-            let typeid_var : std::any::TypeId = std::any::Any::type_id($typehash);
-            refl_internal_hash_by_typeid!( typeid_var )
-        }
-    };
-}
 
 #[macro_export]
 macro_rules! make_collection {
@@ -101,51 +48,52 @@ macro_rules! make_collection {
     };
 }
 
-pub fn refl_get_internal_types_hashes() -> &'static std::collections::HashMap<u64,
-                                                               ReflectionCode> {
-                                                                   
-lazy_static! {
-    static ref TYPEHASHES: std::collections::HashMap<u64,ReflectionCode> = {make_collection!
-    (
-        refl_internal_hash_of!(u8)      => ReflectionCode::Nu8,
-        refl_internal_hash_of!(i8)      => ReflectionCode::Ni8,
-        refl_internal_hash_of!(i16)     => ReflectionCode::Ni16,
-        refl_internal_hash_of!(u16)     => ReflectionCode::Nu16,
-        refl_internal_hash_of!(i32)     => ReflectionCode::Ni32,
-        refl_internal_hash_of!(u32)     => ReflectionCode::Nu32,
-        refl_internal_hash_of!(f32)     => ReflectionCode::Nf32,
-        refl_internal_hash_of!(f64)     => ReflectionCode::Nf64,
-        refl_internal_hash_of!(bool)    => ReflectionCode::Nbool,
-        refl_internal_hash_of!(String)  => ReflectionCode::NString,
-    ) };
-}
-    &TYPEHASHES
-}
-
-#[macro_export]
-macro_rules! refl_get_reflection_type_code_by_typeid {
-    ($typeid:expr) => {
-        {
-            let current_type_hash = refl_internal_hash_by_typeid!($typeid);
-            let TYPEHASHES : &'static std::collections::
-                HashMap<u64, ReflectionCode> = refl_get_internal_types_hashes();
-            if TYPEHASHES.contains_key( &current_type_hash ) {
-                TYPEHASHES[ &current_type_hash ]
-            } else {
-                ReflectionCode::NUser
-            }
-        }
-    }
+#[inline(always)]
+pub fn type_name_of_val<T>() -> &'static str {
+    std::any::type_name::<T>()
 }
 
 #[macro_export]
 macro_rules! refl_get_reflection_type_code_of {
     ($type:ty) => {
         {
-            let a : &'static std::any::TypeId = refl_get_typeid_ref_by_type!($type);
-            //let a : &'static std::any::TypeId = refl_get_typeid_ref_by_type!(u128);
-            refl_get_reflection_type_code_by_typeid!( a )
-            //refl_get_reflection_type_code_by_typeid!( refl_get_typeid_ref_by_type!($type) )
+            lazy_static! {
+                /*
+                static ref TYPEHASHES: std::collections::HashMap<&str,ReflectionCode> = {make_collection!
+                (
+                    &"u8"      => ReflectionCode::Nu8,
+                    &"i8"      => ReflectionCode::Ni8,
+                    &"i16"     => ReflectionCode::Ni16,
+                    &"u16"     => ReflectionCode::Nu16,
+                    &"i32"     => ReflectionCode::Ni32,
+                    &"u32"     => ReflectionCode::Nu32,
+                    &"f32"     => ReflectionCode::Nf32,
+                    &"f64"     => ReflectionCode::Nf64,
+                    &"bool"    => ReflectionCode::Nbool,
+                    &"String"  => ReflectionCode::NString,
+                ) };*/
+                static ref TYPEHASHES: std::collections::HashMap<String,ReflectionCode> =
+                {
+                    make_collection!
+                    (
+                        "u8".to_string()      => ReflectionCode::Nu8,
+                        "i8".to_string()      => ReflectionCode::Ni8,
+                        "i16".to_string()     => ReflectionCode::Ni16,
+                        "u16".to_string()     => ReflectionCode::Nu16,
+                        "i32".to_string()     => ReflectionCode::Ni32,
+                        "u32".to_string()     => ReflectionCode::Nu32,
+                        "f32".to_string()     => ReflectionCode::Nf32,
+                        "f64".to_string()     => ReflectionCode::Nf64,
+                        "bool".to_string()    => ReflectionCode::Nbool,
+                        "String".to_string()  => ReflectionCode::NString,
+                    )
+                };
+            }
+            let strname = type_name_of_val::<$type>();
+            match TYPEHASHES.get( &strname.to_string() ) {
+                Some(entry) => entry.clone(),
+                None => ReflectionCode::NUser,
+            }
         }
     }
 }
