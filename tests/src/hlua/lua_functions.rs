@@ -171,7 +171,7 @@ macro_rules! for_iteration_test {
             if counter >= $EXPECTED.len() {break;}
             assert_eq!( format!("{}", localerr) , $EXPECTED[ counter ].to_string() );
             counter = counter + 1;
-            additional_action;
+            $additional_action;
         }
     };
 }

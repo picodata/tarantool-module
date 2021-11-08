@@ -50,13 +50,15 @@ macro_rules! refl_internal_hash_of {
     {
         {
             lazy_static! {
-                static ref type_var : &'static $type = {
-                    &<$type as std::default::Default>::default()
+                static ref type_var : $type = {
+                    <$type as std::default::Default>::default()
                 };
+                static ref typeid_var : std::any::TypeId = {<$type as std::any::Any>::type_id(&type_var) };
             }
             //const type_var : StaticInit<'static, $type> = StaticInit{ data : &<$type as std::default::Default>::default() };
             //static type_var: $type ;//= unsafe { std::mem::MaybeUninit::zeroed().assume_init() };//std::default::Default::default();
-            let typeid_var : std::any::TypeId = <$type as std::any::Any>::type_id(type_var);
+            //let static_ptr : * 'static const std::any::TypeId = &typeid_var;
+            //let ptr : * const
             refl_internal_hash_by_typeid!( typeid_var )
         }
     }
@@ -94,7 +96,9 @@ macro_rules! make_collection {
 
 pub fn refl_get_internal_types_hashes() -> &'static std::collections::HashMap<u64,
                                                                ReflectionCode> {
-    static TYPEHASHES: std::collections::HashMap<u64,ReflectionCode> = make_collection!
+                                                                   
+lazy_static! {
+    static ref TYPEHASHES: std::collections::HashMap<u64,ReflectionCode> = {make_collection!
     (
         refl_internal_hash_of!(u8)      => ReflectionCode::Nu8,
         refl_internal_hash_of!(i8)      => ReflectionCode::Ni8,
@@ -106,7 +110,8 @@ pub fn refl_get_internal_types_hashes() -> &'static std::collections::HashMap<u6
         refl_internal_hash_of!(f64)     => ReflectionCode::Nf64,
         refl_internal_hash_of!(bool)    => ReflectionCode::Nbool,
         refl_internal_hash_of!(String)  => ReflectionCode::NString,
-    );
+    ) };
+}
     &TYPEHASHES
 }
 

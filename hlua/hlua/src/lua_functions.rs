@@ -300,7 +300,7 @@ macro_rules! verify_ret_type {
     ($expected_type:ty, $raw_lua:expr, $offset:expr, $out_error:expr ) => {
         //let luatype = std::any::TypeId::of::<$expected_type>();
         //let is_error = false;
-        let lua_type_code = ffi::lua_type( $raw_lua.state_ptr(), -($offset) );
+        let lua_type_code = unsafe {ffi::lua_type( $raw_lua.state_ptr(), -($offset) ) };
         //let rustexpected_code = get_lua_type_code!($expected_type) as i32;
         let rustexpected_code : i32 = 0;
         if ( rustexpected_code != (ffi::LUA_TNONE as i32) &&
