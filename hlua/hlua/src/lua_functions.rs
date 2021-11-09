@@ -20,6 +20,7 @@ use crate::{
     reflection::type_name_of_val,
     common_calls::common_call,
     tuples::VerifyLuaTuple,
+    tuples::TupleWrap,
     refl_get_reflection_type_code_of,
     make_collection,
     verify_ret_type,
@@ -237,7 +238,7 @@ impl<'lua, L> LuaFunction<L>
     /// > **Note**: In order to pass parameters, see `call_with_args` instead.
     #[inline]
     pub fn call<'a, V>(&'a mut self) -> Result<V, LuaError>
-        where V: LuaRead<PushGuard<&'a mut L>>
+        where V: LuaRead<L> + LuaRead< PushGuard<&'a mut L> > + VerifyLuaTuple
     {
         match self.call_with_args(()) {
             Ok(v) => Ok(v),
@@ -270,9 +271,9 @@ impl<'lua, L> LuaFunction<L>
     /// assert_eq!(result, 14);
     /// ```
     #[inline]
-    pub fn call_with_args<'selftime, 'a, Ret, Args, E>(&'a mut self, args: Args) -> Result<Ret, LuaFunctionCallError<E>>
-        where Args: for<'r> Push<&'r mut LuaFunction<L>, Err = E>,
-              Ret : LuaRead<L> + LuaRead< PushGuard<&'selftime mut L> > + VerifyLuaTuple
+    pub fn call_with_args<'selftime, 'comcol_lua, 'a, Ret, Args, E>(&'a mut self, args: Args) -> Result<Ret, LuaFunctionCallError<LuaError>>
+        where Args: for<'r> Push<&'r mut LuaFunction<L>, Err = E> + Push<L>,
+        Ret : LuaRead<L> + LuaRead< PushGuard<&'a mut L> > + VerifyLuaTuple
     {
 
     /*pub fn call_checked<'selftime, Ret, Args> (
@@ -303,9 +304,9 @@ impl<'lua, L> LuaFunction<L>
             err_ret = error;
         };
         let raw_lua = self.variable.as_lua();
-        let top_of_stack = unsafe { ffi::lua_gettop( raw_lua ) };
-        if let Some(ret) = common_call::< 'lua, 'a, Ret, Args, L, _ >(
-            & mut raw_lua,
+        let top_of_stack = unsafe { ffi::lua_gettop( raw_lua.state_ptr() ) };
+        if let Some(ret) = common_call::< 'a, 'lua, Ret, Args, L, _ >(
+            & mut self.variable,
             0, // no additional args
             top_of_stack,
             err_reaction,

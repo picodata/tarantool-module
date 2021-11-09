@@ -19,6 +19,9 @@ use crate::{
     make_collection,
 };
 
+
+pub struct TupleWrap<E>(pub E);
+
 pub trait VerifyLuaTuple{
    fn check(
        raw_lua : * mut ffi::lua_State,
@@ -180,6 +183,34 @@ macro_rules! tuple_impl {
 }
 
 tuple_impl!(A, B, C, D, E, F, G, H, I, J, K, L, M);
+
+/*
+#[allow(unused_assignments)]
+#[allow(non_snake_case)]
+impl<E> VerifyLuaTuple for TupleWrap<E>
+{
+    #[inline(always)]
+    fn check(
+        raw_lua : * mut ffi::lua_State,
+        stackpos: i32,
+        number_lua_elements : i32,
+        error : & mut LuaError ) ->()
+    {
+        let mut len_of_tuple = 1;
+        if len_of_tuple != number_lua_elements {
+            error.add( &LuaError::ExecutionError("The expected number of returned arguments does not match the actual number of returned arguments!!!".to_string()) );
+            return;
+        }
+        verify_ret_type!( E, raw_lua, stackpos, len_of_tuple, 0, error );
+    }
+}
+
+impl<'lua, LU, E> LuaRead<LU> for TupleWrap<E> where LU: AsMutLua<'lua>, TupleWrap<E>: LuaRead<LU> {
+    #[inline]
+    fn lua_read_at_position(lua: LU, index: i32) -> Result<TupleWrap<E>, LU> {
+        <E as LuaRead<LU> >::lua_read_at_position(lua, index)
+    }
+}*/
 
 /// Error that can happen when pushing multiple values at once.
 // TODO: implement Error on that thing

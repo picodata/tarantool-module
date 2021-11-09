@@ -129,6 +129,7 @@ pub use tuples::TuplePushError;
 pub use userdata::UserdataOnStack;
 pub use userdata::{push_userdata, read_userdata, push_some_userdata};
 pub use values::StringInLua;
+pub use tuples::VerifyLuaTuple;
 
 // Needed for `lua_error` macro
 pub use ffi::luaL_error;
@@ -849,10 +850,19 @@ impl<'lua> Lua<'lua> {
     /// ```
     #[inline]
     pub fn execute<'a, T>(&'a mut self, code: &str) -> Result<T, LuaError>
-        where T: for<'g> LuaRead<PushGuard<&'g mut PushGuard<&'a mut Lua<'lua>>>>
+        where T: for<'g> LuaRead<PushGuard<&'g mut PushGuard<&'a mut Lua<'lua>>>> + LuaRead< PushGuard<&'a mut Lua<'lua> > >
     {
         let mut f = lua_functions::LuaFunction::load(self, code)?;
-        f.call()
+        let ret : Result<(T,), LuaError> = f.call();
+        match ret {
+            Ok( v ) => {
+                match v {
+                    (data,) => Ok(data),
+                    _ => unreachable!(),
+                }
+            },
+            Err ( err ) => Err( err ),
+        }
     }
 
     /// Executes some Lua code on the context.
@@ -876,11 +886,20 @@ impl<'lua> Lua<'lua> {
     /// ```
     #[inline]
     pub fn execute_from_reader<'a, T, R>(&'a mut self, code: R) -> Result<T, LuaError>
-        where T: for<'g> LuaRead<PushGuard<&'g mut PushGuard<&'a mut Lua<'lua>>>>,
+        where T: for<'g> LuaRead<PushGuard<&'g mut PushGuard<&'a mut Lua<'lua>>>> + LuaRead< PushGuard<&'a mut Lua<'lua> > >,
               R: Read
     {
         let mut f = lua_functions::LuaFunction::load_from_reader(self, code)?;
-        f.call()
+        let ret : Result<(T,), LuaError> = f.call();
+        match ret {
+            Ok( v ) => {
+                match v {
+                    (data,) => Ok(data),
+                    _ => unreachable!(),
+                }
+            },
+            Err ( err ) => Err( err ),
+        }
     }
 
     /// Reads the value of a global variable.
