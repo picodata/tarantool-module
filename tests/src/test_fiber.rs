@@ -353,16 +353,34 @@ fn fiber_csw() -> i32 {
     return lua.get::<LuaFunction<_>, _>("fiber_csw").unwrap().call().unwrap();
 }
 
+macro_rules! lua_stack_integrity_guard {
+    ($name:literal) => {
+        LuaStackIntegrityGuard::with_loc($name, ::std::panic::Location::caller())
+    }
+}
+
+use std::panic::Location;
+
 struct LuaStackIntegrityGuard {
     name: &'static str,
+    loc: Option<&'static Location<'static>>,
 }
 
 impl LuaStackIntegrityGuard {
-    fn new(name: &'static str) -> Self {
+    fn push_name(self) -> Self {
         let mut lua: Lua = crate::hlua::global();
         let l = lua.as_mut_lua().state_ptr();
-        unsafe { lua::lua_pushlstring(l, name.as_bytes().as_ptr() as *mut i8, name.len()) };
-        Self{name}
+        let name_ptr = self.name.as_bytes().as_ptr() as _;
+        unsafe { lua::lua_pushlstring(l, name_ptr, self.name.len()) };
+        self
+    }
+
+    fn new(name: &'static str) -> Self {
+        Self { name, loc: None }.push_name()
+    }
+
+    fn with_loc(name: &'static str, loc: &'static Location<'static>) -> Self {
+        Self { name, loc: Some(loc) }.push_name()
     }
 }
 
@@ -374,7 +392,11 @@ impl Drop for LuaStackIntegrityGuard {
         let msg = unsafe {
             let cstr = lua::lua_tostring(l, -1);
             if cstr.is_null() {
-                panic!("Lua stack integrity violation");
+                if let Some(loc) = self.loc {
+                    panic!("Lua stack integrity violation at {}", loc);
+                } else {
+                    panic!("Lua stack integrity violation");
+                }
             }
             let msg = std::ffi::CStr::from_ptr(cstr).to_str().unwrap();
             lua::lua_pop(l, 1);
@@ -386,7 +408,7 @@ impl Drop for LuaStackIntegrityGuard {
 }
 
 pub fn immediate_yields() {
-    let _guard = LuaStackIntegrityGuard::new("immediate_fiber_guard");
+    let _guard = lua_stack_integrity_guard!("immediate_fiber_guard");
 
     let (tx, rx) = Rc::new(Cell::new(0)).clones();
     let csw1 = fiber_csw();
@@ -398,7 +420,7 @@ pub fn immediate_yields() {
 }
 
 pub fn deferred_doesnt_yield() {
-    let _guard = LuaStackIntegrityGuard::new("deferred_fiber_guard");
+    let _guard = lua_stack_integrity_guard!("deferred_fiber_guard");
 
     let (tx, rx) = Rc::new(Cell::new(0)).clones();
     let csw1 = fiber_csw();
@@ -413,7 +435,7 @@ pub fn deferred_doesnt_yield() {
 }
 
 pub fn start_error() {
-    let _guard = LuaStackIntegrityGuard::new("fiber_error_guard");
+    let _guard = lua_stack_integrity_guard!("fiber_error_guard");
 
     let _spoiler = LuaContextSpoiler::new();
 
@@ -450,7 +472,7 @@ pub fn start_error() {
 }
 
 pub fn require_error() {
-    let _guard = LuaStackIntegrityGuard::new("fiber_error_guard");
+    let _guard = lua_stack_integrity_guard!("fiber_error_guard");
 
     let _spoiler = LuaContextSpoiler::new();
 
