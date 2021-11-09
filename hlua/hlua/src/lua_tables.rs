@@ -14,6 +14,7 @@ use crate::{
     Void,
     LuaFunctionCallError,
     LuaError,
+    tuples::VerifyLuaTuple,
     text_lua_error_wrap,
     common_calls::common_call
 };
@@ -49,7 +50,7 @@ pub fn lua_table_call<'selftime, 'lua, Ret, Args, L, ErrorReaction> (
     function_name : String,
     mut error_reaction : ErrorReaction,
     args : Args ) -> Option<Ret>
-where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> >,
+where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> > + VerifyLuaTuple,
       Args : Push<L>,
       L : AsMutLua<'lua>,
       ErrorReaction : FnMut( LuaFunctionCallError<LuaError> )-> ()
@@ -438,7 +439,7 @@ impl<'lua, L> LuaTable<L>
         & 'selftime mut self,
         function_name : String,
         args : Args ) -> Ret
-    where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> > ,
+    where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> > +VerifyLuaTuple,
                  Args : Push<L>,
                  L : AsMutLua<'lua>
                  //,ErrorReaction : FnMut( & LuaFunctionCallError< LuaError > ) -> ()
@@ -468,7 +469,7 @@ impl<'lua, L> LuaTable<L>
         & 'selftime mut self,
         function_name : String,
         args : Args ) -> Result< Ret, LuaFunctionCallError<LuaError> >
-    where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> > ,
+    where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> > + VerifyLuaTuple,
           Args : Push<L>,
           L : AsMutLua<'lua>
                  //,ErrorReaction : FnMut( & LuaFunctionCallError< LuaError > ) -> ()
@@ -509,7 +510,7 @@ impl<'lua, L> LuaTable<L>
         function_name : String,
         args : Args,
         error_reaction : ErrorReaction ) -> Ret
-    where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> > ,
+    where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> > +VerifyLuaTuple,
                  Args : Push<L>,
                  L : AsMutLua<'lua>
                  ,ErrorReaction : FnMut( LuaFunctionCallError< LuaError > ) -> ()

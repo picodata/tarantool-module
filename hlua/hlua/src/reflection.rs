@@ -1,5 +1,3 @@
-extern crate lazy_static;
-use lazy_static::lazy_static;
 use std::any::Any;
 
 #[derive(PartialEq, Copy, Clone)]
@@ -57,38 +55,38 @@ pub fn type_name_of_val<T>() -> &'static str {
 macro_rules! refl_get_reflection_type_code_of {
     ($type:ty) => {
         {
-            lazy_static! {
-                /*
-                static ref TYPEHASHES: std::collections::HashMap<&str,ReflectionCode> = {make_collection!
+            /*
+            static ref TYPEHASHES: std::collections::HashMap<&str,ReflectionCode> = {make_collection!
+            (
+                &"u8"      => ReflectionCode::Nu8,
+                &"i8"      => ReflectionCode::Ni8,
+                &"i16"     => ReflectionCode::Ni16,
+                &"u16"     => ReflectionCode::Nu16,
+                &"i32"     => ReflectionCode::Ni32,
+                &"u32"     => ReflectionCode::Nu32,
+                &"f32"     => ReflectionCode::Nf32,
+                &"f64"     => ReflectionCode::Nf64,
+                &"bool"    => ReflectionCode::Nbool,
+                &"String"  => ReflectionCode::NString,
+            ) };*/
+            use once_cell::sync::Lazy;
+            use std::collections::HashMap;
+            static TYPEHASHES: Lazy<HashMap<String,ReflectionCode> > = Lazy::new( ||
+            {
+                make_collection!
                 (
-                    &"u8"      => ReflectionCode::Nu8,
-                    &"i8"      => ReflectionCode::Ni8,
-                    &"i16"     => ReflectionCode::Ni16,
-                    &"u16"     => ReflectionCode::Nu16,
-                    &"i32"     => ReflectionCode::Ni32,
-                    &"u32"     => ReflectionCode::Nu32,
-                    &"f32"     => ReflectionCode::Nf32,
-                    &"f64"     => ReflectionCode::Nf64,
-                    &"bool"    => ReflectionCode::Nbool,
-                    &"String"  => ReflectionCode::NString,
-                ) };*/
-                static ref TYPEHASHES: std::collections::HashMap<String,ReflectionCode> =
-                {
-                    make_collection!
-                    (
-                        "u8".to_string()      => ReflectionCode::Nu8,
-                        "i8".to_string()      => ReflectionCode::Ni8,
-                        "i16".to_string()     => ReflectionCode::Ni16,
-                        "u16".to_string()     => ReflectionCode::Nu16,
-                        "i32".to_string()     => ReflectionCode::Ni32,
-                        "u32".to_string()     => ReflectionCode::Nu32,
-                        "f32".to_string()     => ReflectionCode::Nf32,
-                        "f64".to_string()     => ReflectionCode::Nf64,
-                        "bool".to_string()    => ReflectionCode::Nbool,
-                        "String".to_string()  => ReflectionCode::NString,
-                    )
-                };
-            }
+                    "u8".to_string()      => ReflectionCode::Nu8,
+                    "i8".to_string()      => ReflectionCode::Ni8,
+                    "i16".to_string()     => ReflectionCode::Ni16,
+                    "u16".to_string()     => ReflectionCode::Nu16,
+                    "i32".to_string()     => ReflectionCode::Ni32,
+                    "u32".to_string()     => ReflectionCode::Nu32,
+                    "f32".to_string()     => ReflectionCode::Nf32,
+                    "f64".to_string()     => ReflectionCode::Nf64,
+                    "bool".to_string()    => ReflectionCode::Nbool,
+                    "String".to_string()  => ReflectionCode::NString,
+                )
+            } );
             let strname = type_name_of_val::<$type>();
             match TYPEHASHES.get( &strname.to_string() ) {
                 Some(entry) => entry.clone(),

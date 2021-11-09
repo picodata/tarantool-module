@@ -5,8 +5,6 @@ use std::io::Read;
 use std::io::Error as IoError;
 use std::ptr;
 
-extern crate lazy_static;
-use lazy_static::lazy_static;
 use crate::{
     AsLua,
     AsMutLua,
@@ -20,6 +18,8 @@ use crate::{
     reflection::GetTypeCodeTrait,
     reflection::ReflectionCode,
     reflection::type_name_of_val,
+    common_calls::common_call,
+    tuples::VerifyLuaTuple,
     refl_get_reflection_type_code_of,
     make_collection,
     verify_ret_type,
@@ -270,10 +270,53 @@ impl<'lua, L> LuaFunction<L>
     /// assert_eq!(result, 14);
     /// ```
     #[inline]
-    pub fn call_with_args<'a, V, A, E>(&'a mut self, args: A) -> Result<V, LuaFunctionCallError<E>>
-        where A: for<'r> Push<&'r mut LuaFunction<L>, Err = E>,
-              V: LuaRead<PushGuard<&'a mut L>>
+    pub fn call_with_args<'selftime, 'a, Ret, Args, E>(&'a mut self, args: Args) -> Result<Ret, LuaFunctionCallError<E>>
+        where Args: for<'r> Push<&'r mut LuaFunction<L>, Err = E>,
+              Ret : LuaRead<L> + LuaRead< PushGuard<&'selftime mut L> > + VerifyLuaTuple
     {
+
+    /*pub fn call_checked<'selftime, Ret, Args> (
+        & 'selftime mut self,
+        function_name : String,
+        args : Args ) -> Result< Ret, LuaFunctionCallError<LuaError> >
+    where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> > + VerifyLuaTuple,
+            Args : Push<L>,
+            L : AsMutLua<'lua>
+                    //,ErrorReaction : FnMut( & LuaFunctionCallError< LuaError > ) -> ()*/
+    
+        let le : LuaError = LuaError::NoError;
+        let mut err_ret : LuaFunctionCallError< LuaError > =
+        LuaFunctionCallError::LuaError( le );
+        let err_reaction  = |error : LuaFunctionCallError< LuaError > | -> () {
+            use LuaFunctionCallError::*;
+            match err_ret {
+                PushError(_) => unreachable!(),
+                LuaError( ref mut lua_err ) => {
+                    match error {
+                        LuaError( ref to_add ) => {
+                            lua_err.add( to_add )
+                        },
+                        PushError(_) => unreachable!(),
+                    }
+                }
+            }
+            err_ret = error;
+        };
+        let raw_lua = self.variable.as_lua();
+        let top_of_stack = unsafe { ffi::lua_gettop( raw_lua ) };
+        if let Some(ret) = common_call::< 'lua, 'a, Ret, Args, L, _ >(
+            & mut raw_lua,
+            0, // no additional args
+            top_of_stack,
+            err_reaction,
+            args
+        ) {
+            return Result::Ok( ret );
+        } else {
+            return Result::Err( err_ret );
+        }
+    }
+        /*
         let raw_lua = self.variable.as_lua();
         // calling pcall pops the parameters and pushes output
         let (pcall_return_value, pushed_value) = unsafe {
@@ -308,7 +351,7 @@ impl<'lua, L> LuaFunction<L>
             },*/
             {
                let mut err = LuaError::NoError;
-               verify_ret_type!( V, raw_lua, 1, 0, err );
+               verify_ret_type!( V, raw_lua.state_ptr(), 0, 1, 0, err );
                if err.is_no_error() {
                    match LuaRead::lua_read(pushed_value) {
                        Ok(x) => Ok(x),
@@ -329,7 +372,7 @@ impl<'lua, L> LuaFunction<L>
             _ => panic!("Unknown error code returned by lua_pcall: {}", pcall_return_value),
         }
     }
-
+*/
     /// Builds a new `LuaFunction` from the code of a reader.
     ///
     /// Returns an error if reading from the `Read` object fails or if there is a syntax error in
@@ -375,7 +418,7 @@ pub enum LuaFunctionCallError<E> {
     /// Error while executing the function.
     LuaError(LuaError),
     /// Error while pushing one of the parameters.
-    PushError(E)
+    PushError(E),
 }
 
 impl<E> fmt::Display for LuaFunctionCallError<E>

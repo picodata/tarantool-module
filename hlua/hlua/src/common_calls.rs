@@ -8,7 +8,8 @@ use crate::{
     PushGuard,
     LuaRead,
     LuaFunctionCallError,
-    LuaError
+    LuaError,
+    tuples::VerifyLuaTuple,
 };
 
 #[macro_export]
@@ -91,6 +92,20 @@ macro_rules! text_lua_error_wrap {
     };
 }
 
+#[macro_export]
+macro_rules! verify_ret_type {
+    ($expected_type:ty, $raw_lua:expr, $stackposition:expr, $offset:expr, $ind:expr, $out_error:expr ) => {
+        let lua_type_code = unsafe {ffi::lua_type( $raw_lua, $stackposition-($offset) ) };
+        let rustexpected_code = get_lua_type_code!($expected_type) as i32;
+        println!("exp {} , lua {}", lua_type_code, rustexpected_code );
+        if ( rustexpected_code != (ffi::LUA_TNONE as i32) &&
+             rustexpected_code != lua_type_code ) {
+            // wrong error type
+            $out_error.add( &wrap_ret_type_error!( $expected_type, lua_type_code, $stackposition, $offset, $raw_lua, $ind ) );
+        }
+    };
+}
+
 #[inline(always)]
 pub fn common_call<'selftime, 'lua, Ret, Args, L, ErrorReaction> (
     lua_state :& 'selftime mut  L,
@@ -100,24 +115,27 @@ pub fn common_call<'selftime, 'lua, Ret, Args, L, ErrorReaction> (
     args : Args,
 ) -> Option<Ret>
 where
-    Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> >,
+    Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> > + VerifyLuaTuple,
     Args : Push<L>,
     L : AsMutLua<'lua>,
     ErrorReaction : FnMut( LuaFunctionCallError<LuaError> )->(),
 {
     let raw_lua = lua_state.as_lua().state_ptr();
     if ! lua_push!(
-             lua_state, args,
+             lua_state,
+             args,
              { error_reaction(
                    text_lua_error_wrap!(
                        "Push arguments failed!!!",
                        ExecutionError) )}  ) {
+        unsafe {ffi::lua_settop( raw_lua, top_of_stack ); };
         return None;
     }
     //let _xxx = LuaFunctionCallError::LuaError(LuaError::ExecutionError("Push arguments failed!!!".to_string()) );
     let numargs = unsafe { ffi::lua_gettop( raw_lua ) as i32 } - top_of_stack - 2 + number_of_additional_args ;
     if !unsafe { ffi::lua_isfunction(raw_lua, -numargs - 1) } {
         error_reaction( text_lua_error_wrap!("Stack corrupted", ExecutionError) );
+        unsafe {ffi::lua_settop( raw_lua, top_of_stack ); };
         return None;
     }
     let pcall_error = unsafe {
@@ -132,6 +150,14 @@ where
         "Error handling function failed!!!", //LUA_ERRERR = 5
         "Unknown error: too big error code" // wrong error code
     ];
+    
+    let new_top_of_stack = unsafe { ffi::lua_gettop( raw_lua ) };
+    /*if new_top_of_stack < top_of_stack {
+        error_reaction( text_lua_error_wrap!(
+            "Wrong return arguments number!!! Lua stack corrupted!!!", ExecutionError) );
+        return None;
+    }*/
+    let number_of_retvalues : i32 = new_top_of_stack - top_of_stack;
     if ( pcall_error as i64 ) != 0 {
         error_reaction(
             text_lua_error_wrap!(
@@ -142,17 +168,25 @@ where
                 ExecutionError
             )
         );
+        unsafe {ffi::lua_settop( raw_lua, top_of_stack ); };
         return None;
     } else {
         //verify_rettype_matching
+        let mut err = LuaError::NoError;
+        <Ret as VerifyLuaTuple>::check( raw_lua, 0, number_of_retvalues, & mut err );
+        /*
+        lua: LuaType,
+        raw_lua : LuaContext,
+        stackpos: i32,
+        number_lua_elements : i32,
+        error : & mut LuaError */
+        //verify_ret_type!( V, raw_lua, 0, 1, 0, err );
+        if !err.is_no_error() {
+            error_reaction(  LuaFunctionCallError::LuaError(err) );
+            unsafe {ffi::lua_settop( raw_lua, top_of_stack ); };
+            return None;
+        }
     }
-    let new_top_of_stack = unsafe { ffi::lua_gettop( raw_lua ) };
-    if new_top_of_stack < top_of_stack {
-        error_reaction( text_lua_error_wrap!(
-            "Wrong return arguments number!!! Lua stack corrupted!!!", ExecutionError) );
-        return None;
-    }
-    let number_of_retvalues : i32 = new_top_of_stack - top_of_stack;
     lua_get!(
         lua_state,
         number_of_retvalues,
@@ -166,12 +200,12 @@ where
 
 #[macro_export]
 macro_rules! wrap_ret_type_error {
-    ($expected_type:ty, $lua_code:expr, $offset:expr, $raw_lua:expr, $ind:expr) => {
+    ($expected_type:ty, $lua_code:expr, $stackposition:expr,$offset:expr, $raw_lua:expr, $ind:expr) => {
         LuaError::WrongType{
-            rust_expected: std::any::type_name::<V>().to_string(),
+            rust_expected: std::any::type_name::<$expected_type>().to_string(),
             lua_actual: unsafe {
-                let lua_type = ffi::lua_type( $raw_lua.state_ptr(), -($offset) );
-                let typename = ffi::lua_typename($raw_lua.state_ptr(), lua_type);
+                let lua_type = ffi::lua_type( $raw_lua, $stackposition-($offset) );
+                let typename = ffi::lua_typename($raw_lua, lua_type);
                 std::ffi::CStr::from_ptr(typename).to_string_lossy().into_owned()
             },
             index : $ind,
@@ -208,18 +242,4 @@ macro_rules! get_lua_type_code {
             TYPEID[ std::cmp::min(luatype_code as i32,MAX_TYPE_CODE) as usize ]
         }
     }
-}
-
-#[macro_export]
-macro_rules! verify_ret_type {
-    ($expected_type:ty, $raw_lua:expr, $offset:expr, $ind:expr, $out_error:expr ) => {
-        let lua_type_code = unsafe {ffi::lua_type( $raw_lua.state_ptr(), -($offset) ) };
-        let rustexpected_code = get_lua_type_code!($expected_type) as i32;
-        println!("exp {} , lua {}", lua_type_code, rustexpected_code );
-        if ( rustexpected_code != (ffi::LUA_TNONE as i32) &&
-             rustexpected_code != lua_type_code ) {
-            // wrong error type
-            $out_error.add( &wrap_ret_type_error!( $expected_type, lua_type_code, $offset, $raw_lua, $ind ) );
-        }
-    };
 }
