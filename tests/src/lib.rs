@@ -288,6 +288,10 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_fiber::immediate_yields,
                 test_fiber::start_error,
                 test_fiber::require_error,
+                test_fiber::start_dont_join,
+                test_fiber::start_proc_dont_join,
+                test_fiber::defer_dont_join,
+                test_fiber::defer_proc_dont_join,
                 test_fiber::immediate_with_cond,
                 test_fiber::deferred_with_cond,
 
