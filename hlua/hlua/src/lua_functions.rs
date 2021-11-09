@@ -525,24 +525,24 @@ mod tests {
     fn basic() {
         let mut lua = Lua::new();
         let mut f = LuaFunction::load(&mut lua, "return 5;").unwrap();
-        let val: i32 = f.call().unwrap();
-        assert_eq!(val, 5);
+        let val: (i32,) = f.call().unwrap();
+        assert_eq!(val.0, 5);
     }
 
     #[test]
     fn args() {
         let mut lua = Lua::new();
         lua.execute::<()>("function foo(a) return a * 5 end").unwrap();
-        let val: i32 = lua.get::<LuaFunction<_>, _>("foo").unwrap().call_with_args(3).unwrap();
-        assert_eq!(val, 15);
+        let val: (i32,) = lua.get::<LuaFunction<_>, _>("foo").unwrap().call_with_args(3).unwrap();
+        assert_eq!(val.0, 15);
     }
 
     #[test]
     fn args_in_order() {
         let mut lua = Lua::new();
         lua.execute::<()>("function foo(a, b) return a - b end").unwrap();
-        let val: i32 = lua.get::<LuaFunction<_>, _>("foo").unwrap().call_with_args((5, 3)).unwrap();
-        assert_eq!(val, 2);
+        let val: (i32,) = lua.get::<LuaFunction<_>, _>("foo").unwrap().call_with_args((5, 3)).unwrap();
+        assert_eq!(val.0, 2);
     }
 
     #[test]
@@ -578,8 +578,8 @@ mod tests {
     fn call_and_read_table() {
         let mut lua = Lua::new();
         let mut f = LuaFunction::load(&mut lua, "return {1, 2, 3};").unwrap();
-        let mut val: LuaTable<_> = f.call().unwrap();
-        assert_eq!(val.get::<u8, _, _>(2).unwrap(), 2);
+        let mut val: (LuaTable<_>,) = f.call().unwrap();
+        assert_eq!(val.0.get::<(u8,), _, _>(2).unwrap().0, 2);
     }
 
     #[test]
@@ -587,9 +587,9 @@ mod tests {
         let mut lua = Lua::new();
         lua.execute::<()>("function foo() return 5 end").unwrap();
         let mut bar = LuaFunction::load(&mut lua, "return foo;").unwrap();
-        let mut foo: LuaFunction<_> = bar.call().unwrap();
-        let val: i32 = foo.call().unwrap();
-        assert_eq!(val, 5);
+        let mut foo: (LuaFunction<_>,) = bar.call().unwrap();
+        let val: (i32,) = foo.0.call().unwrap();
+        assert_eq!(val.0, 5);
     }
 
     #[test]

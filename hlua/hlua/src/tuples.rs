@@ -184,6 +184,17 @@ macro_rules! tuple_impl {
 
 tuple_impl!(A, B, C, D, E, F, G, H, I, J, K, L, M);
 
+impl VerifyLuaTuple for ()
+{
+    #[inline(always)]
+    fn check(
+        _raw_lua : * mut ffi::lua_State,
+        _stackpos: i32,
+        _number_lua_elements : i32,
+        _error : & mut LuaError ) ->()
+    {
+    }
+}
 /*
 #[allow(unused_assignments)]
 #[allow(non_snake_case)]
