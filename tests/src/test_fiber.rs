@@ -12,7 +12,7 @@ use tarantool::hlua::{
     Lua,
     LuaFunction
 };
-
+use tarantool::util::IntoClones;
 use tarantool::ffi::lua;
 
 pub fn test_fiber_new() {
@@ -353,6 +353,11 @@ fn fiber_csw() -> i32 {
     return lua.get::<LuaFunction<_>, _>("fiber_csw").unwrap().call().unwrap();
 }
 
+fn fiber_id() -> u32 {
+    let mut lua: Lua = crate::hlua::global();
+    lua.execute("return require('fiber').id()").unwrap()
+}
+
 struct LuaStackIntegrityGuard {
     name: &'static str,
 }
@@ -388,34 +393,32 @@ impl Drop for LuaStackIntegrityGuard {
 pub fn immediate_yields() {
     let _guard = LuaStackIntegrityGuard::new("immediate_fiber_guard");
 
-    let upvalue = Rc::new(Cell::new(0));
+    let (tx, rx) = Rc::new(Cell::new(0)).into_clones();
     let csw1 = fiber_csw();
-    {
-        let upvalue = upvalue.clone();
-        fiber::start(move || upvalue.set(69));
-    }
+    let f = fiber::start(move || tx.set(69));
     let csw2 = fiber_csw();
 
-    assert_eq!(upvalue.get(), 69);
+    assert_eq!(rx.get(), 69);
     assert_eq!(csw2, csw1+1);
+
+    f.join();
 }
 
 pub fn deferred_doesnt_yield() {
     let _guard = LuaStackIntegrityGuard::new("deferred_fiber_guard");
 
-    let upvalue = Rc::new(Cell::new(0));
+    let (tx, rx) = Rc::new(Cell::new(0)).into_clones();
     let csw1 = fiber_csw();
-    {
-        let upvalue = upvalue.clone();
-        fiber::defer(move || upvalue.set(96));
-    }
+    let f = fiber::defer(move || tx.set(96));
     let csw2 = fiber_csw();
 
-    assert_eq!(upvalue.get(), 0);
+    assert_eq!(rx.get(), 0);
     assert_eq!(csw2, csw1);
 
     fiber::sleep(Duration::ZERO);
-    assert_eq!(upvalue.get(), 96);
+    assert_eq!(rx.get(), 96);
+
+    f.join();
 }
 
 pub fn start_error() {
@@ -423,12 +426,12 @@ pub fn start_error() {
 
     let _spoiler = LuaContextSpoiler::new();
 
-    match fiber::LuaFiber::new(fiber::LuaFiberFunc(|| ())).spawn() {
+    match fiber::LuaFiber::new(fiber::LuaFiberFunc::new(|| ())).spawn() {
         Err(e) => assert_eq!(
             format!("{}", e),
             "Lua error: Execution error: Artificial error"
         ),
-        _ => panic!(),
+        Ok(f) => { f.join(); panic!() }
     }
 
     struct LuaContextSpoiler;
@@ -460,12 +463,12 @@ pub fn require_error() {
 
     let _spoiler = LuaContextSpoiler::new();
 
-    match fiber::LuaFiber::new(fiber::LuaFiberFunc(|| ())).spawn() {
+    match fiber::LuaFiber::new(fiber::LuaFiberFunc::new(|| ())).spawn() {
         Err(e) => assert_eq!(
             format!("{}", e),
             "Lua error: Execution error: Artificial require error"
         ),
-        _ => panic!(),
+        Ok(f) => { f.join(); panic!() }
     }
 
     struct LuaContextSpoiler;
@@ -493,6 +496,17 @@ pub fn require_error() {
         }
     }
 }
+
+struct DropCounter(Rc<Cell<usize>>);
+
+impl Drop for DropCounter {
+    fn drop(&mut self) {
+        let old_count = self.0.get();
+        self.0.set(old_count + 1);
+    }
+}
+
+fn capture_value<T>(_: &T) {}
 
 pub fn immediate_with_cond() {
     let msgs = Rc::new(RefCell::new(vec![]));

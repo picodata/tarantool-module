@@ -236,6 +236,10 @@ extern "C" {
     /// Reschedule fiber to end of event loop cycle.
     pub fn fiber_reschedule();
 
+    /// Find the fiber instance in the global registry by `id`.
+    /// **Returns** `NULL` if fiber is not found.
+    pub fn fiber_find(id: u64) -> *mut Fiber;
+
     /// Create a new fiber attribute container and initialize it
     /// with default parameters.
     /// Can be used for many fibers creation, corresponding fibers

@@ -13,6 +13,7 @@ use std::cell::UnsafeCell;
 use std::ffi::CString;
 use std::marker::PhantomData;
 use std::os::raw::c_void;
+use std::ptr::NonNull;
 use std::time::Duration;
 
 use crate::hlua::{AsLua, c_ptr, lua_error};
@@ -219,7 +220,7 @@ impl Builder<NoFunc> {
     }
 
     /// Sets the callee function for the new fiber.
-    pub fn func<F, T>(self, f: F) -> Builder<FiberFunc<F, T>>
+    pub fn func<F, T, J>(self, f: F) -> Builder<FiberFunc<F, T, J>>
     where
         F: FnOnce() -> T,
         F: 'static,
@@ -227,15 +228,12 @@ impl Builder<NoFunc> {
         Builder {
             name: self.name,
             attr: self.attr,
-            f: FiberFunc {
-                f: Box::new(f),
-                result: Default::default(),
-            },
+            f: FiberFunc::new(f),
         }
     }
 
     /// Sets the callee function for the new fiber.
-    pub fn proc<F>(self, f: F) -> Builder<FiberProc<F>>
+    pub fn proc<F, J>(self, f: F) -> Builder<FiberProc<F, J>>
     where
         F: FnOnce(),
         F: 'static,
@@ -243,7 +241,7 @@ impl Builder<NoFunc> {
         Builder {
             name: self.name,
             attr: self.attr,
-            f: FiberProc { f: Box::new(f) },
+            f: FiberProc::new(f),
         }
     }
 }
@@ -332,7 +330,7 @@ where
 ///
 /// **TODO**: add support for cancelable fibers.
 pub struct Fyber<C, I> {
-    inner: *mut ffi::Fiber,
+    inner: NonNull<ffi::Fiber>,
     callee: C,
     _invocation: PhantomData<I>,
 }
@@ -346,7 +344,7 @@ where
         let cname = CString::new(name)
             .expect("fiber name may not contain interior null bytes");
 
-        let inner = unsafe {
+        let inner_raw = unsafe {
             if let Some(attr) = attr {
                 ffi::fiber_new_ex(
                     cname.as_ptr(), attr.inner, Some(Self::trampoline)
@@ -356,22 +354,20 @@ where
             }
         };
 
-        if inner.is_null() {
-            return Err(TarantoolError::last().into())
-        }
-
-        Ok(
-            Self {
+        if let Some(inner) = NonNull::new(inner_raw) {
+            Ok(Self {
                 inner,
                 callee,
                 _invocation: PhantomData,
-            }
-        )
+            })
+        } else {
+            Err(TarantoolError::last().into())
+        }
     }
 
     pub fn spawn(self) -> C::JoinHandle {
         unsafe {
-            ffi::fiber_set_joinable(self.inner, true);
+            ffi::fiber_set_joinable(self.inner.as_ptr(), true);
             let jh = self.callee.start_fiber(self.inner);
             I::after_start(self.inner);
             jh
@@ -493,14 +489,52 @@ where
 /// LuaJoinHandle
 ////////////////////////////////////////////////////////////////////////////////
 
-pub struct LuaJoinHandle<T> {
-    fiber_ref: i32,
-    marker: PhantomData<T>,
+/// An owned obligation to join on a deferred fiber (yield until its
+/// termination).
+///
+/// This is an optimized case of [`LuaJoinHandle`]`<()>`.
+///
+/// The [`join`] method **must** be called at some point on
+/// this object, otherwise the resources may leak. If the join handle is dropped
+/// before `join` was called it will `panic`.
+///
+/// `MustCallJoin` type parameter is a dummy parameter needed to enforce the
+/// call to the [`join`] method at compile time. The way it works is: the
+/// compiler will not be able to deduce the generic argument until the `join`
+/// method is called, so the code will not compile. Unfortunately this is not
+/// foolproof:
+/// - The compile error message will be confusing, something like:
+///
+/// ```
+/// > cannot infer type parameter `MustCallJoin`
+/// > consider giving the explicit type `LuaJoinHandle<T, MustCallJoin>`, where the type parameter is specified
+/// ```
+///
+/// - You can still work around this by explicitly specifying the type parameter
+///   as the compiler suggests above
+///
+/// - Unfortunately you need to pass through this dummy parameter wherever the
+///   `LuaJoinHandle` can be used
+pub struct LuaJoinHandle<T, MustCallJoin> {
+    fiber_ref: Option<i32>,
+    marker: PhantomData<(T, MustCallJoin)>,
 }
 
-impl<T> LuaJoinHandle<T> {
-    pub fn join(self) -> T {
-        let Self { fiber_ref, .. } = self;
+impl<T, MustCallJoin> LuaJoinHandle<T, MustCallJoin> {
+    fn new(fiber_ref: i32) -> Self {
+        Self { fiber_ref: Some(fiber_ref), marker: PhantomData }
+    }
+}
+
+// This is a hacky way of making a call to `join` be mandatory on the join
+// handle. The way it works
+pub struct Joined;
+
+impl<T> LuaJoinHandle<T, Joined> {
+    pub fn join(mut self) -> T {
+        // It's safe to unwrap fiber_ref here because join will only be called
+        // once after the join handle creation
+        let fiber_ref = self.fiber_ref.take().unwrap();
         unsafe {
             let guard = impl_details::lua_fiber_join(fiber_ref)
                 .map_err(|e| panic!("Unrecoverable lua failure: {}", e))
@@ -516,20 +550,67 @@ impl<T> LuaJoinHandle<T> {
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-/// LuaUnitJoinHandle
-////////////////////////////////////////////////////////////////////////////////
-
-pub struct LuaUnitJoinHandle {
-    fiber_ref: i32,
+impl<T, MustCallJoin> Drop for LuaJoinHandle<T, MustCallJoin> {
+    fn drop(&mut self) {
+        if self.fiber_ref.is_some() {
+            panic!("LuaJoinHandle dropped before being joined")
+        }
+    }
 }
 
-impl LuaUnitJoinHandle {
-    pub fn join(self) {
-        let Self { fiber_ref, .. } = self;
+////////////////////////////////////////////////////////////////////////////////
+// LuaUnitJoinHandle
+////////////////////////////////////////////////////////////////////////////////
+
+/// An owned obligation to join on a deferred fiber (yield until its
+/// termination).
+///
+/// The [`join`] method **must** be called at some point on
+/// this object, otherwise the resources may leak. If the join handle is dropped
+/// before `join` was called it will `panic`.
+///
+/// `MustCallJoin` type parameter is a dummy parameter needed to enforce the
+/// call to the [`join`] method at compile time. The way it works is: the
+/// compiler will not be able to deduce the generic argument until the `join`
+/// method is called, so the code will not compile. Unfortunately this is not
+/// foolproof:
+/// - The compile error message will be confusing, something like:
+///
+/// ```
+/// > cannot infer type parameter `MustCallJoin`
+/// > consider giving the explicit type `LuaUnitJoinHandle<MustCallJoin>`, where the type parameter is specified
+/// ```
+///
+/// - You can still work around this by explicitly specifying the type parameter
+///   as the compiler suggests above
+///
+/// - Unfortunately you need to pass through this dummy parameter wherever the
+///   `LuaUnitJoinHandle` can be used
+pub struct LuaUnitJoinHandle<MustCallJoin> {
+    fiber_ref: Option<i32>,
+    marker: PhantomData<MustCallJoin>,
+}
+
+impl<MustCallJoin> LuaUnitJoinHandle<MustCallJoin> {
+    fn new(fiber_ref: i32) -> Self {
+        Self { fiber_ref: Some(fiber_ref), marker: PhantomData }
+    }
+}
+
+impl LuaUnitJoinHandle<Joined> {
+    pub fn join(mut self) {
+        let fiber_ref = self.fiber_ref.take().unwrap();
         match unsafe { impl_details::lua_fiber_join(fiber_ref) } {
             Ok(_pushguard) => (),
             Err(e) => panic!("Unrecoverable lua failure: {}", e),
+        }
+    }
+}
+
+impl<MustCallJoin> Drop for LuaUnitJoinHandle<MustCallJoin> {
+    fn drop(&mut self) {
+        if self.fiber_ref.is_some() {
+            panic!("LuaUnitJoinHandle dropped before being joined")
         }
     }
 }
@@ -632,23 +713,32 @@ pub trait LuaCallee {
 /// LuaFiberFunc
 ////////////////////////////////////////////////////////////////////////////////
 
-pub struct LuaFiberFunc<F>(pub F);
+pub struct LuaFiberFunc<F, J> {
+    f: F,
+    marker: PhantomData<J>,
+}
 
-impl<F, T> LuaCallee for LuaFiberFunc<F>
+impl<F, J> LuaFiberFunc<F, J> {
+    pub fn new(f: F) -> Self {
+        Self { f, marker: PhantomData }
+    }
+}
+
+impl<F, T, J> LuaCallee for LuaFiberFunc<F, J>
 where
     F: FnOnce() -> T,
     F: 'static,
 {
     type Function = F;
     type Output = T;
-    type JoinHandle = LuaJoinHandle<T>;
+    type JoinHandle = LuaJoinHandle<T, J>;
 
     fn into_inner(self) -> F {
-        self.0
+        self.f
     }
 
-    fn join_handle(fiber_ref: i32) -> Self::JoinHandle {
-        LuaJoinHandle { fiber_ref, marker: PhantomData }
+    fn join_handle(fiber_ref: i32) -> LuaJoinHandle<T, J> {
+        LuaJoinHandle::new(fiber_ref)
     }
 
     unsafe fn save_result(l: *mut lua::lua_State, res: T) -> i32 {
@@ -661,23 +751,32 @@ where
 /// LuaFiberProc
 ////////////////////////////////////////////////////////////////////////////////
 
-pub struct LuaFiberProc<F>(pub F);
+pub struct LuaFiberProc<F, J> {
+    f: F,
+    marker: PhantomData<J>,
+}
 
-impl<F> LuaCallee for LuaFiberProc<F>
+impl<F, J> LuaFiberProc<F, J> {
+    pub fn new(f: F) -> Self {
+        Self { f, marker: PhantomData }
+    }
+}
+
+impl<F, J> LuaCallee for LuaFiberProc<F, J>
 where
     F: FnOnce(),
     F: 'static,
 {
     type Function = F;
     type Output = ();
-    type JoinHandle = LuaUnitJoinHandle;
+    type JoinHandle = LuaUnitJoinHandle<J>;
 
     fn join_handle(fiber_ref: i32) -> Self::JoinHandle {
-        LuaUnitJoinHandle { fiber_ref }
+        LuaUnitJoinHandle::new(fiber_ref)
     }
 
     fn into_inner(self) -> F {
-        self.0
+        self.f
     }
 
     unsafe fn save_result(_: *mut lua::lua_State, _: ()) -> i32 {
@@ -710,7 +809,7 @@ pub trait Callee {
     ///
     /// This function is unsafe, because it is very easy to mess things up
     /// when preparing arugments.
-    unsafe fn start_fiber(self, inner: *mut ffi::Fiber) -> Self::JoinHandle;
+    unsafe fn start_fiber(self, inner: NonNull<ffi::Fiber>) -> Self::JoinHandle;
 
     /// This function is called within `Fyber::trampoline` to extract the
     /// arguments from the [`va_list::VaList`].
@@ -733,25 +832,39 @@ pub struct NoFunc;
 
 /// This is a helper type used to configure [`Fyber`] with the appropriate
 /// behavior for the fiber function that returns a value.
-pub struct FiberFunc<F, T>
+pub struct FiberFunc<F, T, J>
 where
     F: FnOnce() -> T,
 {
     f: Box<F>,
     result: Box<UnsafeCell<Option<T>>>,
+    marker: PhantomData<J>,
 }
 
-impl<F, T> Callee for FiberFunc<F, T>
+impl<F, T, J> FiberFunc<F, T, J>
 where
     F: FnOnce() -> T,
 {
-    type JoinHandle = JoinHandle<T>;
+    fn new(f: F) -> Self {
+        Self {
+            f: Box::new(f),
+            result: Default::default(),
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<F, T, J> Callee for FiberFunc<F, T, J>
+where
+    F: FnOnce() -> T,
+{
+    type JoinHandle = JoinHandle<T, J>;
     type Args = (Box<F>, *mut Option<T>);
 
-    unsafe fn start_fiber(self, inner: *mut ffi::Fiber) -> Self::JoinHandle {
+    unsafe fn start_fiber(self, inner: NonNull<ffi::Fiber>) -> Self::JoinHandle {
         let (f, result): Self::Args = (self.f, self.result.get());
-        ffi::fiber_start(inner, Box::into_raw(f), result);
-        Self::JoinHandle { inner, result: self.result }
+        ffi::fiber_start(inner.as_ptr(), Box::into_raw(f), result);
+        Self::JoinHandle::new(inner, self.result)
     }
 
     unsafe fn parse_args(mut args: VaList) -> Self::Args {
@@ -767,24 +880,37 @@ where
 
 /// This is a helper type used to configure [`Fyber`] with the appropriate
 /// behavior for the fiber procedure (function which doens't return a value).
-pub struct FiberProc<F>
+pub struct FiberProc<F, J>
 where
     F: FnOnce(),
 {
     f: Box<F>,
+    marker: PhantomData<J>,
 }
 
-impl<F> Callee for FiberProc<F>
+impl<F, J> FiberProc<F, J>
 where
     F: FnOnce(),
 {
-    type JoinHandle = UnitJoinHandle;
+    fn new(f: F) -> Self {
+        Self {
+            f: Box::new(f),
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<F, J> Callee for FiberProc<F, J>
+where
+    F: FnOnce(),
+{
+    type JoinHandle = UnitJoinHandle<J>;
     type Args = Box<F>;
 
-    unsafe fn start_fiber(self, inner: *mut ffi::Fiber) -> Self::JoinHandle {
+    unsafe fn start_fiber(self, inner: NonNull<ffi::Fiber>) -> Self::JoinHandle {
         let f: Self::Args = self.f;
-        ffi::fiber_start(inner, Box::into_raw(f));
-        Self::JoinHandle { inner }
+        ffi::fiber_start(inner.as_ptr(), Box::into_raw(f));
+        Self::JoinHandle::new(inner)
     }
 
     unsafe fn parse_args(mut args: VaList) -> Self::Args {
@@ -821,14 +947,14 @@ pub trait Invocation {
     ///
     /// This is an implementation detail and will most likely be removed in the
     /// future.
-    unsafe fn after_start(f: *mut ffi::Fiber);
+    unsafe fn after_start(f: NonNull<ffi::Fiber>);
 }
 
 pub struct Immediate;
 
 impl Invocation for Immediate {
     unsafe fn before_callee() {}
-    unsafe fn after_start(_: *mut ffi::Fiber) {}
+    unsafe fn after_start(_: NonNull<ffi::Fiber>) {}
 }
 
 pub struct Deferred;
@@ -838,8 +964,8 @@ impl Invocation for Deferred {
         ffi::fiber_yield()
     }
 
-    unsafe fn after_start(f: *mut ffi::Fiber) {
-        ffi::fiber_wakeup(f)
+    unsafe fn after_start(f: NonNull<ffi::Fiber>) {
+        ffi::fiber_wakeup(f.as_ptr())
     }
 }
 
@@ -847,18 +973,59 @@ impl Invocation for Deferred {
 // JoinHandle
 ////////////////////////////////////////////////////////////////////////////////
 
-/// An owned permission to join on an immediate fiber (block on its termination).
-pub struct JoinHandle<T> {
-    inner: *mut ffi::Fiber,
+/// An owned obligation to join on an immediate fiber (yield until its
+/// termination).
+///
+/// The [`join`] method **must** be called at some point on
+/// this object, otherwise the resources may leak. If the join handle is dropped
+/// before `join` was called it will `panic`.
+///
+/// `MustCallJoin` type parameter is a dummy parameter needed to enforce the
+/// call to the [`join`] method at compile time. The way it works is: the
+/// compiler will not be able to deduce the generic argument until the `join`
+/// method is called, so the code will not compile. Unfortunately this is not
+/// foolproof:
+/// - The compile error message will be confusing, something like:
+///
+/// ```
+/// > cannot infer type parameter `MustCallJoin`
+/// > consider giving the explicit type `JoinHandle<T, MustCallJoin>`, where the type parameter is specified
+/// ```
+///
+/// - You can still work around this by explicitly specifying the type parameter
+///   as the compiler suggests above
+///
+/// - Unfortunately you need to pass through this dummy parameter wherever the
+///   `JoinHandle` can be used
+pub struct JoinHandle<T, MustCallJoin> {
+    inner: Option<NonNull<ffi::Fiber>>,
     result: Box<UnsafeCell<Option<T>>>,
+    marker: PhantomData<MustCallJoin>,
 }
 
-impl<T> JoinHandle<T> {
-    /// Block until the fiber's termination and return it's result value.
-    pub fn join(self) -> T {
+impl<T, MustCallJoin> JoinHandle<T, MustCallJoin> {
+    fn new(inner: NonNull<ffi::Fiber>, result: Box<UnsafeCell<Option<T>>>) -> Self {
+        Self { inner: Some(inner), result, marker: PhantomData }
+    }
+}
+
+impl<T> JoinHandle<T, Joined> {
+    /// Yield until the fiber's termination and return it's result value.
+    pub fn join(mut self) -> T {
+        // It's safe to unwrap because join will only be called once after the
+        // join handle was created
+        let inner_raw = self.inner.take().unwrap().as_ptr();
         // TODO: add error handling
-        let _code = unsafe { ffi::fiber_join(self.inner) };
-        self.result.into_inner().unwrap()
+        let _code = unsafe { ffi::fiber_join(inner_raw) };
+        self.result.get_mut().take().unwrap()
+    }
+}
+
+impl<T, MustCallJoin> Drop for JoinHandle<T, MustCallJoin> {
+    fn drop(&mut self) {
+        if self.inner.is_some() {
+            panic!("JoinHandle dropped before being joined")
+        }
     }
 }
 
@@ -866,17 +1033,58 @@ impl<T> JoinHandle<T> {
 // UnitJoinHandle
 ////////////////////////////////////////////////////////////////////////////////
 
-/// An owned permission to join on an immediate fiber (block on its termination).
+/// An owned obligation to join on an immediate fiber (yield until its
+/// termination).
 ///
 /// This is an optimized case of [`JoinHandle`]`<()>`.
-pub struct UnitJoinHandle {
-    inner: *mut ffi::Fiber,
+///
+/// The [`join`] method **must** be called at some point on
+/// this object, otherwise the resources may leak. If the join handle is dropped
+/// before `join` was called it will `panic`.
+///
+/// `MustCallJoin` type parameter is a dummy parameter needed to enforce the
+/// call to the [`join`] method at compile time. The way it works is: the
+/// compiler will not be able to deduce the generic argument until the `join`
+/// method is called, so the code will not compile. Unfortunately this is not
+/// foolproof:
+/// - The compile error message will be confusing, something like:
+///
+/// ```
+/// > cannot infer type parameter `MustCallJoin`
+/// > consider giving the explicit type `UnitJoinHandle<MustCallJoin>`, where the type parameter is specified
+/// ```
+///
+/// - You can still work around this by explicitly specifying the type parameter
+///   as the compiler suggests above
+///
+/// - Unfortunately you need to pass through this dummy parameter wherever the
+///   `UnitJoinHandle` can be used
+pub struct UnitJoinHandle<MustCallJoin> {
+    inner: Option<NonNull<ffi::Fiber>>,
+    marker: PhantomData<MustCallJoin>,
 }
 
-impl UnitJoinHandle {
+impl<MustCallJoin> UnitJoinHandle<MustCallJoin> {
+    fn new(inner: NonNull<ffi::Fiber>) -> Self {
+        Self { inner: Some(inner), marker: PhantomData }
+    }
+}
+
+impl UnitJoinHandle<Joined> {
     /// Block until the fiber's termination.
-    pub fn join(self) {
-        let _code = unsafe { ffi::fiber_join(self.inner) };
+    pub fn join(mut self) {
+        // It's safe to unwrap because join will only be called once after the
+        // join handle was created
+        let inner_raw = self.inner.take().unwrap().as_ptr();
+        let _code = unsafe { ffi::fiber_join(inner_raw) };
+    }
+}
+
+impl<MustCallJoin> Drop for UnitJoinHandle<MustCallJoin> {
+    fn drop(&mut self) {
+        if self.inner.is_some() {
+            panic!("UnitJoinHandle dropped before being joined")
+        }
     }
 }
 
@@ -934,7 +1142,7 @@ impl TrampolineArgs for VaList {
 /// This will create a fiber using default parameters of [`Builder`], if you
 /// want to specify the stack size or the name of the thread, use this API
 /// instead.
-pub fn start<F, T>(f: F) -> JoinHandle<T>
+pub fn start<F, T, MustCallJoin>(f: F) -> JoinHandle<T, MustCallJoin>
 where
     F: FnOnce() -> T,
     F: 'static,
@@ -951,7 +1159,7 @@ where
 /// should always be used instead of the latter.
 ///
 /// For more details see: [`start`]
-pub fn start_proc<F>(f: F) -> UnitJoinHandle
+pub fn start_proc<F, MustCallJoin>(f: F) -> UnitJoinHandle<MustCallJoin>
 where
     F: FnOnce(),
     F: 'static,
@@ -970,12 +1178,14 @@ where
 ///
 /// The new fiber can be joined by calling [`LuaJoinHandle::join`] method on
 /// it's join handle.
-pub fn defer<F, T>(f: F) -> LuaJoinHandle<T>
+#[allow(non_camel_case_types)]
+pub fn defer<F, T, MustCallJoin>(f: F)
+    -> LuaJoinHandle<T, MustCallJoin>
 where
     F: FnOnce() -> T,
     F: 'static,
 {
-    LuaFiber::new(LuaFiberFunc(f)).spawn().unwrap()
+    LuaFiber::new(LuaFiberFunc { f, marker: PhantomData }).spawn().unwrap()
 }
 
 /// Creates a new proc fiber and schedules it for execution, returning a
@@ -988,12 +1198,12 @@ where
 /// it's join handle.
 ///
 /// This is an optimized version [`defer`]`<F, ()>`.
-pub fn defer_proc<F>(f: F) -> LuaUnitJoinHandle
+pub fn defer_proc<F, MustCallJoin>(f: F) -> LuaUnitJoinHandle<MustCallJoin>
 where
     F: FnOnce(),
     F: 'static,
 {
-    LuaFiber::new(LuaFiberProc(f)).spawn().unwrap()
+    LuaFiber::new(LuaFiberProc::new(f)).spawn().unwrap()
 }
 
 /// Make it possible or not possible to wakeup the current
