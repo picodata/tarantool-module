@@ -115,7 +115,7 @@ pub fn common_call<'selftime, 'lua, Ret, Args, L, ErrorReaction> (
     args : Args,
 ) -> Option<Ret>
 where
-    Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> > + VerifyLuaTuple,
+    Ret  : LuaRead< PushGuard<& 'selftime mut L> > + VerifyLuaTuple,
     Args : Push<L>,
     L : AsMutLua<'lua>,
     ErrorReaction : FnMut( LuaFunctionCallError<LuaError> )->(),

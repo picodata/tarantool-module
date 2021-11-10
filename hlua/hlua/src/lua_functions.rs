@@ -238,7 +238,7 @@ impl<'lua, L> LuaFunction<L>
     /// > **Note**: In order to pass parameters, see `call_with_args` instead.
     #[inline]
     pub fn call<'a, V>(&'a mut self) -> Result<V, LuaError>
-        where V: LuaRead<L> + LuaRead< PushGuard<&'a mut L> > + VerifyLuaTuple
+        where V: LuaRead< PushGuard<&'a mut L> > + VerifyLuaTuple
     {
         match self.call_with_args(()) {
             Ok(v) => Ok(v),
@@ -273,7 +273,7 @@ impl<'lua, L> LuaFunction<L>
     #[inline]
     pub fn call_with_args<'selftime, 'comcol_lua, 'a, Ret, Args, E>(&'a mut self, args: Args) -> Result<Ret, LuaFunctionCallError<LuaError>>
         where Args: for<'r> Push<&'r mut LuaFunction<L>, Err = E> + Push<L>,
-        Ret : LuaRead<L> + LuaRead< PushGuard<&'a mut L> > + VerifyLuaTuple
+        Ret : LuaRead< PushGuard<&'a mut L> > + VerifyLuaTuple
     {
 
     /*pub fn call_checked<'selftime, Ret, Args> (
