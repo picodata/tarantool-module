@@ -78,12 +78,19 @@ macro_rules! tuple_impl {
                 number_lua_elements : i32,
                 error : & mut LuaError ) ->()
             {
-                let len_of_tuple = 1;
+                let mut len_of_tuple = 1;
                 if len_of_tuple != number_lua_elements {
-                    error.add( &LuaError::ExecutionError(format!(
-                        "Unexpected number of result values!!! (expected 1, got {}) 1", 
-                        number_lua_elements) ) );
-                    return;
+                    len_of_tuple = if get_name_of_type::<$ty>() != "((),)" {
+                        len_of_tuple
+                    } else {
+                        0
+                    };
+                    if number_lua_elements != number_lua_elements   {
+                        error.add( &LuaError::ExecutionError(format!(
+                            "Unexpected number of result values!!! (expected 1, got {}) 1",
+                            number_lua_elements) ) );
+                        return;
+                    }
                 }
                 verify_ret_type!( $ty, raw_lua, stackpos, len_of_tuple, 0, error );
             }

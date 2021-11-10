@@ -101,26 +101,7 @@ pub trait GetTypeCodeTrait {
     fn get_type_code() -> ReflectionCode;
     fn get_type_code_from( &self ) -> ReflectionCode
     where Self : std::default::Default {
-        //assert_eq!( refl_get_reflection_typecode_by_typeid!( self.type_id() ), ReflectionCode::Ni8 );
         Self::get_type_code()
-        //refl_get_reflection_type_code!( self.type_id() )
-        //let typeid = std::any::TypeId::of::<Self>();
-        //let current_type_hash = refl_internal_hash_by_typeid!(typeid);
-        //let typeid : std::any::TypeId = std::any::TypeId::of::<Self>();
-        //let typeid : std::any::TypeId = std::any::Any::type_id(&self);
-        /*
-        let typeid : std::any::TypeId = std::any::Any::type_id(&self);
-        {
-            let current_type_hash = refl_internal_hash_by_typeid!(typeid);
-            let TYPEHASHES : &'static std::collections::
-                HashMap<u64, ReflectionCode> = refl_get_internal_types_hashes();
-            if TYPEHASHES.contains_key( &current_type_hash ) {
-                TYPEHASHES[ &current_type_hash ]
-            } else {
-                ReflectionCode::NUser
-            }
-        }
-        */
     }
 }
 
