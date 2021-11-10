@@ -17,7 +17,7 @@ use crate::{
     Void,
     reflection::GetTypeCodeTrait,
     reflection::ReflectionCode,
-    reflection::type_name_of_val,
+    reflection::get_name_of_type,
     common_calls::common_call,
     tuples::VerifyLuaTuple,
     tuples::TupleWrap,
@@ -275,16 +275,6 @@ impl<'lua, L> LuaFunction<L>
         where Args: for<'r> Push<&'r mut LuaFunction<L>, Err = E> + Push<L>,
         Ret : LuaRead< PushGuard<&'a mut L> > + VerifyLuaTuple
     {
-
-    /*pub fn call_checked<'selftime, Ret, Args> (
-        & 'selftime mut self,
-        function_name : String,
-        args : Args ) -> Result< Ret, LuaFunctionCallError<LuaError> >
-    where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> > + VerifyLuaTuple,
-            Args : Push<L>,
-            L : AsMutLua<'lua>
-                    //,ErrorReaction : FnMut( & LuaFunctionCallError< LuaError > ) -> ()*/
-    
         let le : LuaError = LuaError::NoError;
         let mut err_ret : LuaFunctionCallError< LuaError > =
         LuaFunctionCallError::LuaError( le );
@@ -304,11 +294,14 @@ impl<'lua, L> LuaFunction<L>
             err_ret = error;
         };
         let raw_lua = self.variable.as_lua();
-        let top_of_stack = unsafe { ffi::lua_gettop( raw_lua.state_ptr() ) };
+        
+        // lua_pcall pops the function, so we have to make a copy of it
+        let top_of_stack = unsafe { ffi::lua_gettop( raw_lua.state_ptr() ) }; // top of stack BEFORE pushing function        
+        unsafe { ffi::lua_pushvalue(self.variable.as_mut_lua().0, -1) };
         if let Some(ret) = common_call::< 'a, 'lua, Ret, Args, L, _ >(
             & mut self.variable,
             0, // no additional args
-            top_of_stack,
+            top_of_stack,// top of stack BEFORE pushing function
             err_reaction,
             args
         ) {
@@ -317,63 +310,6 @@ impl<'lua, L> LuaFunction<L>
             return Result::Err( err_ret );
         }
     }
-        /*
-        let raw_lua = self.variable.as_lua();
-        // calling pcall pops the parameters and pushes output
-        let (pcall_return_value, pushed_value) = unsafe {
-            // lua_pcall pops the function, so we have to make a copy of it
-            ffi::lua_pushvalue(self.variable.as_mut_lua().0, -1);
-            let num_pushed = match args.push_to_lua(self) {
-                Ok(g) => g.forget_internal(),
-                Err((err, _)) => return Err(LuaFunctionCallError::PushError(err)),
-            };
-            let pcall_return_value = ffi::lua_pcall(self.variable.as_mut_lua().0, num_pushed, 1, 0);     // TODO: num ret values
-
-            let guard = PushGuard {
-                lua: &mut self.variable,
-                size: 1,
-                raw_lua: raw_lua,
-            };
-
-            (pcall_return_value, guard)
-        };
-
-        match pcall_return_value {
-            0 => /*match LuaRead::lua_read(pushed_value) {
-                Err(lua) => Err(LuaFunctionCallError::LuaError(LuaError::WrongType{
-                    rust_expected: std::any::type_name::<V>().to_string(),
-                    lua_actual: unsafe {
-                        let lua_type = ffi::lua_type(lua.raw_lua.state_ptr(), -1);
-                        let typename = ffi::lua_typename(lua.raw_lua.state_ptr(), lua_type);
-                        std::ffi::CStr::from_ptr(typename).to_string_lossy().into_owned()
-                    }
-                })),
-                Ok(x) => Ok(x),
-            },*/
-            {
-               let mut err = LuaError::NoError;
-               verify_ret_type!( V, raw_lua.state_ptr(), 0, 1, 0, err );
-               if err.is_no_error() {
-                   match LuaRead::lua_read(pushed_value) {
-                       Ok(x) => Ok(x),
-                       Err(lua) => Err( LuaFunctionCallError::LuaError(
-                           LuaError::ExecutionError("Read failed!!!".to_string()))),
-                   }
-               } else {
-                   Err( LuaFunctionCallError::LuaError(err) )
-               }
-            },
-            ffi::LUA_ERRMEM => panic!("lua_pcall returned LUA_ERRMEM"),
-            ffi::LUA_ERRRUN => {
-                let error_msg: String = LuaRead::lua_read(pushed_value)
-                    .ok()
-                    .expect("can't find error message at the top of the Lua stack");
-                Err(LuaFunctionCallError::LuaError(LuaError::ExecutionError(error_msg)))
-            }
-            _ => panic!("Unknown error code returned by lua_pcall: {}", pcall_return_value),
-        }
-    }
-*/
     /// Builds a new `LuaFunction` from the code of a reader.
     ///
     /// Returns an error if reading from the `Read` object fails or if there is a syntax error in
@@ -420,6 +356,15 @@ pub enum LuaFunctionCallError<E> {
     LuaError(LuaError),
     /// Error while pushing one of the parameters.
     PushError(E),
+}
+
+impl<E> LuaFunctionCallError<E> {
+    pub fn unwrap_lua_err(self) -> LuaError {
+        match self {
+            LuaFunctionCallError::PushError( _v ) => unreachable!(),
+            LuaFunctionCallError::LuaError( v ) => v,
+        }
+    }
 }
 
 impl<E> fmt::Display for LuaFunctionCallError<E>

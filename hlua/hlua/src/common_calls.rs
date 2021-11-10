@@ -10,6 +10,7 @@ use crate::{
     LuaFunctionCallError,
     LuaError,
     tuples::VerifyLuaTuple,
+    reflection::get_name_of_type
 };
 
 #[macro_export]
@@ -38,6 +39,7 @@ where
 {
     let mut ret : R = std::mem::MaybeUninit::zeroed().assume_init();
     std::mem::swap( refr, & mut ret );
+    std::mem::forget( refr );
     ret
 }
 
@@ -109,8 +111,8 @@ macro_rules! verify_ret_type {
 #[inline(always)]
 pub fn common_call<'selftime, 'lua, Ret, Args, L, ErrorReaction> (
     lua_state :& 'selftime mut  L,
-    number_of_additional_args : i32,
-    top_of_stack : i32,
+    number_of_additional_args : i32, //  // top of stack BEFORE pushing function
+    stack_restoring_value : i32,
     mut error_reaction : ErrorReaction,
     args : Args,
 ) -> Option<Ret>
@@ -120,7 +122,16 @@ where
     L : AsMutLua<'lua>,
     ErrorReaction : FnMut( LuaFunctionCallError<LuaError> )->(),
 {
+    println!("COMMON_CALL {}",get_name_of_type::<Ret>());
     let raw_lua = lua_state.as_lua().state_ptr();
+    let stack_before_args = unsafe { ffi::lua_gettop( raw_lua ) as i32 };
+    let function_stackpos = stack_before_args - number_of_additional_args - 1;
+    println!("COMMON_CALL topstack1={}",stack_before_args);
+    if !unsafe { ffi::lua_isfunction(raw_lua, function_stackpos) } {
+        error_reaction( text_lua_error_wrap!("Stack corrupted !!!", ExecutionError) );
+        unsafe {ffi::lua_settop( raw_lua, stack_restoring_value ); };
+        return None;
+    }
     if ! lua_push!(
              lua_state,
              args,
@@ -128,14 +139,17 @@ where
                    text_lua_error_wrap!(
                        "Push arguments failed!!!",
                        ExecutionError) )}  ) {
-        unsafe {ffi::lua_settop( raw_lua, top_of_stack ); };
+        unsafe {ffi::lua_settop( raw_lua, stack_restoring_value ); };
         return None;
     }
     //let _xxx = LuaFunctionCallError::LuaError(LuaError::ExecutionError("Push arguments failed!!!".to_string()) );
-    let numargs = unsafe { ffi::lua_gettop( raw_lua ) as i32 } - top_of_stack - 2 + number_of_additional_args ;
-    if !unsafe { ffi::lua_isfunction(raw_lua, -numargs - 1) } {
+    let stack_after_args = unsafe { ffi::lua_gettop( raw_lua ) as i32 };
+    println!("COMMON_CALL topstack2={}",stack_after_args);
+    let numargs = stack_after_args - stack_before_args + number_of_additional_args ;
+    println!("COMMON_CALL numargs={}",numargs);
+    if !unsafe { ffi::lua_isfunction(raw_lua, - numargs - 1 ) } {
         error_reaction( text_lua_error_wrap!("Stack corrupted", ExecutionError) );
-        unsafe {ffi::lua_settop( raw_lua, top_of_stack ); };
+        unsafe {ffi::lua_settop( raw_lua, stack_restoring_value ); };
         return None;
     }
     let pcall_error = unsafe {
@@ -157,7 +171,9 @@ where
             "Wrong return arguments number!!! Lua stack corrupted!!!", ExecutionError) );
         return None;
     }*/
-    let number_of_retvalues : i32 = new_top_of_stack - top_of_stack;
+
+    // Attention! pcall pops args AND function pointer!
+    let number_of_retvalues : i32 = new_top_of_stack - function_stackpos;
     if ( pcall_error as i64 ) != 0 {
         error_reaction(
             text_lua_error_wrap!(
@@ -168,29 +184,23 @@ where
                 ExecutionError
             )
         );
-        unsafe {ffi::lua_settop( raw_lua, top_of_stack ); };
+        unsafe {ffi::lua_settop( raw_lua, stack_restoring_value ); };
         return None;
     } else {
         //verify_rettype_matching
         let mut err = LuaError::NoError;
+        println!("COMMON_CALL numretvalues={}",number_of_retvalues);
         <Ret as VerifyLuaTuple>::check( raw_lua, 0, number_of_retvalues, & mut err );
-        /*
-        lua: LuaType,
-        raw_lua : LuaContext,
-        stackpos: i32,
-        number_lua_elements : i32,
-        error : & mut LuaError */
-        //verify_ret_type!( V, raw_lua, 0, 1, 0, err );
         if !err.is_no_error() {
             error_reaction(  LuaFunctionCallError::LuaError(err) );
-            unsafe {ffi::lua_settop( raw_lua, top_of_stack ); };
+            unsafe {ffi::lua_settop( raw_lua, stack_restoring_value ); };
             return None;
         }
     }
     lua_get!(
         lua_state,
         number_of_retvalues,
-        unsafe { ffi::lua_settop( raw_lua, top_of_stack ); }, // on success
+        unsafe { ffi::lua_settop( raw_lua, stack_restoring_value ); }, // on success
         //ffi::lua_settop( raw_lua, top_of_stack ), // on success
         error_reaction( text_lua_error_wrap!("Read return valued failed!!!", ExecutionError) ), // on error
         Ret // expected type

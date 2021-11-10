@@ -47,7 +47,7 @@ macro_rules! make_collection {
 }
 
 #[inline(always)]
-pub fn type_name_of_val<T>() -> &'static str {
+pub fn get_name_of_type<T>() -> &'static str {
     std::any::type_name::<T>()
 }
 
@@ -87,7 +87,7 @@ macro_rules! refl_get_reflection_type_code_of {
                     "String".to_string()  => ReflectionCode::NString,
                 )
             } );
-            let strname = type_name_of_val::<$type>();
+            let strname = get_name_of_type::<$type>();
             match TYPEHASHES.get( &strname.to_string() ) {
                 Some(entry) => entry.clone(),
                 None => ReflectionCode::NUser,

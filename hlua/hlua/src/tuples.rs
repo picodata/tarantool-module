@@ -10,7 +10,7 @@ use crate::{
     LuaError,
     LuaFunctionCallError,
     reflection::ReflectionCode,
-    reflection::type_name_of_val,
+    reflection::get_name_of_type,
     wrap_ret_type_error,
     verify_ret_type,
     text_lua_error_wrap,
@@ -29,7 +29,23 @@ pub trait VerifyLuaTuple{
        number_elements : i32,
        error : & mut LuaError);
 }
-//verify_ret_type!( $first, raw_lua, num_of_elements + 1 - check_index, check_index, err );
+
+impl VerifyLuaTuple for ()
+{
+    #[inline(always)]
+    fn check(
+        _raw_lua : * mut ffi::lua_State,
+        _stackpos: i32,
+        number_lua_elements : i32,
+        error : & mut LuaError ) ->()
+    {
+        if number_lua_elements != 0 {
+            error.add( &LuaError::ExecutionError(format!(
+                "Unexpected number of result values!!! (expected 0, got {}) 3",
+                number_lua_elements) ) );
+        }
+    }
+}
 
 macro_rules! tuple_impl {
     ($ty:ident) => (
@@ -62,9 +78,11 @@ macro_rules! tuple_impl {
                 number_lua_elements : i32,
                 error : & mut LuaError ) ->()
             {
-                let mut len_of_tuple = 1;
+                let len_of_tuple = 1;
                 if len_of_tuple != number_lua_elements {
-                    error.add( &LuaError::ExecutionError("The expected number of returned arguments does not match the actual number of returned arguments!!!".to_string()) );
+                    error.add( &LuaError::ExecutionError(format!(
+                        "Unexpected number of result values!!! (expected 1, got {}) 1", 
+                        number_lua_elements) ) );
                     return;
                 }
                 verify_ret_type!( $ty, raw_lua, stackpos, len_of_tuple, 0, error );
@@ -162,7 +180,10 @@ macro_rules! tuple_impl {
                     len_of_tuple += 1;
                 )+
                 if len_of_tuple != number_lua_elements {
-                    error.add( &LuaError::ExecutionError("The expected number of returned arguments does not match the actual number of returned arguments!!!".to_string()) );
+                    error.add( &LuaError::ExecutionError(format!(
+                        "Unexpected number of result values!!! (expected {}, got {}) 2",
+                        len_of_tuple,
+                        number_lua_elements) ) );
                     return;
                 }
                 verify_ret_type!( $first, raw_lua, stackpos, len_of_tuple, 1, error );
@@ -184,44 +205,6 @@ macro_rules! tuple_impl {
 
 tuple_impl!(A, B, C, D, E, F, G, H, I, J, K, L, M);
 
-impl VerifyLuaTuple for ()
-{
-    #[inline(always)]
-    fn check(
-        _raw_lua : * mut ffi::lua_State,
-        _stackpos: i32,
-        _number_lua_elements : i32,
-        _error : & mut LuaError ) ->()
-    {
-    }
-}
-/*
-#[allow(unused_assignments)]
-#[allow(non_snake_case)]
-impl<E> VerifyLuaTuple for TupleWrap<E>
-{
-    #[inline(always)]
-    fn check(
-        raw_lua : * mut ffi::lua_State,
-        stackpos: i32,
-        number_lua_elements : i32,
-        error : & mut LuaError ) ->()
-    {
-        let mut len_of_tuple = 1;
-        if len_of_tuple != number_lua_elements {
-            error.add( &LuaError::ExecutionError("The expected number of returned arguments does not match the actual number of returned arguments!!!".to_string()) );
-            return;
-        }
-        verify_ret_type!( E, raw_lua, stackpos, len_of_tuple, 0, error );
-    }
-}
-
-impl<'lua, LU, E> LuaRead<LU> for TupleWrap<E> where LU: AsMutLua<'lua>, TupleWrap<E>: LuaRead<LU> {
-    #[inline]
-    fn lua_read_at_position(lua: LU, index: i32) -> Result<TupleWrap<E>, LU> {
-        <E as LuaRead<LU> >::lua_read_at_position(lua, index)
-    }
-}*/
 
 /// Error that can happen when pushing multiple values at once.
 // TODO: implement Error on that thing

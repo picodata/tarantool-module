@@ -74,8 +74,8 @@ where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> > + VerifyLuaTup
     }
     common_call::<'selftime, 'lua, Ret, Args, L, ErrorReaction>(
         lua_state,
-        1, // number of additional args => there is the only one additional arg - table as self
-        top_of_stack,
+        1, // number of additional arguments ( &self = lua table entry )
+        top_of_stack, // value for restoring stack position
         error_reaction,
         args )
 }

@@ -169,12 +169,7 @@ pub fn test_errors_during_call_method()  {
     // Execution error: Read return valued failed!!! - не соответствие числа возвращаемых аргументов
     let res : Result<(String, u16, String, u32), _> =
                           table.call_checked( String::from("foo"), (1, "bar") );
-    let err_container = res.expect_err("Expected error");
-    //let err_container : Result<(u16, u32), err_container> = res.expect_err("Expected error");
-    let err_list : tarantool::hlua::LuaError = match err_container {
-        tarantool::hlua::LuaFunctionCallError::PushError(_) => unreachable!(),
-        tarantool::hlua::LuaFunctionCallError::LuaError( luaerr ) => luaerr,
-    };
+    let err_list = res.expect_err("Expected error").unwrap_lua_err();
     let mut counter = 0;
     for err in err_list.iter() {
         println!("aabbcc {}", err );
