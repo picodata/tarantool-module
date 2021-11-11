@@ -174,7 +174,12 @@ where
 
     // Attention! pcall pops args AND function pointer! Thats why " - function_stackpos + 1;", but not " - function_stackpos;"
     let number_of_retvalues : i32 = new_top_of_stack - function_stackpos + 1;
-    assert!( number_of_retvalues >= 0 );
+    static MAX_RET_VALUES : i32 = 32;
+    if number_of_retvalues < 0  || number_of_retvalues > MAX_RET_VALUES {
+        error_reaction( text_lua_error_wrap!("Stack corrupted !", ExecutionError) );
+        unsafe {ffi::lua_settop( raw_lua, stack_restoring_value ); };
+        return None;
+    }
     if ( pcall_error as i64 ) != 0 {
         error_reaction(
             text_lua_error_wrap!(
