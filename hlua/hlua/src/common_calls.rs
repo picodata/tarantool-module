@@ -122,11 +122,11 @@ where
     L : AsMutLua<'lua>,
     ErrorReaction : FnMut( LuaFunctionCallError<LuaError> )->(),
 {
-    println!("COMMON_CALL {}",get_name_of_type::<Ret>());
+    println!("COMMON_CALL {} additional={} stack_restore={}",get_name_of_type::<Ret>(), number_of_additional_args, stack_restoring_value);
     let raw_lua = lua_state.as_lua().state_ptr();
     let stack_before_args = unsafe { ffi::lua_gettop( raw_lua ) as i32 };
-    let function_stackpos = stack_before_args - number_of_additional_args - 1;
-    println!("COMMON_CALL topstack1={}",stack_before_args);
+    let function_stackpos = stack_before_args - number_of_additional_args;
+    println!("COMMON_CALL topstack1={}, funpos={}",stack_before_args, function_stackpos);
     if !unsafe { ffi::lua_isfunction(raw_lua, function_stackpos) } {
         error_reaction( text_lua_error_wrap!("Stack corrupted !!!", ExecutionError) );
         unsafe {ffi::lua_settop( raw_lua, stack_restoring_value ); };
@@ -146,7 +146,7 @@ where
     let stack_after_args = unsafe { ffi::lua_gettop( raw_lua ) as i32 };
     println!("COMMON_CALL topstack2={}",stack_after_args);
     let numargs = stack_after_args - stack_before_args + number_of_additional_args ;
-    println!("COMMON_CALL numargs={}",numargs);
+    println!("COMMON_CALL numargs={} before={} after={}",numargs, stack_before_args, stack_after_args);
     if !unsafe { ffi::lua_isfunction(raw_lua, - numargs - 1 ) } {
         error_reaction( text_lua_error_wrap!("Stack corrupted", ExecutionError) );
         unsafe {ffi::lua_settop( raw_lua, stack_restoring_value ); };
@@ -172,8 +172,9 @@ where
         return None;
     }*/
 
-    // Attention! pcall pops args AND function pointer!
-    let number_of_retvalues : i32 = new_top_of_stack - function_stackpos;
+    // Attention! pcall pops args AND function pointer! Thats why " - function_stackpos + 1;", but not " - function_stackpos;"
+    let number_of_retvalues : i32 = new_top_of_stack - function_stackpos + 1;
+    assert!( number_of_retvalues >= 0 );
     if ( pcall_error as i64 ) != 0 {
         error_reaction(
             text_lua_error_wrap!(
@@ -189,7 +190,7 @@ where
     } else {
         //verify_rettype_matching
         let mut err = LuaError::NoError;
-        println!("COMMON_CALL numretvalues={}",number_of_retvalues);
+        println!("COMMON_CALL numretvalues={} newtop={} funpos={}",number_of_retvalues, new_top_of_stack, function_stackpos);
         <Ret as VerifyLuaTuple>::check( raw_lua, 0, number_of_retvalues, & mut err );
         if !err.is_no_error() {
             error_reaction(  LuaFunctionCallError::LuaError(err) );
