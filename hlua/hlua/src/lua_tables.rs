@@ -124,10 +124,10 @@ impl<'lua, L> LuaRead<L> for LuaTable<L>
     #[inline]
     fn lua_read_at_position(mut lua: L, index: i32) -> Result<LuaTable<L>, L> {
         if unsafe { ffi::lua_istable(lua.as_mut_lua().0, index) } {
-            let lua_stack_top : i32 =  unsafe { ffi::lua_gettop( lua.as_mut_lua().0 ) as i32 };
+            //let lua_stack_top : i32 =  unsafe { ffi::lua_gettop( lua.as_mut_lua().0 ) as i32 };
             Ok(LuaTable {
                 table: lua,
-                index: index + lua_stack_top + 1,
+                index: index/* + lua_stack_top + 1*/,
             })
         } else {
             Err(lua)
