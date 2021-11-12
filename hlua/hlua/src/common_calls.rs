@@ -1,5 +1,4 @@
 use std::option::Option;
-pub extern crate ffi;
 
 use crate::{
     AsLua,
@@ -10,7 +9,7 @@ use crate::{
     LuaFunctionCallError,
     LuaError,
     tuples::VerifyLuaTuple,
-    reflection::get_name_of_type
+    reflection::get_name_of_type,
 };
 
 #[macro_export]
@@ -95,6 +94,28 @@ macro_rules! text_lua_error_wrap {
 }
 
 #[macro_export]
+macro_rules! get_lua_type_from_stack {
+    ($raw_lua:expr, $stackpos:expr) => {
+        unsafe {
+            let lua_type = ffi::lua_type( $raw_lua, $stackpos );
+            let typename = ffi::lua_typename($raw_lua, lua_type);
+            std::ffi::CStr::from_ptr(typename).to_string_lossy().into_owned()
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! wrap_ret_type_error {
+    ($expected_type:ty, $lua_code:expr, $stackposition:expr,$offset:expr, $raw_lua:expr, $ind:expr) => {
+        LuaError::WrongType{
+            rust_expected: std::any::type_name::<$expected_type>().to_string(),
+            lua_actual: get_lua_type_from_stack!( $raw_lua, ($stackposition-$offset) ),
+            index : $ind,
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! verify_ret_type {
     ($expected_type:ty, $raw_lua:expr, $stackposition:expr, $offset:expr, $ind:expr, $out_error:expr ) => {
         let lua_type_code = unsafe {ffi::lua_type( $raw_lua, $stackposition-($offset) ) };
@@ -106,6 +127,43 @@ macro_rules! verify_ret_type {
             $out_error.add( &wrap_ret_type_error!( $expected_type, lua_type_code, $stackposition, $offset, $raw_lua, $ind ) );
         }
     };
+}
+
+#[macro_export]
+macro_rules! debug_print_stack_types {
+    ($perfix:expr, $raw_lua:expr) => {
+        {
+            let stack_before_args = unsafe { ffi::lua_gettop( $raw_lua ) as i32 };
+            for i in 0..stack_before_args+1 {
+                println!( "{}stack at {} = {}" ,$perfix, i, get_lua_type_from_stack!( $raw_lua, i ) );
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! callopt {
+    ($var:ident=>$type:ty = $fun:expr) => {
+        let ($var,) : (std::option::Option<$type>,) = $fun;
+    };
+    ( $first:ident=>$firsttype:ty, $($other:ident=>$othertype:ty)+ = $fun:expr) => {
+        let ( $first, $( $other, )+ ) : ( std::option::Option<$firsttype>, $(
+                std::option::Option<$othertype>,
+            )+ ) = $fun;
+    }
+}
+#[macro_export]
+macro_rules! unwrap_option {
+    ($var:ident) =>
+    {
+        {
+            match $var
+            {
+                std::option::Option::None => {unreachable!();}
+                std::option::Option::Some( x ) => x,
+            }
+        }
+    }
 }
 
 #[inline(always)]
@@ -213,21 +271,6 @@ where
     )
 }
 
-
-#[macro_export]
-macro_rules! wrap_ret_type_error {
-    ($expected_type:ty, $lua_code:expr, $stackposition:expr,$offset:expr, $raw_lua:expr, $ind:expr) => {
-        LuaError::WrongType{
-            rust_expected: std::any::type_name::<$expected_type>().to_string(),
-            lua_actual: unsafe {
-                let lua_type = ffi::lua_type( $raw_lua, $stackposition-($offset) );
-                let typename = ffi::lua_typename($raw_lua, lua_type);
-                std::ffi::CStr::from_ptr(typename).to_string_lossy().into_owned()
-            },
-            index : $ind,
-        }
-    };
-}
 
 #[macro_export]
 macro_rules! get_lua_type_code {

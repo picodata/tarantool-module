@@ -376,6 +376,28 @@ where T: PushOne<L, Err = E>,
 {
 }
 
+impl<'lua, L, T> LuaRead<L> for Option<T>
+    where L: AsMutLua<'lua>,
+          T : LuaRead<L>
+{
+    #[inline]
+    fn lua_read_at_position(mut lua: L, index: i32) -> Result<Option<T>, L> {
+        let raw_lua = lua.as_lua().state_ptr();
+        unsafe {
+            if ffi::lua_type( raw_lua, index ) == ffi::LUA_TNIL {
+                ffi::lua_pop( raw_lua, 1 );
+                return Ok( Option::None );
+            }
+        }
+        let ret : Result<T, L> = T::lua_read( lua );
+        //let ret = <   T as LuaRead<L>   >::lua_read( lua );
+        match ret {
+            Ok( value ) => Ok( Some(value) ),
+            Err( value ) => Err( value ),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{

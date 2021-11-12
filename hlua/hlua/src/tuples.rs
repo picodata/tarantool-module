@@ -12,6 +12,7 @@ use crate::{
     reflection::ReflectionCode,
     reflection::get_name_of_type,
     wrap_ret_type_error,
+    get_lua_type_from_stack,
     verify_ret_type,
     text_lua_error_wrap,
     get_lua_type_code,
