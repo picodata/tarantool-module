@@ -449,7 +449,13 @@ impl<'lua, L> LuaTable<L>
                 LuaFunctionCallError::PushError(_) => "PushError".to_string(),
                 LuaFunctionCallError::LuaError( ref lua_err ) => {
                     match lua_err {
-                        LuaError::CommonError{ internal : list } => { panic!(""); },
+                        LuaError::CommonError{ internal : list } => {
+                             let mut err = "".to_string();
+                             for elem in list.iter() {
+                                 err = format!("{}{}", err, elem );
+                             }
+                             err
+                        },
                         _ => format!("{}", lua_err ),
                     }
                 }
