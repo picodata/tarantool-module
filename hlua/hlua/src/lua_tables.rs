@@ -68,7 +68,7 @@ where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> > + VerifyLuaTup
             function_name.as_ptr() as *const _,
             function_name.len()
         );
-        ffi::lua_gettable ( raw_lua, table_stack_pos );
+        ffi::lua_gettable ( raw_lua, top_of_stack );
         // Copy the table to the top of the stack, because it will be used as the first argument of the function -- self
         ffi::lua_pushvalue( raw_lua, table_stack_pos );
     }
