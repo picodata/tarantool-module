@@ -47,7 +47,7 @@ pub fn execution_error() {
 pub fn check_types() {
     let mut lua = crate::hlua::global();
     let mut f = LuaFunction::load(&mut lua, "return 12").unwrap();
-    let err = f.call::<(bool,)>().unwrap_err();
+    let err = f.call::<bool>().unwrap_err();
     match err {
         LuaError::WrongType{ref rust_expected, ref lua_actual, index : _} => {
             assert_eq!(rust_expected, "bool");
