@@ -3,7 +3,6 @@ use std::option::Option;
 pub extern crate ffi;
 
 use crate::{
-    Lua,
     LuaContext,
     AsLua,
     AsMutLua,

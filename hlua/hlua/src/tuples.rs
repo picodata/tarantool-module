@@ -6,22 +6,17 @@ use crate::{
     PushGuard,
     LuaRead,
     Void,
-    LuaContext,
     LuaError,
-    LuaFunctionCallError,
     reflection::ReflectionCode,
     reflection::get_name_of_type,
     wrap_ret_type_error,
     get_lua_type_from_stack,
     verify_ret_type,
-    text_lua_error_wrap,
     get_lua_type_code,
     refl_get_reflection_type_code_of,
     make_collection,
 };
 
-
-pub struct TupleWrap<E>(pub E);
 
 pub trait VerifyLuaTuple{
    fn check(
@@ -198,7 +193,7 @@ macro_rules! tuple_impl {
                 let mut canbe_fun_or_table = true;
                 $(
                     // без этой строчки он ругается. как подавить ошибку дешевле?
-                    let str2 = std::any::type_name::<$other>().to_string();
+                    let _str2 = std::any::type_name::<$other>().to_string();
                     len_of_tuple += 1;
                 )+
                 if len_of_tuple != number_lua_elements {
@@ -231,7 +226,7 @@ macro_rules! tuple_impl {
                         index,
                         canbe_fun_or_table,
                         error );
-                    let str2 = std::any::type_name::<$other>().to_string();
+                    let _str2 = std::any::type_name::<$other>().to_string();
                     len_of_tuple += 1;
                 )+
             }

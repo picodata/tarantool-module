@@ -1,5 +1,3 @@
-use std::any::Any;
-
 #[derive(PartialEq, Copy, Clone)]
 pub enum ReflectionCode {
     Nchar       = 0,
@@ -20,9 +18,9 @@ pub enum ReflectionCode {
     Nbool       = 15,
     NString     = 16,
     NStringLiteral = 17,
-    NReflection = 18,
+    //NReflection = 18,
     NUser       = 19,
-    NError      = 20,
+    //NError      = 20,
 }
 
 
@@ -221,58 +219,5 @@ impl GetTypeCodeTrait for &'static str {
     #[inline(always)]
     fn get_type_code() -> ReflectionCode  {
         ReflectionCode::NStringLiteral
-    }
-}
-
-
-pub enum ReflectionData {
-    Tchar(char),
-    Tu8(u8),
-    Ti8(i8),
-    Tu16(u16),
-    Ti16(i16),
-    Tu32(u32),
-    Ti32(i32),
-    Tu64(u64),
-    Ti64(i64),
-    Tu128(u128),
-    Ti128(i128),
-    Tf32(f32),
-    Tf64(f64),
-    Tisize(isize),
-    Tusize(usize),
-    TString(String),
-    TStringLiteral(&'static str),
-    //TReflection( Box<dyn BaseReflection> ),
-    TUser( Box<dyn Any> ),
-    Error(),
-}
-
-impl ReflectionData {
-    fn get_type_code( &self ) -> ReflectionCode {
-        use ReflectionData::*;
-        match self {
-            Tchar(_y) => ReflectionCode::Nchar,
-            Tu8(_y) => ReflectionCode::Nu8,
-            Ti8(_y) => ReflectionCode::Ni8,
-            Tu16(_y) => ReflectionCode::Nu16,
-            Ti16(_y) => ReflectionCode::Ni16,
-            Tu32(_y) => ReflectionCode::Nu32,
-            Ti32(_y) => ReflectionCode::Ni32,
-            Tu64(_y) => ReflectionCode::Nu64,
-            Ti64(_y) => ReflectionCode::Ni64,
-            Tu128(_y) => ReflectionCode::Nu128,
-            Ti128(_y) => ReflectionCode::Ni128,
-            Tf32(_y) => ReflectionCode::Nf32,
-            Tf64(_y) => ReflectionCode::Nf64,
-            Tisize(_y) => ReflectionCode::Nisize,
-            Tusize(_y) => ReflectionCode::Nusize,
-            TString(_y) => ReflectionCode::NString,
-            TStringLiteral(_) => ReflectionCode::NStringLiteral,
-            //TReflection( _y ) => ReflectionCode::NReflection,
-            TUser( _y ) => ReflectionCode::NUser,
-            Error() => ReflectionCode::NError,
-            _ => ReflectionCode::NError,
-        }
     }
 }

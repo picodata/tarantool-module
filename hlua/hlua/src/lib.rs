@@ -858,7 +858,7 @@ impl<'lua> Lua<'lua> {
             Ok( v ) => {
                 match v {
                     (data,) => Ok(data),
-                    _ => unreachable!(),
+                    //_ => unreachable!(),
                 }
             },
             Err ( err ) => Err( err ),
@@ -895,7 +895,7 @@ impl<'lua> Lua<'lua> {
             Ok( v ) => {
                 match v {
                     (data,) => Ok(data),
-                    _ => unreachable!(),
+                    //_ => unreachable!(),
                 }
             },
             Err ( err ) => Err( err ),

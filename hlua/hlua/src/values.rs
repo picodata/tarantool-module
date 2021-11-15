@@ -381,7 +381,7 @@ impl<'lua, L, T> LuaRead<L> for Option<T>
           T : LuaRead<L>
 {
     #[inline]
-    fn lua_read_at_position(mut lua: L, index: i32) -> Result<Option<T>, L> {
+    fn lua_read_at_position(lua: L, index: i32) -> Result<Option<T>, L> {
         let raw_lua = lua.as_lua().state_ptr();
         unsafe {
             if ffi::lua_type( raw_lua, index ) == ffi::LUA_TNIL {

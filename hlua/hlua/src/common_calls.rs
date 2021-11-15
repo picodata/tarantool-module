@@ -10,7 +10,6 @@ use crate::{
     LuaFunctionCallError,
     LuaError,
     tuples::VerifyLuaTuple,
-    reflection::get_name_of_type,
 };
 
 #[macro_export]

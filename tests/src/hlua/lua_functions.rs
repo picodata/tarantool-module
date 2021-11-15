@@ -2,7 +2,7 @@
 use tarantool::hlua::{
     LuaError,
     LuaFunction,
-    LuaTable,    Lua,
+    LuaTable,
 };
 use std::io::Read;
 
