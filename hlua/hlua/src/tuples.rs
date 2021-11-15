@@ -12,6 +12,7 @@ use crate::{
     reflection::ReflectionCode,
     reflection::get_name_of_type,
     wrap_ret_type_error,
+    get_lua_type_from_stack,
     verify_ret_type,
     text_lua_error_wrap,
     get_lua_type_code,
@@ -25,6 +26,7 @@ pub struct TupleWrap<E>(pub E);
 pub trait VerifyLuaTuple{
    fn check(
        raw_lua : * mut ffi::lua_State,
+       restore_stack_value: & mut i32,
        stackpos: i32,
        number_elements : i32,
        error : & mut LuaError);
@@ -35,6 +37,7 @@ impl VerifyLuaTuple for ()
     #[inline(always)]
     fn check(
         _raw_lua : * mut ffi::lua_State,
+        _restore_stack_value: & mut i32,
         _stackpos: i32,
         number_lua_elements : i32,
         error : & mut LuaError ) ->()
@@ -74,11 +77,13 @@ macro_rules! tuple_impl {
             #[inline(always)]
             fn check(
                 raw_lua : * mut ffi::lua_State,
+                restore_stack_value: & mut i32,
                 stackpos: i32,
                 number_lua_elements : i32,
                 error : & mut LuaError ) ->()
             {
                 let mut len_of_tuple = 1;
+                let canbe_fun_or_table = true;
                 if len_of_tuple != number_lua_elements {
                     len_of_tuple = if get_name_of_type::<$ty>() != "((),)" {
                         len_of_tuple
@@ -92,7 +97,15 @@ macro_rules! tuple_impl {
                         return;
                     }
                 }
-                verify_ret_type!( $ty, raw_lua, stackpos, len_of_tuple, 0, error );
+                verify_ret_type!(
+                    $ty,
+                    raw_lua,
+                    stackpos,
+                    len_of_tuple,
+                    restore_stack_value,
+                    0,
+                    canbe_fun_or_table,
+                    error );
             }
         }
     );
@@ -176,11 +189,13 @@ macro_rules! tuple_impl {
             #[inline(always)]
             fn check(
                 raw_lua : * mut ffi::lua_State,
+                restore_stack_value: & mut i32,
                 stackpos: i32,
                 number_lua_elements : i32,
                 error : & mut LuaError ) ->()
             {
                 let mut len_of_tuple = 1;
+                let mut canbe_fun_or_table = true;
                 $(
                     // без этой строчки он ругается. как подавить ошибку дешевле?
                     let str2 = std::any::type_name::<$other>().to_string();
@@ -193,13 +208,29 @@ macro_rules! tuple_impl {
                         number_lua_elements) ) );
                     return;
                 }
-                verify_ret_type!( $first, raw_lua, stackpos, len_of_tuple, 1, error );
+                canbe_fun_or_table = verify_ret_type!(
+                    $first,
+                    raw_lua,
+                    stackpos,
+                    len_of_tuple,
+                    restore_stack_value,
+                    1,
+                    canbe_fun_or_table,
+                    error );
                 let mut offset = len_of_tuple;
                 let mut index = 1;
                 $(
                     offset -= 1;
                     index += 1;
-                    verify_ret_type!( $other, raw_lua, stackpos, offset, index, error );
+                    canbe_fun_or_table = verify_ret_type!(
+                        $other,
+                        raw_lua,
+                        stackpos,
+                        offset,
+                        restore_stack_value,
+                        index,
+                        canbe_fun_or_table,
+                        error );
                     let str2 = std::any::type_name::<$other>().to_string();
                     len_of_tuple += 1;
                 )+

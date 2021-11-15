@@ -61,14 +61,14 @@ where Ret  : LuaRead<L> + LuaRead< PushGuard<& 'selftime mut L> > + VerifyLuaTup
             "Lua table method call: Lua table not found!!!", ExecutionError) );
         return None;
     }
-    let top_of_stack = unsafe { ffi::lua_gettop( raw_lua ) };
+    let top_of_stack : i32 = unsafe { ffi::lua_gettop( raw_lua ) };
     unsafe {
         ffi::lua_pushlstring(
             raw_lua,
             function_name.as_ptr() as *const _,
             function_name.len()
         );
-        ffi::lua_gettable ( raw_lua, table_stack_pos );
+        ffi::lua_gettable ( raw_lua, top_of_stack );
         // Copy the table to the top of the stack, because it will be used as the first argument of the function -- self
         ffi::lua_pushvalue( raw_lua, table_stack_pos );
     }
@@ -124,10 +124,10 @@ impl<'lua, L> LuaRead<L> for LuaTable<L>
     #[inline]
     fn lua_read_at_position(mut lua: L, index: i32) -> Result<LuaTable<L>, L> {
         if unsafe { ffi::lua_istable(lua.as_mut_lua().0, index) } {
-            let lua_stack_top : i32 =  unsafe { ffi::lua_gettop( lua.as_mut_lua().0 ) as i32 };
+            //let lua_stack_top : i32 =  unsafe { ffi::lua_gettop( lua.as_mut_lua().0 ) as i32 };
             Ok(LuaTable {
                 table: lua,
-                index: index + lua_stack_top + 1,
+                index: index/* + lua_stack_top + 1*/,
             })
         } else {
             Err(lua)
@@ -449,7 +449,13 @@ impl<'lua, L> LuaTable<L>
                 LuaFunctionCallError::PushError(_) => "PushError".to_string(),
                 LuaFunctionCallError::LuaError( ref lua_err ) => {
                     match lua_err {
-                        LuaError::CommonError{ internal : list } => { panic!(""); },
+                        LuaError::CommonError{ internal : list } => {
+                             let mut err = "".to_string();
+                             for elem in list.iter() {
+                                 err = format!("{}{}", err, elem );
+                             }
+                             err
+                        },
                         _ => format!("{}", lua_err ),
                     }
                 }

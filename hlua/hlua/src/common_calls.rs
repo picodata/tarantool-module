@@ -10,7 +10,7 @@ use crate::{
     LuaFunctionCallError,
     LuaError,
     tuples::VerifyLuaTuple,
-    reflection::get_name_of_type
+    reflection::get_name_of_type,
 };
 
 #[macro_export]
@@ -81,7 +81,6 @@ macro_rules! lua_get {
                     $error_reaction;
                     None
                 },
-                _ => unreachable!("Logic Error"),
             }
         }
     }
@@ -95,24 +94,96 @@ macro_rules! text_lua_error_wrap {
 }
 
 #[macro_export]
-macro_rules! verify_ret_type {
-    ($expected_type:ty, $raw_lua:expr, $stackposition:expr, $offset:expr, $ind:expr, $out_error:expr ) => {
-        let lua_type_code = unsafe {ffi::lua_type( $raw_lua, $stackposition-($offset) ) };
-        let rustexpected_code = get_lua_type_code!($expected_type) as i32;
-        println!("exp {} , lua {}", lua_type_code, rustexpected_code );
-        if ( rustexpected_code != (ffi::LUA_TNONE as i32) &&
-             rustexpected_code != lua_type_code ) {
-            // wrong error type
-            $out_error.add( &wrap_ret_type_error!( $expected_type, lua_type_code, $stackposition, $offset, $raw_lua, $ind ) );
+macro_rules! get_lua_type_from_stack {
+    ($raw_lua:expr, $stackpos:expr) => {
+        unsafe {
+            let lua_type = ffi::lua_type( $raw_lua, $stackpos );
+            let typename = ffi::lua_typename($raw_lua, lua_type);
+            std::ffi::CStr::from_ptr(typename).to_string_lossy().into_owned()
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! wrap_ret_type_error {
+    ($expected_type:ty, $lua_code:expr, $stackposition:expr,$offset:expr, $raw_lua:expr, $ind:expr) => {
+        LuaError::WrongType{
+            rust_expected: std::any::type_name::<$expected_type>().to_string(),
+            lua_actual: get_lua_type_from_stack!( $raw_lua, ($stackposition-$offset) ),
+            index : $ind,
         }
     };
+}
+
+#[macro_export]
+macro_rules! verify_ret_type {
+   ($expected_type:ty, $raw_lua:expr, $stackposition:expr, $offset:expr,
+     $stack_restoring_value:expr, $ind:expr, $canbe_fun_or_table:expr, $out_error:expr ) => {
+        {
+            let lua_type_code = unsafe {ffi::lua_type( $raw_lua, $stackposition-($offset) ) };
+            let rustexpected_code = get_lua_type_code!($expected_type) as i32;
+            //println!("exp {} , lua {}", lua_type_code, rustexpected_code );
+            if ( rustexpected_code != (ffi::LUA_TNONE as i32) &&
+                rustexpected_code != lua_type_code ) {
+                // wrong error type
+                $out_error.add( &wrap_ret_type_error!( $expected_type, lua_type_code, $stackposition, $offset, $raw_lua, $ind ) );
+            }
+            let fun_or_table : bool = ( lua_type_code == ffi::LUA_TFUNCTION ||
+                lua_type_code == ffi::LUA_TTABLE );
+            if $canbe_fun_or_table == false && fun_or_table {
+                $out_error.add( &LuaError::ExecutionError(format!(
+                    "Tables & functions MUST BE at the beginning of the list of returned arguments!!!") )   );
+            }
+            if fun_or_table && $canbe_fun_or_table == true {
+                *$stack_restoring_value = $stack_restoring_value.clone() + 1;
+            }
+            fun_or_table
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! debug_print_stack_types {
+    ($perfix:expr, $raw_lua:expr) => {
+        {
+            let stack_before_args = unsafe { ffi::lua_gettop( $raw_lua ) as i32 };
+            for i in 0..stack_before_args+1 {
+                println!( "{}stack at {} = {}" ,$perfix, i, get_lua_type_from_stack!( $raw_lua, i ) );
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! callopt {
+    ($var:ident=>$type:ty = $fun:expr) => {
+        let ($var,) : (std::option::Option<$type>,) = $fun;
+    };
+    ( $first:ident=>$firsttype:ty, $($other:ident=>$othertype:ty)+ = $fun:expr) => {
+        let ( $first, $( $other, )+ ) : ( std::option::Option<$firsttype>, $(
+                std::option::Option<$othertype>,
+            )+ ) = $fun;
+    }
+}
+#[macro_export]
+macro_rules! unwrap_option {
+    ($var:ident) =>
+    {
+        {
+            match $var
+            {
+                std::option::Option::None => {unreachable!();}
+                std::option::Option::Some( x ) => x,
+            }
+        }
+    }
 }
 
 #[inline(always)]
 pub fn common_call<'selftime, 'lua, Ret, Args, L, ErrorReaction> (
     lua_state :& 'selftime mut  L,
     number_of_additional_args : i32, //  // top of stack BEFORE pushing function
-    stack_restoring_value : i32,
+    base_stack_restoring_value : i32,
     mut error_reaction : ErrorReaction,
     args : Args,
 ) -> Option<Ret>
@@ -122,11 +193,12 @@ where
     L : AsMutLua<'lua>,
     ErrorReaction : FnMut( LuaFunctionCallError<LuaError> )->(),
 {
-    println!("COMMON_CALL {} additional={} stack_restore={}",get_name_of_type::<Ret>(), number_of_additional_args, stack_restoring_value);
+    let mut stack_restoring_value = base_stack_restoring_value.clone();
+    //println!("COMMON_CALL {} additional={} stack_restore={}",get_name_of_type::<Ret>(), number_of_additional_args, stack_restoring_value);
     let raw_lua = lua_state.as_lua().state_ptr();
     let stack_before_args = unsafe { ffi::lua_gettop( raw_lua ) as i32 };
     let function_stackpos = stack_before_args - number_of_additional_args;
-    println!("COMMON_CALL topstack1={}, funpos={}",stack_before_args, function_stackpos);
+    //println!("COMMON_CALL topstack1={}, funpos={}",stack_before_args, function_stackpos);
     if !unsafe { ffi::lua_isfunction(raw_lua, function_stackpos) } {
         error_reaction( text_lua_error_wrap!("Stack corrupted !!!", ExecutionError) );
         unsafe {ffi::lua_settop( raw_lua, stack_restoring_value ); };
@@ -144,9 +216,9 @@ where
     }
     //let _xxx = LuaFunctionCallError::LuaError(LuaError::ExecutionError("Push arguments failed!!!".to_string()) );
     let stack_after_args = unsafe { ffi::lua_gettop( raw_lua ) as i32 };
-    println!("COMMON_CALL topstack2={}",stack_after_args);
+    //println!("COMMON_CALL topstack2={}",stack_after_args);
     let numargs = stack_after_args - stack_before_args + number_of_additional_args ;
-    println!("COMMON_CALL numargs={} before={} after={}",numargs, stack_before_args, stack_after_args);
+    //println!("COMMON_CALL numargs={} before={} after={}",numargs, stack_before_args, stack_after_args);
     if !unsafe { ffi::lua_isfunction(raw_lua, - numargs - 1 ) } {
         error_reaction( text_lua_error_wrap!("Stack corrupted", ExecutionError) );
         unsafe {ffi::lua_settop( raw_lua, stack_restoring_value ); };
@@ -195,8 +267,8 @@ where
     } else {
         //verify_rettype_matching
         let mut err = LuaError::NoError;
-        println!("COMMON_CALL numretvalues={} newtop={} funpos={}",number_of_retvalues, new_top_of_stack, function_stackpos);
-        <Ret as VerifyLuaTuple>::check( raw_lua, 0, number_of_retvalues, & mut err );
+        //println!("COMMON_CALL numretvalues={} newtop={} funpos={}",number_of_retvalues, new_top_of_stack, function_stackpos);
+        <Ret as VerifyLuaTuple>::check( raw_lua, &mut stack_restoring_value, 0, number_of_retvalues, & mut err );
         if !err.is_no_error() {
             error_reaction(  LuaFunctionCallError::LuaError(err) );
             unsafe {ffi::lua_settop( raw_lua, stack_restoring_value ); };
@@ -213,21 +285,6 @@ where
     )
 }
 
-
-#[macro_export]
-macro_rules! wrap_ret_type_error {
-    ($expected_type:ty, $lua_code:expr, $stackposition:expr,$offset:expr, $raw_lua:expr, $ind:expr) => {
-        LuaError::WrongType{
-            rust_expected: std::any::type_name::<$expected_type>().to_string(),
-            lua_actual: unsafe {
-                let lua_type = ffi::lua_type( $raw_lua, $stackposition-($offset) );
-                let typename = ffi::lua_typename($raw_lua, lua_type);
-                std::ffi::CStr::from_ptr(typename).to_string_lossy().into_owned()
-            },
-            index : $ind,
-        }
-    };
-}
 
 #[macro_export]
 macro_rules! get_lua_type_code {

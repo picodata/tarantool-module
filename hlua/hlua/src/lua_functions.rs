@@ -25,6 +25,7 @@ use crate::{
     make_collection,
     verify_ret_type,
     wrap_ret_type_error,
+    get_lua_type_from_stack,
     get_lua_type_code,
 };
 
@@ -271,7 +272,7 @@ impl<'lua, L> LuaFunction<L>
     /// assert_eq!(result, 14);
     /// ```
     #[inline]
-    pub fn call_with_args<'selftime, 'comcol_lua, 'a, Ret, Args, E>(&'a mut self, args: Args) -> Result<Ret, LuaFunctionCallError<LuaError>>
+    pub fn call_with_args<'selftime, 'a, Ret, Args, E>(&'a mut self, args: Args) -> Result<Ret, LuaFunctionCallError<LuaError>>
         where Args: for<'r> Push<&'r mut LuaFunction<L>, Err = E> + Push<L>,
         Ret : LuaRead< PushGuard<&'a mut L> > + VerifyLuaTuple
     {
@@ -309,6 +310,30 @@ impl<'lua, L> LuaFunction<L>
         } else {
             return Result::Err( err_ret );
         }
+    }
+    
+    /// Call with single return
+    #[inline]
+    pub fn scall<'selftime, 'a, Ret, Args, E>(&'a mut self, args: Args) -> Result<Ret, LuaFunctionCallError<LuaError>>
+        where Args: for<'r> Push<&'r mut LuaFunction<L>, Err = E> + Push<L>,
+        Ret : LuaRead< PushGuard<&'a mut L> >
+    {
+        let ret : Result< (Ret,), LuaFunctionCallError<LuaError> >
+                                                   = self.call_with_args(args );
+        match ret {
+            Ok( val ) => Ok( val.0 ),
+            Err( err ) => Err( err ),
+        }
+    }
+    /// Call function. Returns multiply returns or error
+    /// Required for macro callopt
+    /// Alias for call_with_args
+    #[inline]
+    pub fn call_checked<'selftime, 'a, Ret, Args, E>(&'a mut self, args: Args) -> Result<Ret, LuaFunctionCallError<LuaError>>
+        where Args: for<'r> Push<&'r mut LuaFunction<L>, Err = E> + Push<L>,
+        Ret : LuaRead< PushGuard<&'a mut L> > + VerifyLuaTuple
+    {
+        self.call_with_args(args )
     }
     /// Builds a new `LuaFunction` from the code of a reader.
     ///
