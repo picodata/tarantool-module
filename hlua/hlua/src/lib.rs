@@ -537,7 +537,7 @@ impl fmt::Display for LuaError {
             WrongType{
                 rust_expected: ref e1,
                 lua_actual: ref e2,
-                index: ref e3,
+                index,
             } => {
                 if *e3 > 0i32 {
                     write!(f, "Wrong type at position {} returned by Lua: {} expected, got {}", e3, e1, e2)
