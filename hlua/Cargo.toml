@@ -1,5 +1,9 @@
 [workspace]
 members = [
     "hlua",
-    "ffi",
+    "ffi",        
+    "hluaderived",
 ]
+
+[dependencies]
+hluaderived = { version="1.0.0", path = "./hluaderived", features = ["derive"]}

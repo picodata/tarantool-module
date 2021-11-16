@@ -5,6 +5,7 @@ edition = "2018"
 authors = [
     "pierre.krieger1708@gmail.com",
     "gmoshkin@picodata.io",
+    "Astapov Konstantin <konstantinlancer@mail.ru"
 ]
 description = "Zero-cost high-level wrapper for Lua"
 keywords = ["lua"]

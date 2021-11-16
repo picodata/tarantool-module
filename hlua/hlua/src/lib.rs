@@ -127,6 +127,8 @@ pub use tuples::TuplePushError;
 pub use userdata::UserdataOnStack;
 pub use userdata::{push_userdata, read_userdata, push_some_userdata};
 pub use values::StringInLua;
+pub use macros::dereference_and_corrupt_mut_ref;
+pub use macros::start_read_table;
 
 // Needed for `lua_error` macro
 pub use ffi::luaL_error;
@@ -163,7 +165,7 @@ pub struct Lua<'lua> {
 /// library's internals.
 #[derive(Debug)]
 pub struct PushGuard<L> {
-    lua: L,
+    pub lua: L,
     size: i32,
     raw_lua: LuaContext,
 }
@@ -375,6 +377,9 @@ pub trait PushOne<L>: Push<L> {}
 /// Will be replaced with `!` eventually (<https://github.com/rust-lang/rust/issues/35121>).
 #[derive(Debug, Copy, Clone)]
 pub enum Void {}
+
+#[derive(Debug, Copy, Clone)]
+pub enum EmptyStruct{}
 
 impl fmt::Display for Void {
     fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {

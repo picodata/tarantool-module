@@ -335,6 +335,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_tuple::test_tuple_get_field,
                 test_tuple::test_tuple_compare,
                 test_tuple::test_tuple_compare_with_key,
+                test_tuple::test_struct_serialize,
                 test_error::test_error_last,
                 test_coio::test_coio_accept,
                 test_coio::test_coio_read_write,

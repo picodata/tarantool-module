@@ -1,0 +1,20 @@
+[package]
+authors = ["K.A. Astapov <konstantinlancer@mail.ru>"]
+name = "hluaderived"
+version = "1.0.0"
+edition = "2018"
+
+[lib]
+proc-macro = true
+path = "./hlua_derived.rs"
+
+[dependencies]
+syn = "1.0.76"
+quote = "1.0.9"
+proc-macro2 = "1.0.29"
+
+[dependencies.hlua]
+path = "../hlua"
+
+[dependencies.ffi]
+path = "../ffi"

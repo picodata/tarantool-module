@@ -191,5 +191,6 @@ pub mod tuple;
 pub mod util;
 
 pub use hlua;
+pub use hluaderived;
 
 pub use error::Result;

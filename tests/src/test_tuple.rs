@@ -1,4 +1,8 @@
+use tarantool::hluaderived::MakeHlua;
 use std::cmp::Ordering;
+use tarantool::hlua as hlua;
+use tarantool::ffi::lua as l_ffi;
+use hlua::{Void, Push, LuaRead, PushGuard, AsMutLua, LuaError, lua_get, lua_push,start_read_table, dereference_and_corrupt_mut_ref};
 
 use tarantool::tuple::{FieldType, KeyDef, KeyDefItem, Tuple};
 
@@ -202,4 +206,90 @@ pub fn test_tuple_compare_with_key() {
         },
     ]);
     assert_eq!(key_def.compare_with_key(&tuple, &key_value), Ordering::Less);
+}
+
+
+#[derive(Default, MakeHlua)]
+//#[derive(Default)]
+struct TestDeriveMacroStruct {
+    pub first : u8,
+    pub second : u16,
+    pub third : String,
+    pub fourth : u32,
+}
+
+/*
+impl<'lua, L> hlua::Push<L> for TestDeriveMacroStruct
+where L: hlua::AsMutLua<'lua> {
+    type Err = LuaError;      // TODO: use ! instead
+    #[inline(always)]
+    fn push_to_lua(self, mut mlua: L) -> Result< PushGuard<L>, (LuaError,L)  > {
+        let raw_lua = mlua.as_lua().state_ptr();
+        let stack_before = unsafe { l_ffi::lua_gettop( raw_lua ) as i32 };
+            //let ret = <u8 as Push>::push_to_lua( first , &mut lua );
+            if ! lua_push!(
+                     & mut mlua,
+                     self.first,
+                     unsafe {l_ffi::lua_settop( raw_lua, stack_before ); }
+                 ) {
+                let erret : (_, L) = ( LuaError::ExecutionError("Push error!!!".to_string()), mlua );
+                return std::result::Result::Err( erret );
+            }
+        unsafe {l_ffi::lua_settop( raw_lua, stack_before ); }
+        std::result::Result::Ok( unsafe { hlua::PushGuard::new( mlua, 0 ) } )
+    }
+}
+impl<'lua, L> hlua::LuaRead<L> for TestDeriveMacroStruct
+where L: AsMutLua<'lua>, TestDeriveMacroStruct : Default {
+    #[inline(always)]
+    fn lua_read_at_position(mut lua: L, index: i32) -> Result<Self, L> {
+        let raw_lua = lua.as_lua().state_ptr();
+        let stack_before = unsafe { l_ffi::lua_gettop( raw_lua ) as i32 };
+        let mut ret = Self::default() ;
+        if start_read_table( & mut lua, &index ) {
+                let local_ret = lua_get!(
+                    &mut lua,
+                    - 1,
+                    {}, // reaction to success
+                    {   // reaction to fail
+                        unsafe {l_ffi::lua_settop( raw_lua, stack_before ); }
+                    },
+                    u8 );
+                let error = match local_ret {
+                    std::option::Option::None => {
+                        true
+                    },
+                    std::option::Option::Some( ref var ) => {
+                        ret.first = *var;
+                        false
+                    }
+                };
+                if error {
+                    return std::result::Result::Err(lua);
+                }
+            std::result::Result::Ok( ret )
+        } else {
+            std::result::Result::Err(lua)
+        }
+    }
+}
+*/
+pub fn test_struct_serialize() {
+    let mut lua = hlua::Lua::new();
+    let mut s2o1  =TestDeriveMacroStruct{
+        first:0u8,
+        second:1u16,
+        third: ("superstring").to_string(),
+        fourth:3u32, };
+
+    let mut lua = s2o1.push_to_lua( lua ).unwrap();
+    let test_a : Result<TestDeriveMacroStruct, _> = hlua::LuaRead::lua_read( & mut lua );
+    if let Ok( s2o2 ) = test_a {
+                     assert_eq!( 0u8  ,                       s2o2.first);
+                     assert_eq!( 1u16 ,                       s2o2.second);
+                     assert_eq!( ("superstring").to_string(), s2o2.third);
+                     assert_eq!( 3u32,                        s2o2.fourth);
+    } else {
+        assert!( true );
+    }
 }

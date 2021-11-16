@@ -46,6 +46,11 @@ path = "../hlua/hlua"
 path = "../hlua/ffi"
 package = "ffi"
 
+[dependencies.hluaderived]
+path = "../hlua/hluaderived"
+package = "hluaderived"
+
+
 [features]
 default = ["net_box"]
 net_box = ["lazy_static", "refpool"]
