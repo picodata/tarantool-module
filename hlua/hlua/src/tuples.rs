@@ -5,10 +5,13 @@ use crate::{
     PushOne,
     PushGuard,
     LuaRead,
+    ReturnCount,
     Void,
 };
 
 macro_rules! tuple_impl {
+    (@count $ty:ident) => (1);
+    (@count $head:ident $($tail:ident)+) => (1 + tuple_impl!(@count $($tail)+));
     ($ty:ident) => (
         impl<'lua, LU, $ty> Push<LU> for ($ty,) where LU: AsMutLua<'lua>, $ty: Push<LU> {
             type Err = <$ty as Push<LU>>::Err;
@@ -27,6 +30,10 @@ macro_rules! tuple_impl {
             fn lua_read_at_position(lua: LU, index: i32) -> Result<($ty,), LU> {
                 LuaRead::lua_read_at_position(lua, index).map(|v| (v,))
             }
+        }
+
+        unsafe impl<$ty> ReturnCount for ($ty,) {
+            const RETURN_COUNT: u32 = 1;
         }
     );
 
@@ -99,6 +106,10 @@ macro_rules! tuple_impl {
                 Ok(($first, $($other),+))
 
             }
+        }
+
+        unsafe impl<$first, $($other),+> ReturnCount for ($first, $($other),+) {
+            const RETURN_COUNT: u32 = tuple_impl!(@count $first $($other)+);
         }
 
         tuple_impl!($($other),+);
