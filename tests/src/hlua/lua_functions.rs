@@ -97,17 +97,25 @@ pub fn either_or() {
     let mut lua = crate::hlua::global();
     lua.execute::<()>(r#"
         function foo(a)
-            if a > 0 then
-                return true, 69, 420
-            else
+            if a == 1 then
+                return 1, 69, 420
+            elseif a == 2 then
                 return false, "hello"
+            else
+                return "wow"
             end
         end
     "#).unwrap();
     let mut foo: LuaFunction<_> = lua.get("foo").unwrap();
-    type Res = Result<(bool, i32, i32), (bool, String)>;
+    type Res = Result<(i32, i32, i32), (bool, String)>;
     let res: Res = foo.call_with_args(1).unwrap();
-    assert_eq!(res, Ok((true, 69, 420)));
+    let _ = match res {
+        Ok((a, b, c)) => format!("a==1, results: {} {} {}", a, b, c),
+        Err((a, ref b)) => format!("a==2, results: {} {}", a, b),
+        // AnotherResult((ref s: String)) => format!("else, results: {}", s),
+        // ^------------------ ???
+    };
+    assert_eq!(res, Ok((1, 69, 420)));
     let res: Res = foo.call_with_args(0).unwrap();
     assert_eq!(res, Err((false, "hello".to_string())));
 }
