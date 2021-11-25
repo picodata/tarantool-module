@@ -217,6 +217,9 @@ pub fn reading_hashmap_with_complex_indexes_works() {
     assert_eq!(read[&AnyHashableLuaValue::LuaString("foo".to_owned())], AnyLuaValue::LuaNumber(2.));
     assert_eq!(read[&AnyHashableLuaValue::LuaNumber(2)], AnyLuaValue::LuaNumber(42.));
     assert_eq!(read.len(), 3);
+
+    let read: HashMap<String, i32> = lua.get("v").unwrap();
+    assert_eq!(read["-1"], -1);
 }
 
 pub fn reading_hashmap_with_floating_indexes_works() {
