@@ -90,10 +90,8 @@ pub fn reading_vec_from_sparse_table_doesnt_work() {
 
     lua.execute::<()>(r#"v = { [-1] = -1, [2] = 2, [42] = 42 }"#).unwrap();
 
-    let read: Option<Vec<_>> = lua.get("v");
-    if read.is_some() {
-        panic!("Unexpected success");
-    }
+    let read: Option<Vec<AnyLuaValue>> = lua.get("v");
+    assert!(read.is_none())
 }
 
 pub fn reading_vec_with_empty_table_works() {
@@ -101,8 +99,8 @@ pub fn reading_vec_with_empty_table_works() {
 
     lua.execute::<()>(r#"v = { }"#).unwrap();
 
-    let read: Vec<_> = lua.get("v").unwrap();
-    assert_eq!(read.len(), 0);
+    let read: Vec<AnyLuaValue> = lua.get("v").unwrap();
+    assert!(read.is_empty());
 }
 
 pub fn reading_vec_with_complex_indexes_doesnt_work() {
@@ -110,10 +108,8 @@ pub fn reading_vec_with_complex_indexes_doesnt_work() {
 
     lua.execute::<()>(r#"v = { [-1] = -1, ["foo"] = 2, [{}] = 42 }"#).unwrap();
 
-    let read: Option<Vec<_>> = lua.get("v");
-    if read.is_some() {
-        panic!("Unexpected success");
-    }
+    let read: Option<Vec<AnyLuaValue>> = lua.get("v");
+    assert!(read.is_none())
 }
 
 pub fn reading_heterogenous_vec_works() {
@@ -123,13 +119,11 @@ pub fn reading_heterogenous_vec_works() {
         AnyLuaValue::LuaNumber(1.),
         AnyLuaValue::LuaBoolean(false),
         AnyLuaValue::LuaNumber(3.),
-        // Pushing String to and reading it from makes it a number
-        //AnyLuaValue::LuaString(String::from("3"))
     ];
 
     lua.set("v", &orig[..]);
 
-    let read: Vec<_> = lua.get("v").unwrap();
+    let read: Vec<AnyLuaValue> = lua.get("v").unwrap();
     assert_eq!(read, orig);
 }
 
@@ -138,11 +132,22 @@ pub fn reading_vec_set_from_lua_works() {
 
     lua.execute::<()>(r#"v = { 1, 2, 3 }"#).unwrap();
 
-    let read: Vec<_> = lua.get("v").unwrap();
+    let read: Vec<AnyLuaValue> = lua.get("v").unwrap();
     assert_eq!(
         read,
-        [1., 2., 3.].iter()
-            .map(|x| AnyLuaValue::LuaNumber(*x)).collect::<Vec<_>>());
+        [1., 2., 3.].iter().copied()
+            .map(|x| AnyLuaValue::LuaNumber(x))
+            .collect::<Vec<_>>()
+    );
+
+    let read: Vec<i32> = lua.get("v").unwrap();
+    assert_eq!(read, vec![1, 2, 3]);
+
+    let read: Vec<u8> = lua.get("v").unwrap();
+    assert_eq!(read, vec![1, 2, 3]);
+
+    let read: Vec<f64> = lua.get("v").unwrap();
+    assert_eq!(read, vec![1., 2., 3.]);
 }
 
 pub fn reading_hashmap_works() {
@@ -174,10 +179,22 @@ pub fn reading_hashmap_from_sparse_table_works() {
 
     lua.execute::<()>(r#"v = { [-1] = -1, [2] = 2, [42] = 42 }"#).unwrap();
 
-    let read: HashMap<_, _> = lua.get("v").unwrap();
+    let read: HashMap<AnyHashableLuaValue, AnyLuaValue> = lua.get("v").unwrap();
     assert_eq!(read[&AnyHashableLuaValue::LuaNumber(-1)], AnyLuaValue::LuaNumber(-1.));
     assert_eq!(read[&AnyHashableLuaValue::LuaNumber(2)], AnyLuaValue::LuaNumber(2.));
     assert_eq!(read[&AnyHashableLuaValue::LuaNumber(42)], AnyLuaValue::LuaNumber(42.));
+    assert_eq!(read.len(), 3);
+
+    let read: HashMap<i32, i32> = lua.get("v").unwrap();
+    assert_eq!(read[&-1], -1);
+    assert_eq!(read[&2], 2);
+    assert_eq!(read[&42], 42);
+    assert_eq!(read.len(), 3);
+
+    let read: HashMap<i8, f64> = lua.get("v").unwrap();
+    assert_eq!(read[&-1], -1.0);
+    assert_eq!(read[&2], 2.0);
+    assert_eq!(read[&42], 42.0);
     assert_eq!(read.len(), 3);
 }
 
@@ -186,8 +203,8 @@ pub fn reading_hashmap_with_empty_table_works() {
 
     lua.execute::<()>(r#"v = { }"#).unwrap();
 
-    let read: HashMap<_, _> = lua.get("v").unwrap();
-    assert_eq!(read.len(), 0);
+    let read: HashMap<AnyHashableLuaValue, AnyLuaValue> = lua.get("v").unwrap();
+    assert!(read.is_empty());
 }
 
 pub fn reading_hashmap_with_complex_indexes_works() {
@@ -195,7 +212,7 @@ pub fn reading_hashmap_with_complex_indexes_works() {
 
     lua.execute::<()>(r#"v = { [-1] = -1, ["foo"] = 2, [2.] = 42 }"#).unwrap();
 
-    let read: HashMap<_, _> = lua.get("v").unwrap();
+    let read: HashMap<AnyHashableLuaValue, AnyLuaValue> = lua.get("v").unwrap();
     assert_eq!(read[&AnyHashableLuaValue::LuaNumber(-1)], AnyLuaValue::LuaNumber(-1.));
     assert_eq!(read[&AnyHashableLuaValue::LuaString("foo".to_owned())], AnyLuaValue::LuaNumber(2.));
     assert_eq!(read[&AnyHashableLuaValue::LuaNumber(2)], AnyLuaValue::LuaNumber(42.));
@@ -207,7 +224,7 @@ pub fn reading_hashmap_with_floating_indexes_works() {
 
     lua.execute::<()>(r#"v = { [-1.25] = -1, [2.5] = 42 }"#).unwrap();
 
-    let read: HashMap<_, _> = lua.get("v").unwrap();
+    let read: HashMap<AnyHashableLuaValue, AnyLuaValue> = lua.get("v").unwrap();
     // It works by truncating integers in some unspecified way
     // https://www.lua.org/manual/5.2/manual.html#lua_tointegerx
     assert_eq!(read[&AnyHashableLuaValue::LuaNumber(-1)], AnyLuaValue::LuaNumber(-1.));
