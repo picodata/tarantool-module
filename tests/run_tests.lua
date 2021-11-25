@@ -29,6 +29,11 @@ function test_stored_proc(a, b)
     return a + b
 end
 
+function helloworld(s)
+    package.loaded.log.info('Hello, %s!', s)
+    error("bad things", 0)
+end
+
 function test_timeout()
     fiber.sleep(1.5)
 end
@@ -40,6 +45,22 @@ end
 function test_schema_cleanup()
     box.space.test_s_tmp:drop()
 end
+
+vshard = require('vshard')
+sharding = {
+    [box.info.cluster.uuid] = {
+        replicas = {
+            [box.info.uuid] = {
+                uri = 'storage:storage@127.0.0.1:3301',
+                name = 's1',
+                master = true,
+            }
+        }
+    }
+}
+vshard.storage.cfg({sharding = sharding}, box.info.uuid)
+vshard.router.cfg({sharding = sharding})
+vshard.router.bootstrap()
 
 -- Add test runner library location to lua search path
 package.cpath = 'target/debug/?.so;target/debug/?.dylib;' .. package.cpath

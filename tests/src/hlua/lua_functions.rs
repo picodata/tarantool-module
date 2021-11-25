@@ -1,17 +1,35 @@
 use tarantool::hlua::{
     LuaError,
+    LuaFunctionCallError,
     LuaFunction,
     LuaTable,
     MethodCallError,
+    AnyLuaValue,
 };
 use std::io::Read;
 use std::collections::HashMap;
 
 pub fn basic() {
     let lua = crate::hlua::global();
-    let f = LuaFunction::load(&lua, "return 5;").unwrap();
-    let val: i32 = f.call().unwrap();
-    assert_eq!(val, 5);
+
+    let vshard: LuaTable<_> = lua.get("vshard").unwrap();
+    let router: LuaTable<_> = vshard.get("router").unwrap();
+    let callro: LuaFunction<_> = router.get("callro").unwrap();
+    let res: Result<(AnyLuaValue,AnyLuaValue), _> = callro.call_with_args((1, "helloworld", vec!("me")));
+
+    // vshard.router.callro(bucket_id, "function_name", {{"me"}}, {})
+    // return nil, {code = 32, message = "...."}
+    match res {
+        Ok(x) => {
+            println!("pcall succeeded: {:?}", x);
+        },
+        Err(e) => {
+            let e: LuaFunctionCallError<_> = e;
+            println!("pcall failed: {:?}", e);
+        }
+    }
+
+    // println!("{:?}", res);
 }
 
 pub fn two_functions_at_the_same_time() {
