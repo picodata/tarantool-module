@@ -699,7 +699,7 @@ impl Lua {
     /// The template parameter of this function is the return type of the expression that is being
     /// evaluated.
     /// In order to avoid compilation error, you should call this function either by doing
-    /// `lua.execute::<T>(...)` or `let result: T = lua.execute(...);` where `T` is the type of
+    /// `lua.eval::<T>(...)` or `let result: T = lua.eval(...);` where `T` is the type of
     /// the expression.
     /// The function will return an error if the actual return type of the expression doesn't
     /// match the template parameter.
@@ -710,30 +710,40 @@ impl Lua {
     ///
     /// # Examples
     ///
-    /// Without a return value:
-    ///
-    /// ```
-    /// use hlua::Lua;
-    /// let mut lua = Lua::new();
-    /// lua.execute::<()>("function multiply_by_two(a) return a * 2 end").unwrap();
-    /// lua.execute::<()>("twelve = multiply_by_two(6)").unwrap();
-    /// ```
-    ///
-    /// With a return value:
-    ///
     /// ```
     /// use hlua::Lua;
     /// let mut lua = Lua::new();
     ///
-    /// let twelve: i32 = lua.execute("return 3 * 4;").unwrap();
-    /// let sixty = lua.execute::<i32>("return 6 * 10;").unwrap();
+    /// let twelve: i32 = lua.eval("return 3 * 4;").unwrap();
+    /// let sixty = lua.eval::<i32>("return 6 * 10;").unwrap();
     /// ```
     #[inline]
     // TODO(gmoshkin): this method should be part of AsLua
-    pub fn execute<'lua, T>(&'lua self, code: &str) -> Result<T, LuaError>
+    pub fn eval<'lua, T>(&'lua self, code: &str) -> Result<T, LuaError>
     where
         T: LuaRead<PushGuard<LuaFunction<PushGuard<&'lua Self>>>>,
     {
+        LuaFunction::load(self, code)?
+            .into_call()
+    }
+
+    /// Executes some Lua code in the context.
+    ///
+    /// The code will have access to all the global variables you set with
+    /// methods such as `set`.  Every time you execute some code in the context,
+    /// the code can modify these global variables.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hlua::Lua;
+    /// let mut lua = Lua::new();
+    /// lua.exec("function multiply_by_two(a) return a * 2 end").unwrap();
+    /// lua.exec("twelve = multiply_by_two(6)").unwrap();
+    /// ```
+    #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
+    pub fn exec<'lua>(&'lua self, code: &str) -> Result<(), LuaError> {
         LuaFunction::load(self, code)?
             .into_call()
     }
