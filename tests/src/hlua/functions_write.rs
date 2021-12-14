@@ -7,6 +7,7 @@ use tarantool::hlua::{
 };
 use std::sync::Arc;
 
+
 pub fn simple_function() {
     let lua = tarantool::global_lua();
 
@@ -17,6 +18,11 @@ pub fn simple_function() {
 
     let val: i32 = lua.eval("return ret5()").unwrap();
     assert_eq!(val, 5);
+
+    use std::collections::HashMap;
+    let mut mod5 = HashMap::new();
+    mod5.insert("ret5", function0(ret5));
+    lua.set("mod5", mod5);
 }
 
 pub fn one_argument() {
