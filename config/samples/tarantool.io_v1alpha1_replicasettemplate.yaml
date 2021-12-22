@@ -1,0 +1,6 @@
+apiVersion: tarantool.io/v1alpha1
+kind: ReplicasetTemplate
+metadata:
+  name: replicasettemplate-sample
+spec:
+  # Add fields here

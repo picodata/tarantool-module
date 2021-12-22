@@ -1,0 +1,24 @@
+# permissions for end users to edit replicasettemplates.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: replicasettemplate-editor-role
+rules:
+- apiGroups:
+  - tarantool.io
+  resources:
+  - replicasettemplates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - tarantool.io
+  resources:
+  - replicasettemplates/status
+  verbs:
+  - get

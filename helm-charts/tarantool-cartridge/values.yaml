@@ -1,0 +1,38 @@
+# Declare variables to be passed into your templates.
+
+ClusterEnv: dev
+ClusterName: tarantool-cluster
+ClusterDomainName: cluster.local
+TarantoolWorkDir: /var/lib/tarantool
+LuaMemoryReserveMB: 2048
+
+image:
+  repository: tarantool/tarantool-operator-examples-kv
+  tag: 0.0.2
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8081
+
+Prometheus:
+  port: 8081
+  path: /metrics
+
+RoleConfig:
+  - RoleName: routers     # ReplicaSet name
+    ReplicaCount: 1       # Number of replicas in each ReplicaSet
+    ReplicaSetCount: 1    # Number of ReplicaSets for this role(s)
+    DiskSize: 1Gi         # Persistent Volume disk sze
+    CPUallocation: 0.25   # Number of vCPUs to allocate to each container
+    MemtxMemoryMB: 256    # MB of memory to be assigned to each container
+    RolesToAssign: router # period `.` seperated list of cartridge roles to assign
+
+  - RoleName: storage
+    ReplicaCount: 2
+    ReplicaSetCount: 1
+    DiskSize: 1Gi
+    CPUallocation: 0.25
+    MemtxMemoryMB: 256
+    RolesToAssign:
+      - storage

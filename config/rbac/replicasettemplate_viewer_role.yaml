@@ -1,0 +1,20 @@
+# permissions for end users to view replicasettemplates.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: replicasettemplate-viewer-role
+rules:
+- apiGroups:
+  - tarantool.io
+  resources:
+  - replicasettemplates
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - tarantool.io
+  resources:
+  - replicasettemplates/status
+  verbs:
+  - get

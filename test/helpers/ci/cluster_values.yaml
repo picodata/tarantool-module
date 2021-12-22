@@ -1,0 +1,23 @@
+# Declare variables to be passed into your templates.
+
+ClusterEnv: dev
+LuaMemoryReserveMB: 0
+
+RoleConfig:
+  - RoleName: router
+    ReplicaCount: 1
+    ReplicaSetCount: 1
+    DiskSize: 0.2Gi
+    CPUallocation: 0.25
+    MemtxMemoryMB: 128
+    RolesToAssign:
+      - router
+
+  - RoleName: storage
+    ReplicaCount: 1
+    ReplicaSetCount: 1
+    DiskSize: 0.2Gi
+    CPUallocation: 0.25
+    MemtxMemoryMB: 128
+    RolesToAssign:
+      - storage

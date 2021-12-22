@@ -10,42 +10,132 @@ jobs:
 
       - name: lint
         uses: golangci/golangci-lint-action@v2
+        with:
+          args: --timeout 2m
 
-  testing:
-    name: testing
+  controllers_testing:
+    name: controllers_testing
     runs-on: ubuntu-latest
     needs: lint
-    env:
-      OPERATOR_SDK_VERSION: v0.12.0
-    
+
     strategy:
       matrix:
-        kubernetes-version: [v1.16.4, v1.19.4]
+        kubebuilder-version: [1.16.4, 1.22.1]
 
     steps:
     - uses: actions/checkout@v1
 
-    - name: Set up Go 1.13
+    - name: Set up Go 1.17
       uses: actions/setup-go@v1
       with:
-        go-version: 1.13
+        go-version: 1.17
       id: go
-
-    - name: Set up Kind k8s Cluster
-      uses: helm/kind-action@v1.1.0
-      with:
-        node_image: kindest/node:${{ matrix.kubernetes-version }}
 
     - name: Set up Kubebuilder
       run: |
         OS=$(uname -s | tr '[:upper:]' '[:lower:]')
         ARCH=$(uname -m | sed 's/x86_64/amd64/')
-        curl -fsL "https://storage.googleapis.com/kubebuilder-tools/kubebuilder-tools-1.16.4-${OS}-${ARCH}.tar.gz" -o kubebuilder-tools
+        curl -fsL "https://storage.googleapis.com/kubebuilder-tools/kubebuilder-tools-${{matrix.kubebuilder-version}}-${OS}-${ARCH}.tar.gz" -o kubebuilder-tools
         tar -zvxf kubebuilder-tools
         sudo mv kubebuilder/ /usr/local/kubebuilder
 
-    - name: Install modules
-      run: go mod download
-
     - name: Test
-      run: go test -v ./pkg/... -cover
+      run: make test ENVTEST_K8S_VERSION=${{matrix.kubebuilder-version}}
+
+  e2e_testing:
+    name: e2e_testing
+    runs-on: ubuntu-latest
+    needs: lint
+    env:
+      KIND_CLUSTER_NAME: kind-cluster
+      OPERATOR_NAMESPACE: tarantool-operator
+      APP_NAMESPACE: tarantool-app
+      OPERATOR_IMAGE_REPO: tarantool-operator
+      OPERATOR_IMAGE_TAG: 0.0.0
+
+    strategy:
+      matrix:
+        kubernetes-version: [v1.16.2, v1.16.4, v1.19.4, v1.22.4]
+
+    steps:
+    - uses: actions/checkout@v1
+
+    - name: Set up helm
+      uses: azure/setup-helm@v1
+
+    - name: Set up Kind Cluster
+      uses: helm/kind-action@v1.2.0
+      with:
+        node_image: kindest/node:${{ matrix.kubernetes-version }}
+        cluster_name: ${{ env.KIND_CLUSTER_NAME }}
+
+    - name: Prepare Tarantool operator Docker image
+      run: |
+        make docker-build REPO=${{ env.OPERATOR_IMAGE_REPO }} VERSION=${{ env.OPERATOR_IMAGE_TAG }}
+        kind load docker-image ${{ env.OPERATOR_IMAGE_REPO }}:${{ env.OPERATOR_IMAGE_TAG }} \
+          --name ${{ env.KIND_CLUSTER_NAME }}
+
+    - name: Install Tarantool Operator in Kind
+      run: |
+        # Set the default namespace
+        kubectl config set-context --current --namespace=${{ env.OPERATOR_NAMESPACE }}
+
+        helm install -n ${{ env.OPERATOR_NAMESPACE }} operator helm-charts/tarantool-operator \
+             --create-namespace \
+             --set image.repository=${{ env.OPERATOR_IMAGE_REPO }} \
+             --set image.tag=${{ env.OPERATOR_IMAGE_TAG }}
+
+    - name: Waiting for Operator Deployment availability
+      run: kubectl wait deployment/controller-manager --for=condition=available --timeout=60s || true
+
+    - name: Сhecking the number of available replicas
+      run: |
+        available_num=$(kubectl get deployments/controller-manager -o=jsonpath="{.status.availableReplicas}")
+        desired_num=$(kubectl get deployments/controller-manager -o=jsonpath="{.status.replicas}")
+
+        if [[ $available_num -ne $desired_num ]]; then
+          kubectl describe deployments/controller-manager
+          echo 'ERROR: invalid number of available replicas...' >&2; exit 1
+        fi
+
+    - name: Install Tarantool Cartridge app in Kind
+      run: |
+        # Set the default namespace
+        kubectl config set-context --current --namespace=${{ env.APP_NAMESPACE }}
+
+        helm install -n ${{ env.APP_NAMESPACE }} --create-namespace \
+          -f test/helpers/ci/cluster_values.yaml \
+          cartridge-app \
+          helm-charts/tarantool-cartridge
+
+    - name: Waiting for routers Pods availability
+      run: kubectl wait --for=condition=ready pod --timeout=180s -l tarantool.io/role=router || true
+
+    - name: Сhecking the number of ready router replicas
+      run : |
+        desired_routers_num=1
+        ready_routers_num=$(kubectl get statefulsets/router-0 -o=jsonpath="{.status.readyReplicas}")
+
+        if [[ $ready_routers_num -ne $desired_routers_num ]]; then
+          kubectl describe statefulsets/router-0
+          kubectl describe pod -l tarantool.io/role=router
+          echo 'ERROR: invalid number of ready routers...' >&2; exit 1
+        fi
+
+    - name: Waiting for storages availability
+      run: kubectl wait --for=condition=ready pod --timeout=180s -l tarantool.io/role=storage || true
+
+    - name: Сhecking the number of ready storage replicas
+      run: |
+        desired_storage_num=1
+        ready_storage_num=$(kubectl get statefulsets/storage-0 -o=jsonpath="{.status.readyReplicas}")
+
+        if [[ $ready_storage_num -ne $desired_storage_num ]]; then
+          kubectl describe statefulsets/storage-0
+          kubectl describe pod -l tarantool.io/role=storage
+          echo 'ERROR: invalid number of ready storages...' >&2; exit 1
+        fi
+
+
+
+

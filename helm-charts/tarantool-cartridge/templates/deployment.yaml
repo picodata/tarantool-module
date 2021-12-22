@@ -1,0 +1,146 @@
+apiVersion: tarantool.io/v1alpha1
+kind: Cluster
+metadata:
+  name: {{ .Values.ClusterName }}
+spec:
+  selector:
+    matchLabels:
+      tarantool.io/cluster-id: {{ .Values.ClusterName }}
+---
+{{- range .Values.RoleConfig }}
+{{- $r := .RolesToAssign | toJson | quote }}
+apiVersion: tarantool.io/v1alpha1
+kind: Role
+metadata:
+  name: {{ .RoleName | replace "_" "" }}
+  labels:
+    tarantool.io/cluster-id: {{ $.Values.ClusterName }}
+    tarantool.io/role: {{ .RoleName }}
+  annotations:
+    tarantool.io/rolesToAssign: {{ $r }}
+spec:
+  selector:
+    matchLabels:
+      tarantool.io/replicaset-template: "{{ .RoleName }}-template"
+  numReplicasets: {{ .ReplicaSetCount }}
+---
+apiVersion: tarantool.io/v1alpha1
+kind: ReplicasetTemplate
+metadata:
+  name: "{{ .RoleName | replace "_" "" }}-template"
+  labels:
+    tarantool.io/cluster-id: {{ $.Values.ClusterName }}
+    tarantool.io/replicaset-template: "{{ .RoleName }}-template"
+    tarantool.io/role: {{ .RoleName }}
+    tarantool.io/useVshardGroups: "0"
+  annotations:
+    tarantool.io/rolesToAssign: {{ $r }}
+spec:
+  replicas: {{ .ReplicaCount }}
+  serviceName: {{ .RoleName }}
+  selector:
+    matchLabels:
+      tarantool.io/pod-template: "{{ .RoleName }}-pod-template"
+  volumeClaimTemplates:
+    - metadata:
+        name: www
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .DiskSize }}
+  template:
+    metadata:
+      labels:
+        tarantool.io/cluster-id: "{{ $.Values.ClusterName }}"
+        tarantool.io/cluster-domain-name: "{{ $.Values.ClusterDomainName }}"
+        tarantool.io/pod-template: "{{ .RoleName }}-pod-template"
+        tarantool.io/useVshardGroups: "0"
+      annotations:
+        tarantool.io/rolesToAssign: {{ $r }}
+        prometheus.io/path: "{{ $.Values.Prometheus.path }}"
+        prometheus.io/port: "{{ $.Values.Prometheus.port}}"
+        prometheus.io/scrape: "true"
+    spec:
+      terminationGracePeriodSeconds: 10
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: pim-storage
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"
+          volumeMounts:
+            - name: www
+              mountPath: "{{ $.Values.TarantoolWorkDir }}"
+          resources:
+            requests:
+              cpu: "{{ .CPUallocation }}"
+              memory: "{{ add .MemtxMemoryMB $.Values.LuaMemoryReserveMB }}M"
+            limits:
+              cpu: "{{ .CPUallocation }}"
+              memory: "{{ add .MemtxMemoryMB $.Values.LuaMemoryReserveMB }}M"
+          ports:
+            - containerPort: 3301
+              protocol: TCP
+              name: app
+            - containerPort: 3301
+              protocol: UDP
+              name: app-udp
+            - containerPort: 8081
+              protocol: TCP
+              name: http
+          env:
+            - name: ENVIRONMENT
+              value: "{{ $.Values.ClusterEnv }}"
+            - name: TARANTOOL_INSTANCE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: TARANTOOL_ALIAS
+              value: "$(TARANTOOL_INSTANCE_NAME)"
+            - name: TARANTOOL_MEMTX_MEMORY
+              value: "{{ mul .MemtxMemoryMB 1048576 }}"
+            - name: TARANTOOL_BUCKET_COUNT
+              value: "30000"
+            - name: TARANTOOL_WORKDIR
+              value: "{{ $.Values.TarantoolWorkDir }}"
+            - name: TARANTOOL_ADVERTISE_TMP
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: TARANTOOL_ADVERTISE_HOST
+              value: "$(TARANTOOL_ADVERTISE_TMP).{{ $.Values.ClusterName }}.{{ $.Release.Namespace }}.svc.{{ $.Values.ClusterDomainName }}"
+            - name: TARANTOOL_ADVERTISE_URI
+              value: "$(TARANTOOL_ADVERTISE_HOST):3301"
+            - name: TARANTOOL_PROBE_URI_TIMEOUT
+              value: "60"
+            - name: TARANTOOL_HTTP_PORT
+              value: "8081"
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .RoleName }}
+  labels:
+    tarantool.io/role: {{ .RoleName }}
+spec:
+  ports:
+    - port: 8081
+      name: web
+      protocol: TCP
+    - port: 3301
+      name: app
+      protocol: TCP
+  selector:
+    tarantool.io/role: {{ .RoleName }}
+---
+{{- end }}
+---

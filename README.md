@@ -18,6 +18,7 @@ ReplicasetTemplate.
 
 * [Resources](#resources)
 * [Resource ownership](#resource-ownership)
+* [Documentation](#documentation)
 * [Deploying the Tarantool operator on minikube](#deploying-the-tarantool-operator-on-minikube)
 * [Example: key-value storage](#example-key-value-storage)
   * [Application topology](#application-topology)
@@ -44,6 +45,11 @@ Resource ownership directly affects how Kubernetes garbage collector works.
 If you execute a delete command on a parent resource, then all its dependants
 will be removed.
 
+## Documentation
+
+The documentation is on the Tarantool official [website](https://www.tarantool.io/ru/doc/latest/book/cartridge/cartridge_kubernetes_guide/).
+
+
 ## Deploying the Tarantool operator on minikube
 
 1. Install the required deployment utilities:
@@ -58,47 +64,78 @@ will be removed.
 
     To install and configure a local minikube installation:
 
-    1. Create a `minikube` cluster:
-
-        ```shell
-        minikube start --memory=4096
-        ```
-
-        You will need 4Gb of RAM allocated to the `minikube` cluster to run examples.
-
-        Ensure `minikube` is up and running:
-
-        ```shell
-        minikube status
-        ```
-
-        In case of success you will see this output:
-
-        ```shell
-        host: Running
-        kubelet: Running
-        apiserver: Running
-        ```
-
-    2. Enable minikube Ingress add-on:
-
-        ```shell
-        minikube addons enable ingress
-        ```
-
-2. Install the operator
+    Create a `minikube` cluster:
 
     ```shell
-    helm install tarantool-operator ci/helm-chart --namespace tarantool --create-namespace
+    $ minikube start --memory=4096
+    ```
+
+    You will need 4Gb of RAM allocated to the `minikube` cluster to run examples.
+
+    Ensure `minikube` is up and running:
+
+    ```shell
+    $ minikube status
+    ---
+    minikube
+    type: Control Plane
+    host: Running
+    kubelet: Running
+    apiserver: Running
+    kubeconfig: Configured
+    ```
+
+2. Build the operator image
+
+    ```shell
+    $ make docker-build
+    ```
+    
+    By default, the image is tagged as `tarantool-operator:<VERSION>`
+
+3. Add image to local minikube registry
+
+    ```shell
+    $ make push-to-minikube
+    ---
+    minikube image load tarantool-operator:0.0.9
+    ```
+
+> **NOTE**: If you want to use the [official docker image](https://hub.docker.com/r/tarantool/tarantool-operator/tags) of the Tarantool operator use the **helm charts from the tarantool helm repository**.
+> Read more about this in the [documentation](https://www.tarantool.io/ru/doc/latest/book/cartridge/cartridge_kubernetes_guide/#launch-the-application).
+
+4. Install the operator
+
+    ```shell
+    $ helm install -n tarantool-operator operator helm-charts/tarantool-operator \
+                 --create-namespace \
+                 --set image.repository=tarantool-operator \
+                 --set image.tag=0.0.9
+    ---
+    NAME: operator
+    LAST DEPLOYED: Wed Dec 15 22:54:13 2021
+    NAMESPACE: tarantool-operator
+    STATUS: deployed
+    REVISION: 1
+    TEST SUITE: None
+    ```
+    
+    Or you can use make: 
+    
+    ```shell
+    $ make helm-install-operator
     ```
 
     Ensure the operator is up:
 
     ```shell
-    watch kubectl get pods -n tarantool
+    $ kubectl get pods -n tarantool-operator
+    ---
+    NAME                                  READY   STATUS    RESTARTS   AGE
+    controller-manager-778db958cf-bhw6z   1/1     Running   0          77s
     ```
 
-    Wait for `tarantool-operator-xxxxxx-xx` Pod's status to become `Running`.
+    Wait for `controller-manager-xxxxxx-xx` Pod's status to become `Running`.
 
 ## Example Application: key-value storage
 
@@ -117,19 +154,38 @@ Tarantool Operator is up and running.
 1. Create a cluster:
 
     ```shell
-    helm install examples-kv-cluster examples/kv/helm-chart --namespace tarantool
+    $ helm install -n tarantool-app cartridge-app helm-charts/tarantool-cartridge \
+                 --create-namespace \
+                 --set LuaMemoryReserveMB=256
+    ---
+    NAME: cartridge-app
+    LAST DEPLOYED: Wed Dec 15 23:50:09 2021
+    NAMESPACE: tarantool-app
+    STATUS: deployed
+    REVISION: 1
+    ```
+
+    Or you can use make: 
+    
+    ```shell
+    $ make helm-install-cartridge-app
     ```
 
     Wait until all the cluster Pods are up (status becomes `Running`):
 
     ```shell
-    watch kubectl -n tarantool get pods
+    $ kubectl -n cartridge-app get pods
+    ---
+    NAME          READY   STATUS    RESTARTS   AGE
+    routers-0-0   1/1     Running   0          6m12s
+    storage-0-0   1/1     Running   0          6m12s
+    storage-0-1   1/1     Running   0          6m12s
     ```
 
 2. Ensure cluster became operational:
 
     ```shell
-    kubectl -n tarantool describe clusters.tarantool.io examples-kv-cluster
+    $ kubectl -n tarantool-app describe clusters.tarantool.io/tarantool-cluster
     ```
 
     wait until Status.State is Ready:
@@ -143,118 +199,77 @@ Tarantool Operator is up and running.
 
 3. Access the cluster web UI:
 
-    * If using minikube:
-
-        * Get `minikube` vm IP-address:
-
-        ```shell
-        minikube ip
-        ```
-
-        * Open **http://MINIKUBE_IP** in your browser.
-        Replace MINIKUBE_IP with the IP-address reported by the previous command.
-
-        ![Web UI](./assets/kv_web_ui.png)
-
-        > **_NOTE:_** Due to a recent
-        > [bug in Ingress](https://github.com/kubernetes/minikube/issues/2840),
-        > web UI may be inaccessible. If needed, you can try this
-        > [workaround](https://github.com/kubernetes/minikube/issues/2840#issuecomment-492454708).
-
-    * If using kubernetes in docker-desktop
-
-        Run: (MINIKUBE_IP will be localhost:8081 in this case)
-
-        ```shell
-        kc port-forward -n tarantool routers-0-0 8081:8081
-        ````
+    ```shell
+    $ kubectl -n cartridge-app port-forward routers-0-0 8081:8081
+    ---
+    Forwarding from 127.0.0.1:8081 -> 8081
+    Forwarding from [::1]:8081 -> 8081
+    Handling connection for 8081
+    ````
 
 4. Access the key-value API:
 
    1. Store some value:
 
        ```shell
-       curl -XPOST http://MINIKUBE_IP/kv -d '{"key":"key_1", "value": "value_1"}'
-       ```
-
-       In case of success you will see this output:
-
-       ```shell
+       $ curl -XPOST http://localhost:8081/kv -d '{"key":"key_1", "value": "value_1"}'
+       ---
        {"info":"Successfully created"}
        ```
 
    2. Access stored values:
 
        ```shell
-       curl http://MINIKUBE_IP/kv_dump
-       ```
-
-       In case of success you will see this output:
-
-       ```shell
+       $ curl http://localhost:8081/kv_dump
+       ---
        {"store":[{"key":"key_1","value":"value_1"}]}
        ```
 
 ### Scaling the application
 
-1. Increase the number of replica sets in Storages Role:
+Increase the number of replica sets in Storages Role:
 
-    in the examples-kv helm chart, edit the `examples/kv/helm-chart/values.yaml` file to be
+In the cartridge helm chart, edit the `helm-charts/tarantool-cartridge/values.yaml` file to be
 
-    ```yaml
-    - RoleName: storage
-      ReplicaCount: 1
-      ReplicaSetCount: 2
-    ```
+```yaml
+- RoleName: storage
+  ReplicaCount: 2
+  ReplicaSetCount: 2
+```
 
-    Then run:
+Then run:
 
-    ```shell
-    helm upgrade examples-kv-cluster examples/kv/helm-chart --namespace tarantool
-    ```
+```shell
+$ helm upgrade -n tarantool-app cartridge-app helm-charts/tarantool-cartridge \
+           --set LuaMemoryReserveMB=256
+```
 
-    This will add another storage role replica set to the existing cluster. View the new cluster topology via the cluster web UI.
+This will add another storage role replica set to the existing cluster. View the new cluster topology via the cluster web UI.
 
-2. Increase the number of replicas across all Storages Role replica sets:
-
-    in the examples-kv helm chart, edit the `examples/kv/helm-chart/values.yaml` file to be
-
-    ```yaml
-    - RoleName: storage
-      ReplicaCount: 2
-      ReplicaSetCount: 2
-    ```
-
-    Then run:
-
-    ```shell
-    helm upgrade examples-kv-cluster examples/kv/helm-chart --namespace tarantool
-    ```
-
-    This will add one more replica to each Storages Role replica set. View the new cluster topology via the cluster web UI.
+Read more about cluster management in the [documentation](https://www.tarantool.io/ru/doc/latest/book/cartridge/cartridge_kubernetes_guide/#cluster-management).
 
 ## Development
+
+Use `make help` to describe all targets.
+
+Below are some of them.
 
 ### Regenerate the Custom Resource Definitions
 
 ```shell
-make crds
+$ make manifests
 ```
 
 ### Building tarantool-operator docker image
 
 ```shell
-make docker
+$ make docker-build
 ```
 
 ### Running tests
 
 ```shell
-# In the examples/kv directory
-make build
-make start
-./bootstrap.sh
-make test
+$ make test
 ```
 
 [gh-actions-badge]: https://github.com/tarantool/tarantool-operator/workflows/Test/badge.svg

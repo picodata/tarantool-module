@@ -7,7 +7,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-## [0.0.8] - 2021-03-30
+### Added
+- Makefile with a full set of targets for all occasions
+
+### Changed
+- The Tarantool Operator is installed in a separate namespace
+- Bump operator-sdk version (and other dependencies)
+- Refactor project structure, all helm charts are collected in one place
+- Update crds api version from `apiextensions.k8s.io/v1beta1` to `apiextensions.k8s.io/v1`
+
+## [0.0.9] - 2021-03-30
 
 ### Added
 - Integration test for cluster_controller written with envtest and ginkgo

@@ -7,7 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	tarantoolv1alpha1 "github.com/tarantool/tarantool-operator/pkg/apis/tarantool/v1alpha1"
+	tarantooliov1alpha1 "github.com/tarantool/tarantool-operator/api/v1alpha1"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -46,14 +46,14 @@ type ServiceParams struct {
 	RoleName  string
 }
 
-// Create new tarantoolv1alpha1.Cluster
-func NewCluster(params ClusterParams) tarantoolv1alpha1.Cluster {
-	return tarantoolv1alpha1.Cluster{
+// Create new tarantooliov1alpha1.Cluster
+func NewCluster(params ClusterParams) tarantooliov1alpha1.Cluster {
+	return tarantooliov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      params.Name,
 			Namespace: params.Namespace,
 		},
-		Spec: tarantoolv1alpha1.ClusterSpec{
+		Spec: tarantooliov1alpha1.ClusterSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"tarantool.io/cluster-id": params.Id,
@@ -63,9 +63,9 @@ func NewCluster(params ClusterParams) tarantoolv1alpha1.Cluster {
 	}
 }
 
-// Create new tarantoolv1alpha1.Role
-func NewRole(params RoleParams) tarantoolv1alpha1.Role {
-	return tarantoolv1alpha1.Role{
+// Create new tarantooliov1alpha1.Role
+func NewRole(params RoleParams) tarantooliov1alpha1.Role {
+	return tarantooliov1alpha1.Role{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      params.Name,
 			Namespace: params.Namespace,
@@ -77,7 +77,7 @@ func NewRole(params RoleParams) tarantoolv1alpha1.Role {
 				"tarantool.io/rolesToAssign": params.RolesToAssign,
 			},
 		},
-		Spec: tarantoolv1alpha1.RoleSpec{
+		Spec: tarantooliov1alpha1.RoleSpec{
 			NumReplicasets: &params.RsNum,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
@@ -88,8 +88,8 @@ func NewRole(params RoleParams) tarantoolv1alpha1.Role {
 	}
 }
 
-// Create new tarantoolv1alpha1.ReplicasetTemplate
-func NewReplicasetTemplate(params ReplicasetTemplateParams) tarantoolv1alpha1.ReplicasetTemplate {
+// Create new tarantooliov1alpha1.ReplicasetTemplate
+func NewReplicasetTemplate(params ReplicasetTemplateParams) tarantooliov1alpha1.ReplicasetTemplate {
 	var (
 		replicasNum = int32(1)
 		alias       = fmt.Sprintf("%s-%d-%d", params.RoleName, 0, 0)
@@ -120,7 +120,7 @@ func NewReplicasetTemplate(params ReplicasetTemplateParams) tarantoolv1alpha1.Re
 		vars = append(vars, corev1.EnvVar{Name: name, Value: val})
 	}
 
-	return tarantoolv1alpha1.ReplicasetTemplate{
+	return tarantooliov1alpha1.ReplicasetTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      params.Name,
 			Namespace: params.Namespace,

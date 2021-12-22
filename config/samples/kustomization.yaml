@@ -1,0 +1,6 @@
+## Append samples you want in your CSV to this file as resources ##
+resources:
+- tarantool.io_v1alpha1_cluster.yaml
+- tarantool.io_v1alpha1_replicasettemplate.yaml
+- tarantool.io_v1alpha1_role.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples

@@ -1,7 +1,0 @@
-apiVersion: tarantool.io/v1alpha1
-kind: Role
-metadata:
-  name: example-role
-spec:
-  # Add fields here
-  size: 3
