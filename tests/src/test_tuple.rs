@@ -227,3 +227,16 @@ pub fn to_and_from_lua() {
     });
 }
 
+pub fn rmpv() {
+    let tuple = Tuple::from_struct(&S2Record {
+        id: 42,
+        key: "hello".into(),
+        value: "nice".into(),
+        a: 420,
+        b: 69,
+    }).unwrap();
+
+    let v: rmpv::ValueRef = tuple.into_struct().unwrap();
+    dbg!(v);
+}
+
