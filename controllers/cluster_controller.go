@@ -138,7 +138,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	roleList := &tarantooliov1alpha1.RoleList{}
-	if err := r.List(context.TODO(), roleList, &client.ListOptions{LabelSelector: clusterSelector}); err != nil {
+	if err := r.List(context.TODO(), roleList, &client.ListOptions{LabelSelector: clusterSelector, Namespace: req.NamespacedName.Namespace}); err != nil {
 		if errors.IsNotFound(err) {
 			return ctrl.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
 		}
@@ -221,7 +221,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	stsList := &appsv1.StatefulSetList{}
-	if err := r.List(context.TODO(), stsList, &client.ListOptions{LabelSelector: clusterSelector}); err != nil {
+	if err := r.List(context.TODO(), stsList, &client.ListOptions{LabelSelector: clusterSelector, Namespace: req.NamespacedName.Namespace}); err != nil {
 		if errors.IsNotFound(err) {
 			return ctrl.Result{RequeueAfter: time.Duration(5 * time.Second)}, nil
 		}

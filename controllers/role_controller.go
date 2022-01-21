@@ -102,7 +102,7 @@ func (r *RoleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 
 	stsList := &appsv1.StatefulSetList{}
-	if err := r.List(context.TODO(), stsList, &client.ListOptions{LabelSelector: s}); err != nil {
+	if err := r.List(context.TODO(), stsList, &client.ListOptions{LabelSelector: s, Namespace: req.NamespacedName.Namespace}); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -134,7 +134,7 @@ func (r *RoleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 
 	templateList := &tarantooliov1alpha1.ReplicasetTemplateList{}
-	if err := r.List(context.TODO(), templateList, &client.ListOptions{LabelSelector: templateSelector}); err != nil {
+	if err := r.List(context.TODO(), templateList, &client.ListOptions{LabelSelector: templateSelector, Namespace: req.NamespacedName.Namespace}); err != nil {
 		return ctrl.Result{}, err
 	}
 

@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Refactor project structure, all helm charts are collected in one place
 - Update crds api version from `apiextensions.k8s.io/v1beta1` to `apiextensions.k8s.io/v1`
 
+### Fixed
+
+- Operator was not able to manage multiple cartridge clusters in multiple namespaces
+
 ## [0.0.9] - 2021-03-30
 
 ### Added
