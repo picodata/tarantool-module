@@ -1,0 +1,6 @@
+# Specify here paths you want to cache when packaging the application with
+# `cartridge pack` command. By default, we propose to cache project rocks.
+# See https://github.com/tarantool/cartridge-cli#packing-an-application for details.
+
+- path: '.rocks'
+  key-path: kv-scm-1.rockspec

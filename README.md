@@ -20,7 +20,7 @@ ReplicasetTemplate.
 * [Resource ownership](#resource-ownership)
 * [Documentation](#documentation)
 * [Deploying the Tarantool operator on minikube](#deploying-the-tarantool-operator-on-minikube)
-* [Example: key-value storage](#example-key-value-storage)
+* [Example: key-value storage](#example-application-key-value-storage)
   * [Application topology](#application-topology)
   * [Running the application](#running-the-application)
   * [Scaling the application](#scaling-the-application)

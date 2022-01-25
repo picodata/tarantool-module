@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Bump operator-sdk version (and other dependencies)
 - Refactor project structure, all helm charts are collected in one place
 - Update crds api version from `apiextensions.k8s.io/v1beta1` to `apiextensions.k8s.io/v1`
+- Updated kv example to the most recent cartridge version
 
 ### Fixed
 

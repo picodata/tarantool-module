@@ -26,7 +26,8 @@ RoleConfig:
     DiskSize: 1Gi         # Persistent Volume disk sze
     CPUallocation: 0.25   # Number of vCPUs to allocate to each container
     MemtxMemoryMB: 256    # MB of memory to be assigned to each container
-    RolesToAssign: router # period `.` seperated list of cartridge roles to assign
+    RolesToAssign:
+      - app.roles.router
 
   - RoleName: storage
     ReplicaCount: 2
@@ -35,4 +36,4 @@ RoleConfig:
     CPUallocation: 0.25
     MemtxMemoryMB: 256
     RolesToAssign:
-      - storage
+      - app.roles.storage

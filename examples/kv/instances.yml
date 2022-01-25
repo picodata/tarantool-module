@@ -1,0 +1,24 @@
+---
+kv.router:
+  advertise_uri: localhost:3301
+  http_port: 8081
+
+kv.s1-master:
+  advertise_uri: localhost:3302
+  http_port: 8082
+
+kv.s1-replica:
+  advertise_uri: localhost:3303
+  http_port: 8083
+
+kv.s2-master:
+  advertise_uri: localhost:3304
+  http_port: 8084
+
+kv.s2-replica:
+  advertise_uri: localhost:3305
+  http_port: 8085
+
+kv-stateboard:
+  listen: localhost:4401
+  password: passwd
