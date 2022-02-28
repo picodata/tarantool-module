@@ -42,6 +42,7 @@
 use core::time::Duration;
 use std::net::ToSocketAddrs;
 use std::rc::Rc;
+use serde::de::DeserializeOwned;
 
 pub use index::{RemoteIndex, RemoteIndexIterator};
 use inner::ConnInner;
@@ -121,15 +122,16 @@ impl Conn {
     /// `conn.call("func", &("1", "2", "3"))` is the remote-call equivalent of `func('1', '2', '3')`.
     /// That is, `conn.call` is a remote stored-procedure call.
     /// The return from `conn.call` is whatever the function returns.
-    pub fn call<T>(
+    pub fn call<T, R>(
         &self,
         function_name: &str,
         args: &T,
         options: &Options,
-    ) -> Result<Option<Tuple>, Error>
+    ) -> Result<Option<R>, Error>
     where
-        T: AsTuple,
+        T: serde::Serialize,
         T: ?Sized,
+        R: serde::de::DeserializeOwned,
     {
         self.inner.request(
             |buf, sync| protocol::encode_call(buf, sync, function_name, args),

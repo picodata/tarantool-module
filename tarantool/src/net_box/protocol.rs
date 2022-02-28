@@ -119,7 +119,7 @@ pub fn encode_call<T>(
     args: &T,
 ) -> Result<(), Error>
 where
-    T: AsTuple,
+    T: serde::Serialize,
     T: ?Sized,
 {
     encode_header(stream, sync, IProtoType::Call)?;
