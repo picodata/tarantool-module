@@ -12,6 +12,8 @@ jobs:
           name: id_rsa
           known_hosts: ${{ secrets.KNOWN_HOSTS }}
           if_key_exists: replace
+      - name: Fetch unshallow
+        run: git fetch --unshallow
       - name: Set remote url
         run: git remote set-url --push origin git@git.picodata.io:picodata/picodata/tarantool-module.git
       - name: Push files
