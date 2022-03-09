@@ -4,5 +4,5 @@
 
 image:
   repository: tarantool/tarantool-operator
-  tag: 0.0.9
+  tag: 0.0.10
   pullPolicy: IfNotPresent
