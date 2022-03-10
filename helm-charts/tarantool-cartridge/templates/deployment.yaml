@@ -68,7 +68,7 @@ spec:
           - name: ndots
             value: "1"
       securityContext:
-        fsGroup: {{ .securityContext.fsGroup }}
+        fsGroup: {{ $.Values.securityContext.fsGroup }}
       containers:
         - name: pim-storage
           image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"

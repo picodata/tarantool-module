@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Refactor project structure, all helm charts are collected in one place
 - Update crds api version from `apiextensions.k8s.io/v1beta1` to `apiextensions.k8s.io/v1`
 - Updated kv example to the most recent cartridge version
+- Update cartridge version for tarantool-cartridge and crud examples to the latest v2.7.3
 
 ### Fixed
 
