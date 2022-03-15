@@ -54,8 +54,9 @@ jobs:
       OPERATOR_IMAGE_TAG: 0.0.0
 
     strategy:
+      fail-fast: false
       matrix:
-        kubernetes-version: [v1.16.2, v1.16.4, v1.19.4, v1.22.4]
+        kubernetes-version: [v1.16.4, v1.19.4, v1.22.4, v1.23.4]
 
     steps:
     - uses: actions/checkout@v1
@@ -109,7 +110,7 @@ jobs:
           helm-charts/tarantool-cartridge
 
     - name: Waiting for routers Pods availability
-      run: kubectl wait --for=condition=ready pod --timeout=180s -l tarantool.io/role=router || true
+      run: for i in {1..60}; do kubectl wait -n ${{ env.APP_NAMESPACE }} --for=condition=ready pod --timeout=180s -l tarantool.io/role=router && break || sleep 1; done
 
     - name: Сhecking the number of ready router replicas
       run : |
