@@ -138,6 +138,10 @@ macro_rules! impl_push_read {
             read_at_position($lua3:ident, $index1:ident) { $($read:tt)* }
             $(read_at_maybe_zero_position($lua4:ident, $index2:ident) { $($read_mz:tt)* })?
         )?
+        $(
+            read_at_and_count($lua_c:ident, $index_c:ident) { $($read_c:tt)* }
+            $(read_at_mz_and_count($lua_zc:ident, $index_zc:ident) { $($read_zc:tt)* })?
+        )?
     ) => {
         $(
             impl<L> Push<L> for $t
@@ -193,6 +197,30 @@ macro_rules! impl_push_read {
                     #[inline(always)]
                     fn lua_read_at_maybe_zero_position($lua4: L, $index2: i32) -> Result<Self, L> {
                         $($read_mz)*
+                    }
+                )?
+            }
+        )?
+
+        $(
+            impl<L> LuaRead<L> for $t
+            where
+                L: AsLua,
+            {
+                #[inline(always)]
+                fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
+                    Self::read_at_and_count(lua, index).map(|(v, _)| v)
+                }
+
+                #[inline(always)]
+                fn read_at_and_count($lua_c: L, $index_c: NonZeroI32) -> Result<(Self, i32), L> {
+                    $($read_c)*
+                }
+
+                $(
+                    #[inline(always)]
+                    fn read_at_mz_and_count($lua_zc: L, $index_zc: i32) -> Result<(Self, i32), L> {
+                        $($read_zc)*
                     }
                 )?
             }
@@ -394,11 +422,11 @@ impl_push_read!{ (),
     push_into_lua(self, lua) {
         unsafe { Ok(PushGuard::new(lua, 0)) }
     }
-    read_at_position(_lua, _index) {
-        Ok(())
+    read_at_and_count(_lua, _index) {
+        Ok(((), 0))
     }
-    read_at_maybe_zero_position(_lua, _index) {
-        Ok(())
+    read_at_mz_and_count(_lua, _index) {
+        Ok(((), 0))
     }
 }
 
@@ -453,19 +481,23 @@ where
     L: AsLua,
     T: LuaRead<L>,
 {
-    fn lua_read_at_maybe_zero_position(lua: L, index: i32) -> Result<Option<T>, L> {
+    fn read_at_mz_and_count(lua: L, index: i32) -> Result<(Option<T>, i32), L> {
         if let Some(index) = NonZeroI32::new(index) {
-            Self::lua_read_at_position(lua, index)
+            Self::read_at_and_count(lua, index)
         } else {
-            Ok(None)
+            Ok((None, 0))
         }
     }
 
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Option<T>, L> {
+        Self::read_at_and_count(lua, index).map(|(v, _)| v)
+    }
+
+    fn read_at_and_count(lua: L, index: NonZeroI32) -> Result<(Self, i32), L> {
         if unsafe { is_null_or_nil(lua.as_lua(), index.get()) } {
-            return Ok(None)
+            return Ok((None, 0))
         }
-        T::lua_read_at_position(lua, index).map(Some)
+        T::read_at_and_count(lua, index).map(|(v, count)| (Some(v), count))
     }
 }
 
@@ -476,11 +508,15 @@ where
     B: for<'b> LuaRead<&'b L>,
 {
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Result<A, B>, L> {
-        if let Ok(a) = A::lua_read_at_position(&lua, index) {
-            return Ok(Ok(a))
+        Self::read_at_and_count(lua, index).map(|(v, _)| v)
+    }
+
+    fn read_at_and_count(lua: L, index: NonZeroI32) -> Result<(Self, i32), L> {
+        if let Ok((a, count)) = A::read_at_and_count(&lua, index) {
+            return Ok((Ok(a), count))
         }
-        if let Ok(b) = B::lua_read_at_position(&lua, index) {
-            return Ok(Err(b))
+        if let Ok((b, count)) = B::read_at_and_count(&lua, index) {
+            return Ok((Err(b), count))
         }
         Err(lua)
     }
@@ -499,18 +535,18 @@ impl_push_read!{Nil,
             Ok(PushGuard::new(lua, 1))
         }
     }
-    read_at_position(lua, index) {
+    read_at_and_count(lua, index) {
         if unsafe { ffi::lua_isnil(lua.as_lua(), index.into()) } {
-            Ok(Nil)
+            Ok((Nil, 1))
         } else {
             Err(lua)
         }
     }
-    read_at_maybe_zero_position(lua, index) {
+    read_at_mz_and_count(lua, index) {
         if let Some(index) = NonZeroI32::new(index) {
-            Self::lua_read_at_position(lua, index)
+            Nil::read_at_and_count(lua, index)
         } else {
-            Ok(Nil)
+            Ok((Nil, 0))
         }
     }
 }
@@ -546,18 +582,18 @@ impl_push_read!{Null,
             Ok(PushGuard::new(lua, 1))
         }
     }
-    read_at_position(lua, index) {
+    read_at_and_count(lua, index) {
         if unsafe { Null::is_null(lua.as_lua(), index.into()) } {
-            Ok(Null)
+            Ok((Null, 1))
         } else {
             Err(lua)
         }
     }
-    read_at_maybe_zero_position(lua, index) {
+    read_at_mz_and_count(lua, index) {
         if let Some(index) = NonZeroI32::new(index) {
-            Null::lua_read_at_position(lua, index)
+            Null::read_at_and_count(lua, index)
         } else {
-            Ok(Null)
+            Ok((Null, 0))
         }
     }
 }

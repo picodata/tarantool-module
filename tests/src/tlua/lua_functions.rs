@@ -204,6 +204,10 @@ pub fn multiple_return_values_fail() {
     assert_eq!(f.call::<(i32,)>().unwrap(), (1,));
     assert_eq!(f.call::<(i32, i32)>().unwrap(), (1, 2));
     assert_eq!(f.call::<(i32, i32, i32)>().unwrap(), (1, 2, 3));
+    assert_eq!(f.call::<(i32, (i32, i32))>().unwrap(), (1, (2, 3)));
+    assert_eq!(f.call::<(i32, Option<(i32, i32)>)>().unwrap(), (1, Some((2, 3))));
+    assert_eq!(f.call::<((i32, i32), i32)>().unwrap(), ((1, 2), 3));
+    assert_eq!(f.call::<(Option<(i32, i32)>, i32)>().unwrap(), (Some((1, 2)), 3));
     assert_eq!(
         f.call::<(i32, i32, i32, i32)>()
             .unwrap_err().to_string(),
@@ -217,6 +221,10 @@ pub fn multiple_return_values_fail() {
     assert_eq!(
         f.call::<(i32, i32, i32, Option<i32>, Option<i32>)>().unwrap(),
         (1, 2, 3, None, None)
+    );
+    assert_eq!(
+        f.call::<(i32, Result<(i32, i32, i32), (i32, i32)>)>().unwrap(),
+        (1, Err((2, 3)))
     );
 
     assert_eq!(

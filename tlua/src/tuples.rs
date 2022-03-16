@@ -68,13 +68,19 @@ macro_rules! tuple_impl {
             LU: AsLua,
             $ty: LuaRead<LU>,
         {
+            #[inline(always)]
             fn n_values_expected() -> i32 {
                 $ty::n_values_expected()
             }
 
-            #[inline]
+            #[inline(always)]
             fn lua_read_at_position(lua: LU, index: NonZeroI32) -> Result<($ty,), LU> {
-                LuaRead::lua_read_at_position(lua, index).map(|v| (v,))
+                Self::read_at_and_count(lua, index).map(|(v, _)| v)
+            }
+
+            #[inline(always)]
+            fn read_at_and_count(lua: LU, index: NonZeroI32) -> Result<(($ty,), i32), LU> {
+                LuaRead::read_at_and_count(lua, index).map(|(v, count)| ((v,), count))
             }
         }
     };
@@ -179,31 +185,49 @@ macro_rules! tuple_impl {
                 $first::n_values_expected() $( + $other::n_values_expected() )+
             }
 
-            #[inline]
+            #[inline(always)]
             fn lua_read_at_position(lua: LU, index: NonZeroI32) -> Result<($first, $($other),+), LU> {
-                let $first: $first = match LuaRead::lua_read_at_position(&lua, index) {
+                Self::read_at_and_count(lua, index).map(|(v, _)| v)
+            }
+
+            #[inline]
+            fn read_at_and_count(lua: LU, index: NonZeroI32) -> Result<(($first, $($other),+), i32), LU> {
+                let top = unsafe { $crate::ffi::lua_gettop(lua.as_lua()) };
+
+                let ($first, count) = match $first::read_at_and_count(&lua, index) {
                     Ok(v) => v,
                     Err(_) => return Err(lua)
                 };
 
                 let mut i: i32 = index.into();
-                // TODO(gmoshkin): + n_values_expected
-                i += 1;
+                // i += 1;
+                let candidate = i + count;
+                i = match i {
+                    i32::MIN ..= -1 => candidate.min(0),
+                    0 => unreachable!("cannot be zero"),
+                    1 ..= i32::MAX => candidate.min(top),
+                };
+                let mut total_count = count;
 
                 $(
-                    let $other: $other = match LuaRead::lua_read_at_maybe_zero_position(&lua, i) {
+                    let ($other, count) = match $other::read_at_mz_and_count(&lua, i) {
                         Ok(v) => v,
                         Err(_) => return Err(lua)
                     };
                     // The 0 index is the special case that should not be walked
                     // over. Either we return Err on it or we handle the
                     // situation correctly (e.g. Option<T>, (), ...)
-                    // TODO(gmoshkin): + n_values_expected but make sure not to
-                    // ignore going over 0
-                    i = if i == 0 { 0 } else { i + 1 };
+                    // i = if i == 0 { 0  } else { i + 1  };
+                    let candidate = i + count;
+                    i = match i {
+                        i32::MIN ..= -1 => candidate.min(0),
+                        0 => 0,
+                        1 ..= i32::MAX => candidate.min(top),
+                    };
+                    total_count += count;
                 )+
 
-                Ok(($first, $($other),+))
+                Ok((($first, $($other),+), total_count))
 
             }
         }

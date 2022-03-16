@@ -684,12 +684,24 @@ pub trait LuaRead<L>: Sized {
         Self::lua_read_at_position(lua, index)
     }
 
+    #[inline(always)]
     fn lua_read_at_maybe_zero_position(lua: L, index: i32) -> Result<Self, L> {
+        Self::read_at_mz_and_count(lua, index).map(|(v, _)| v)
+    }
+
+    #[inline(always)]
+    fn read_at_mz_and_count(lua: L, index: i32) -> Result<(Self, i32), L> {
         if let Some(index) = NonZeroI32::new(index) {
-            Self::lua_read_at_position(lua, index)
+            Self::read_at_and_count(lua, index)
         } else {
             Err(lua)
         }
+    }
+
+    #[inline(always)]
+    fn read_at_and_count(lua: L, index: NonZeroI32) -> Result<(Self, i32), L> {
+        Self::lua_read_at_position(lua, index)
+            .map(|v| (v, Self::n_values_expected()))
     }
 
     /// Reads the data from Lua at a given position.
