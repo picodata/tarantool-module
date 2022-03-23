@@ -35,6 +35,8 @@ pub use channel::{
     Channel, SendTimeout, RecvTimeout, SendError, RecvError, TrySendError, TryRecvError,
 };
 
+pub mod future;
+
 pub mod mutex;
 pub use mutex::Mutex;
 

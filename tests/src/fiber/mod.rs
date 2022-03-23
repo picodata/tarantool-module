@@ -11,6 +11,7 @@ use tarantool::fiber;
 use tarantool::tlua::AsLua;
 use tarantool::util::IntoClones;
 
+pub mod future;
 pub mod old;
 pub mod channel;
 pub mod mutex;
