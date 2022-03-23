@@ -1,5 +1,8 @@
 use serde::{ Serialize, Deserialize };
 use crate::error::Error;
+use std::time::Duration;
+#[cfg(feature = "duration_checked_float")]
+use std::time::FromSecsError;
 
 pub trait IntoClones<Tuple>: Clone {
     fn into_clones(self) -> Tuple;
@@ -88,3 +91,76 @@ pub enum Value<'a> {
     Bool(bool),
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// ToDuration
+////////////////////////////////////////////////////////////////////////////////
+
+pub trait ToDuration: ToSecs + Copy + Sized {
+    fn millis(self) -> Duration;
+    fn nanos(self) -> Duration;
+    fn micros(self) -> Duration;
+}
+
+impl ToDuration for u64 {
+    #[inline(always)]
+    fn millis(self) -> Duration {
+        Duration::from_millis(self)
+    }
+
+    #[inline(always)]
+    fn nanos(self) -> Duration {
+        Duration::from_nanos(self)
+    }
+
+    #[inline(always)]
+    fn micros(self) -> Duration {
+        Duration::from_micros(self)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ToSecs
+////////////////////////////////////////////////////////////////////////////////
+
+pub trait ToSecs: Copy + Sized {
+    fn secs(self) -> Duration;
+
+    #[cfg(feature = "duration_checked_float")]
+    #[inline(always)]
+    fn try_secs(self) -> Result<Duration, FromSecsError> {
+        Ok(self.secs())
+    }
+}
+
+impl ToSecs for u64 {
+    #[inline(always)]
+    fn secs(self) -> Duration {
+        Duration::from_secs(self)
+    }
+}
+
+impl ToSecs for f64 {
+    #[inline(always)]
+    fn secs(self) -> Duration {
+        Duration::from_secs_f64(self)
+    }
+
+    #[cfg(feature = "duration_checked_float")]
+    #[inline(always)]
+    fn try_secs(self) -> Result<Duration, FromSecsError> {
+        Duration::try_from_secs_f64(self)
+    }
+}
+
+impl ToSecs for f32 {
+    #[inline(always)]
+    fn secs(self) -> Duration {
+        Duration::from_secs_f32(self)
+    }
+
+    #[cfg(feature = "duration_checked_float")]
+    #[inline(always)]
+    fn try_secs(self) -> Result<Duration, FromSecsError> {
+        Duration::try_from_secs_f32(self)
+    }
+}
