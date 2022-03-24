@@ -472,12 +472,12 @@ pub fn clear_error() {
 /// Set the last error.
 #[macro_export]
 macro_rules! set_error {
-    ($code:expr, $($msg_args:expr),+) => {{
-        let msg = std::fmt::format(format_args!($($msg_args),*));
+    ($code:expr, $($msg_args:tt)*) => {{
+        let msg = std::fmt::format(format_args!($($msg_args)*));
         unsafe {
-            let file = std::ffi::CString::new(file!()).unwrap().into_raw();
-            let msg = std::ffi::CString::new(msg).unwrap().into_raw();
-            $crate::ffi::tarantool::box_error_set(file, line!(), $code as u32, msg)
+            let file = ::std::concat!(::std::file!(), "\0").as_ptr();
+            let msg = std::ffi::CString::new(msg).unwrap().as_ptr();
+            $crate::ffi::tarantool::box_error_set(file as _, ::std::line!(), $code as u32, msg)
         }
     }};
 }
