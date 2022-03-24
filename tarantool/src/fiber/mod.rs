@@ -1042,7 +1042,7 @@ impl Invocation for Deferred {
 // JoinHandle
 ////////////////////////////////////////////////////////////////////////////////
 
-/// An owned permission to join on an immediate fiber (block on its termination).
+/// An owned permission to join on an immediate fiber (yield until its termination).
 pub struct JoinHandle<'f, T> {
     inner: Option<NonNull<ffi::Fiber>>,
     result: Box<UnsafeCell<Option<T>>>,
@@ -1084,7 +1084,7 @@ impl<'f, T> Drop for JoinHandle<'f, T> {
 // UnitJoinHandle
 ////////////////////////////////////////////////////////////////////////////////
 
-/// An owned permission to join on an immediate fiber (block on its termination).
+/// An owned permission to join on an immediate fiber (yield until its termination).
 ///
 /// This is an optimized case of [`JoinHandle`]`<()>`.
 pub struct UnitJoinHandle<'f> {

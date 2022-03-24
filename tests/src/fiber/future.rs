@@ -20,15 +20,19 @@ pub fn timer() {
     };
     assert_eq!(res, "done");
     assert_eq!(task_rx.0.get(), true);
-}
 
-struct Task<T>(T);
+    struct Task<T>(T);
 
-impl RcWake for Task<Cell<bool>> {
-    fn wake_by_ref(self: &Rc<Self>) {
-        (**self).0.set(true)
+    impl RcWake for Task<Cell<bool>> {
+        fn wake_by_ref(self: &Rc<Self>) {
+            (**self).0.set(true)
+        }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// use
+////////////////////////////////////////////////////////////////////////////////
 
 use std::{
     cell::Cell,
