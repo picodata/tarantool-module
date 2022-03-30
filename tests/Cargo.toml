@@ -22,6 +22,9 @@ rmp-serde = "1"
 path = "../tarantool"
 features = ["all"]
 
+[dependencies.tarantool-proc]
+path = "../tarantool-proc"
+
 [lib]
 test = false
 crate-type = ["cdylib"]

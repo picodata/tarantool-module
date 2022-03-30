@@ -20,6 +20,7 @@ use tarantool::space::{Space, Field};
 mod bench_bulk_insert;
 mod common;
 mod decimal;
+mod proc;
 mod r#box;
 mod coio;
 mod error;
@@ -492,6 +493,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 session::euid,
                 raft::bootstrap_solo,
                 raft::bootstrap_2n,
+
+                proc::smoke,
 
                 uuid::to_tuple,
                 uuid::from_tuple,
