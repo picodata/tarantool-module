@@ -476,7 +476,11 @@ macro_rules! set_error {
         let msg = std::fmt::format(format_args!($($msg_args)*));
         unsafe {
             let file = ::std::concat!(::std::file!(), "\0").as_ptr();
-            let msg = std::ffi::CString::new(msg).unwrap().as_ptr();
+            // FIXME: string is leaking!!!
+            // but using CString::as_ptr doesn't work for some reason, even
+            // though box_error_set is calling vsnprintf which copies the data
+            // into a buffer
+            let msg = std::ffi::CString::new(msg).unwrap().into_raw();
             $crate::ffi::tarantool::box_error_set(file as _, ::std::line!(), $code as u32, msg)
         }
     }};
