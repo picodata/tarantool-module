@@ -5,6 +5,7 @@ members = [
     "tlua",
     "tlua-derive",
     "tests",
+    "examples/demo",
     "examples/easy",
     "examples/harder",
     "examples/hardest",
