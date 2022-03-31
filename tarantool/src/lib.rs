@@ -204,3 +204,17 @@ pub fn lua_state() -> tlua::LuaThread {
 
 pub use error::Result;
 pub type StdResult<T, E> = std::result::Result<T, E>;
+
+#[cfg(test)]
+mod tests {
+    #[no_mangle]
+    extern "C" fn clock_realtime() -> f64 {
+        3.14
+    }
+
+    #[test]
+    fn fucky() {
+        let time = unsafe { crate::ffi::tarantool::clock_realtime() };
+        assert_eq!(time, 3.14)
+    }
+}

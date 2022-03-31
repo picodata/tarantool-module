@@ -90,3 +90,8 @@ enum Error {
     #[error("io error: {0}")]
     IoError(#[from] std::io::Error),
 }
+
+use tarantool::tlua;
+
+// #[no_mangle]
+// fn luaopen_demo()
