@@ -8,7 +8,7 @@ LuaMemoryReserveMB: 2048
 
 image:
   repository: tarantool/tarantool-operator-examples-kv
-  tag: 0.0.3
+  tag: 0.0.4
   pullPolicy: IfNotPresent
 
 securityContext:

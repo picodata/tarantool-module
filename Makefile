@@ -134,7 +134,7 @@ helm-prepare-clear: ## Clear temp files builded using Kustomize.
 	rm -rf $(CHARTS_DIR)/tarantool-operator/.templates.*/
 
 helm-install-operator: ## Install tarantool-operator with tarantool-operator helm chart.
-	helm install -n tarantool-operator operator $(CHARTS_DIR)/tarantool-operator \
+	helm upgrade --install -n tarantool-operator operator $(CHARTS_DIR)/tarantool-operator \
 		         --create-namespace \
 		         --set image.repository=$(REPO) \
 		         --set image.tag=$(VERSION)
@@ -143,12 +143,12 @@ helm-uninstall-operator: ## Uninstall tarantool-operator.
 	helm uninstall -n tarantool-operator operator
 
 helm-install-cartridge-app: ## Install cartridge-app with tarantool-cartridge helm chart.
-	helm install -n tarantool-app cartridge-app $(CHARTS_DIR)/tarantool-cartridge \
+	helm upgrade --install -n tarantool-app cartridge-app $(CHARTS_DIR)/tarantool-cartridge \
 	             --create-namespace \
 	             --set LuaMemoryReserveMB=0 # default reserve too large for local minikube cluster
 
 helm-uninstall-cartridge-app: ## Uninstall cartridge-app.
-	helm uninstall -n tarantool-operator operator
+	helm uninstall -n tarantool-app cartridge-app
 
 ##@ Deployment
 

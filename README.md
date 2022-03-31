@@ -174,7 +174,7 @@ Tarantool Operator is up and running.
     Wait until all the cluster Pods are up (status becomes `Running`):
 
     ```shell
-    $ kubectl -n cartridge-app get pods
+    $ kubectl -n tarantool-app get pods
     ---
     NAME          READY   STATUS    RESTARTS   AGE
     routers-0-0   1/1     Running   0          6m12s
@@ -200,7 +200,7 @@ Tarantool Operator is up and running.
 3. Access the cluster web UI:
 
     ```shell
-    $ kubectl -n cartridge-app port-forward routers-0-0 8081:8081
+    $ kubectl -n tarantool-app port-forward routers-0-0 8081:8081
     ---
     Forwarding from 127.0.0.1:8081 -> 8081
     Forwarding from [::1]:8081 -> 8081
@@ -217,14 +217,30 @@ Tarantool Operator is up and running.
        {"info":"Successfully created"}
        ```
 
-   2. Access stored values:
+   2. Access stored value:
 
        ```shell
-       $ curl http://localhost:8081/kv_dump
+       $ curl http://localhost:8081/kv/key_1
        ---
-       {"store":[{"key":"key_1","value":"value_1"}]}
+       "value_1"
        ```
 
+   3. Update stored value:
+
+       ```shell
+       $ curl -XPUT http://localhost:8081/kv/key_1 -d '"new_value_1"'
+       ---
+       ["key_1", "new_value_1"]
+       ```
+          
+   4. Delete stored value:
+
+       ```shell
+       $ curl -XDELETE http://localhost:8081/kv/key_1
+       ---
+       {"info":"Successfully deleted"}
+       ```
+      
 ### Scaling the application
 
 Increase the number of replica sets in Storages Role:

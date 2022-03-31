@@ -50,10 +50,10 @@ end
 
 local function handle_update(req)
     local key = req:stash('key')
-    local status, value = pcall(function() return req:json() end)
+    local _, value = pcall(function() return req:json() end)
 
-    if value == nil or type(value) == 'string' then
-        local resp = req:render{json = { info = msg }}
+    if value == nil then
+        local resp = req:render{json = { info = "Value cannot be empty" }}
         resp.status = 500
         return resp
     end
