@@ -561,7 +561,7 @@ where
         }
         n => unsafe {
             drop(PushGuard::new(raw_lua, n));
-            return Err(PushIterError::TooManyValues);
+            return Err(PushIterError::TooManyValues(n));
         }
     }
     Ok(())
