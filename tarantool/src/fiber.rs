@@ -338,7 +338,11 @@ macro_rules! inner_spawn {
     ($self:expr, $invocation:tt) => {
         {
             let Self { name, attr, f } = $self;
-            let name = name.unwrap_or_else(|| "<rust>".into());
+            let name = if let Some(name) = name {
+                name
+            } else {
+                impl_details::fiber_name_from_caller()
+            };
             Ok(Fyber::$invocation(name, f, attr.as_ref())?.spawn())
         }
     };
@@ -355,6 +359,7 @@ where
     /// to the new fiber immediately.
     ///
     /// See the [`start`] free function for more details.
+    #[track_caller]
     pub fn start(self) -> Result<C::JoinHandle> {
         inner_spawn!(self, immediate)
     }
@@ -370,6 +375,7 @@ where
     /// In the future we are planning to add a correct implementation.
     ///
     /// See the [`defer`] free function for more details.
+    #[track_caller]
     pub fn defer(self) -> Result<C::JoinHandle> {
         inner_spawn!(self, deferred)
     }
@@ -498,8 +504,11 @@ where
         Self { callee }
     }
 
+    #[track_caller]
     pub fn spawn(self) -> Result<C::JoinHandle> {
         let Self { callee } = self;
+        let name = impl_details::fiber_name_from_caller();
+
         let fiber_ref = unsafe {
             let l = ffi::luaT_state();
             lua::lua_getglobal(l, c_ptr!("require"));
@@ -520,6 +529,17 @@ where
             impl_details::guarded_pcall(l, 2, 0)
                 .map_err(|e| panic!("{}", e))
                 .unwrap();
+
+            lua::lua_getfield(l, -1, c_ptr!("name"));
+            lua::lua_pushvalue(l, -2);
+            lua::lua_pushlstring(l, name.as_ptr() as _, name.len());
+            impl_details::guarded_pcall(l, 2, 0)
+                .map_err(|e| {
+                    // Pop the fiber module and fiber instance from the stack
+                    lua::lua_pop(l, 2);
+                    e
+                })?;
+
             let fiber_ref = lua::luaL_ref(l, lua::LUA_REGISTRYINDEX);
             // pop the fiber module from the stack
             lua::lua_pop(l, 1);
@@ -751,6 +771,12 @@ mod impl_details {
 
             0
         }
+    }
+
+    #[track_caller]
+    pub(super) fn fiber_name_from_caller() -> String {
+        let loc = std::panic::Location::caller();
+        format!("<rust:{}:{}:{}>", loc.file(), loc.line(), loc.column())
     }
 }
 
@@ -1170,6 +1196,7 @@ impl TrampolineArgs for VaList {
 /// This will create a fiber using default parameters of [`Builder`], if you
 /// want to specify the stack size or the name of the thread, use this API
 /// instead.
+#[track_caller]
 pub fn start<'f, F, T>(f: F) -> JoinHandle<'f, T>
 where
     F: FnOnce() -> T,
@@ -1188,6 +1215,7 @@ where
 /// should always be used instead of the latter.
 ///
 /// For more details see: [`start`]
+#[track_caller]
 pub fn start_proc<'f, F>(f: F) -> UnitJoinHandle<'f>
 where
     F: FnOnce(),
@@ -1207,6 +1235,7 @@ where
 ///
 /// The new fiber can be joined by calling [`LuaJoinHandle::join`] method on
 /// it's join handle.
+#[track_caller]
 pub fn defer<'f, F, T>(f: F) -> LuaJoinHandle<'f, T>
 where
     F: FnOnce() -> T,
@@ -1226,6 +1255,7 @@ where
 /// it's join handle.
 ///
 /// This is an optimized version [`defer`]`<F, ()>`.
+#[track_caller]
 pub fn defer_proc<'f, F>(f: F) -> LuaUnitJoinHandle<'f>
 where
     F: FnOnce(),

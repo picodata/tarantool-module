@@ -382,6 +382,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::deferred_with_cond,
                 fiber::lua_thread,
                 fiber::lifetime,
+                fiber::name,
 
                 fiber::channel::send_self,
                 fiber::channel::send_full,

@@ -468,3 +468,26 @@ pub fn lifetime() {
     // }.join();
 }
 
+fn fiber_name() -> String {
+    let lua = tarantool::lua_state();
+    lua.eval("return require 'fiber'.name()").unwrap()
+}
+
+pub fn name() {
+    let name = fiber::start(fiber_name).join();
+    assert_eq!(name, format!("<rust:{}:{}:{}>", file!(), line!() - 1, 16));
+
+    let (tx, rx) = Rc::new(Cell::new(None)).into_clones();
+    fiber::start_proc(|| tx.set(Some(fiber_name()))).join();
+    let expected = format!("<rust:{}:{}:{}>", file!(), line!() - 1, 5);
+    assert_eq!(rx.take().unwrap(), expected);
+
+    let name = fiber::defer(fiber_name).join();
+    assert_eq!(name, format!("<rust:{}:{}:{}>", file!(), line!() - 1, 16));
+
+    let (tx, rx) = Rc::new(Cell::new(None)).into_clones();
+    fiber::defer_proc(|| tx.set(Some(fiber_name()))).join();
+    let expected = format!("<rust:{}:{}:{}>", file!(), line!() - 1, 5);
+    assert_eq!(rx.take().unwrap(), expected);
+}
+
