@@ -406,6 +406,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::mutex::try_lock,
                 fiber::mutex::debug,
                 fiber::mutex::advanced,
+                fiber::mutex::lazy_static,
 
                 r#box::space_get_by_name,
                 r#box::space_get_system,

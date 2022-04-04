@@ -4,7 +4,7 @@ use std::{
 };
 
 use tarantool::{
-    fiber::{defer_proc, sleep, start, start_proc, Channel, Mutex},
+    fiber::{defer, defer_proc, sleep, start, start_proc, Channel, Mutex},
     util::IntoClones,
 };
 
@@ -102,4 +102,45 @@ pub fn advanced() {
             "main:done",
         ]
     );
+}
+
+pub fn lazy_static() {
+    use once_cell::unsync::Lazy;
+    use std::cell::Cell;
+
+    thread_local! {
+        pub static FOO: Lazy<Mutex<u32>> = Lazy::new(|| Default::default());
+        pub static BAR: Lazy<Cell<u32>> = Lazy::new(|| Default::default());
+    }
+
+    fn with_mutex() -> u32 {
+        FOO.with(|value| {
+            let mut lock = value.lock();
+            let v = *lock + 1;
+            sleep(Duration::ZERO);
+            *lock = v;
+            v
+        })
+    }
+
+    fn without_mutex() -> u32 {
+        BAR.with(|value| {
+            let v = value.get() + 1;
+            sleep(Duration::ZERO);
+            value.set(v);
+            v
+        })
+    }
+
+    let jh1 = defer(|| with_mutex());
+    let jh2 = defer(|| with_mutex());
+
+    assert_eq!(jh1.join(), 1);
+    assert_eq!(jh2.join(), 2);
+
+    let jh1 = defer(|| without_mutex());
+    let jh2 = defer(|| without_mutex());
+
+    assert_eq!(jh1.join(), 1);
+    assert_eq!(jh2.join(), 1);
 }
