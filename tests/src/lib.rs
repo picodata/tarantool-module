@@ -386,6 +386,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::lifetime,
 
                 fiber::future::timer,
+                fiber::future::socket,
 
                 fiber::channel::send_self,
                 fiber::channel::send_full,
