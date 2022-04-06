@@ -38,12 +38,106 @@ type ReplicasetTemplateParams struct {
 	ContainerImage  string
 	ServiceName     string
 	EnvVars         map[string]string
+	ReplicasNum     int32
 }
 
 type ServiceParams struct {
 	Name      string
 	Namespace string
 	RoleName  string
+}
+
+type CartridgeParams struct {
+	Namespace   string
+	ClusterName string
+	ClusterID   string
+}
+
+type Cartridge struct {
+	Cluster             *tarantooliov1alpha1.Cluster
+	Roles               []*tarantooliov1alpha1.Role
+	ReplicasetTemplates []*tarantooliov1alpha1.ReplicasetTemplate
+	Services            []*corev1.Service
+}
+
+func NewCartridge(params CartridgeParams) *Cartridge {
+	namespace := params.Namespace
+	clusterName := params.ClusterName
+	clusterId := params.ClusterID
+
+	cluster := NewCluster(ClusterParams{
+		Namespace: namespace,
+		Name:      clusterName,
+		Id:        clusterId,
+	})
+
+	routerRole := NewRole(RoleParams{
+		Name:           "router",
+		Namespace:      namespace,
+		ClusterId:      clusterId,
+		RolesToAssign:  "[\"failover-coordinator\",\"app.roles.router\"]",
+		RsNum:          1,
+		RsTemplateName: "router-template",
+	})
+	routerRs := NewReplicasetTemplate(ReplicasetTemplateParams{
+		Name:            "router-template",
+		Namespace:       namespace,
+		ClusterId:       clusterId,
+		RoleName:        "router",
+		RolesToAssign:   "[\"failover-coordinator\",\"app.roles.router\"]",
+		PodTemplateName: "router-template",
+		ContainerName:   "pim-storage",
+		ContainerImage:  "tarantool/tarantool-operator-examples-kv:0.0.4",
+		ServiceName:     "router",
+		ReplicasNum:     1,
+	})
+	routerSvc := NewService(ServiceParams{
+		Name:      "router",
+		Namespace: namespace,
+		RoleName:  "router",
+	})
+
+	storageRole := NewRole(RoleParams{
+		Name:           "storage",
+		Namespace:      namespace,
+		ClusterId:      clusterId,
+		RolesToAssign:  "[\"app.roles.storage\"]",
+		RsNum:          1,
+		RsTemplateName: "storage-template",
+	})
+	storageRs := NewReplicasetTemplate(ReplicasetTemplateParams{
+		Name:            "storage-template",
+		Namespace:       namespace,
+		ClusterId:       clusterId,
+		RoleName:        "storage",
+		RolesToAssign:   "[\"app.roles.storage\"]",
+		PodTemplateName: "storage-template",
+		ContainerName:   "pim-storage",
+		ContainerImage:  "tarantool/tarantool-operator-examples-kv:0.0.4",
+		ServiceName:     "storage",
+		ReplicasNum:     3,
+	})
+	storageSvc := NewService(ServiceParams{
+		Name:      "storage",
+		Namespace: namespace,
+		RoleName:  "storage",
+	})
+
+	return &Cartridge{
+		Cluster: &cluster,
+		Roles: []*tarantooliov1alpha1.Role{
+			&routerRole,
+			&storageRole,
+		},
+		ReplicasetTemplates: []*tarantooliov1alpha1.ReplicasetTemplate{
+			&routerRs,
+			&storageRs,
+		},
+		Services: []*corev1.Service{
+			&routerSvc,
+			&storageSvc,
+		},
+	}
 }
 
 // Create new tarantooliov1alpha1.Cluster

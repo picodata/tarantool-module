@@ -17,30 +17,30 @@ jobs:
     name: controllers_testing
     runs-on: ubuntu-latest
     needs: lint
+    env:
+      KIND_CLUSTER_NAME: kind-cluster
 
     strategy:
       matrix:
-        kubebuilder-version: [1.16.4, 1.22.1]
+        kubernetes-version: [v1.16.4, v1.19.4, v1.22.4, v1.23.4]
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v3
 
     - name: Set up Go 1.18
-      uses: actions/setup-go@v1
+      uses: actions/setup-go@v3
       with:
         go-version: 1.18
       id: go
 
-    - name: Set up Kubebuilder
-      run: |
-        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-        ARCH=$(uname -m | sed 's/x86_64/amd64/')
-        curl -fsL "https://storage.googleapis.com/kubebuilder-tools/kubebuilder-tools-${{matrix.kubebuilder-version}}-${OS}-${ARCH}.tar.gz" -o kubebuilder-tools
-        tar -zvxf kubebuilder-tools
-        sudo mv kubebuilder/ /usr/local/kubebuilder
+    - name: Set up Kind Cluster
+      uses: helm/kind-action@v1.2.0
+      with:
+        node_image: kindest/node:${{ matrix.kubernetes-version }}
+        cluster_name: ${{ env.KIND_CLUSTER_NAME }}
 
     - name: Test
-      run: make test ENVTEST_K8S_VERSION=${{matrix.kubebuilder-version}}
+      run: make gotest
 
   e2e_testing:
     name: e2e_testing

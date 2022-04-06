@@ -38,8 +38,6 @@ BUNDLE_IMG ?= $(IMAGE_TAG_BASE)-bundle:v$(VERSION)
 # Image URL to use all building/pushing image targets
 REPO ?= tarantool-operator
 IMG ?= $(REPO):$(VERSION)
-# ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION ?= 1.22
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -86,8 +84,42 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
-test: manifests generate fmt vet envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -coverprofile cover.out
+gotest:
+	go test ./... -coverprofile cover.out ;
+
+test: manifests generate fmt vet kind-start
+	echo "Run tests" ; \
+	$(MAKE) gotest KUBECONFIG=$(KIND_KUBECONFIG) || ($(MAKE) kind-stop || true; exit 1); \
+ 	$(MAKE) kind-stop || true ;
+
+##@ KIND Cluster. More info: https://kind.sigs.k8s.io/docs
+KIND_VERSION ?= v0.12.0
+KIND_CLUSTER_NAME ?= "tarantool-operator-testing"
+KIND=$(shell pwd)/bin/kind
+KIND_IMAGE=kindest/node:v1.23.4@sha256:0e34f0d0fd448aa2f2819cfd74e99fe5793a6e4938b328f657c8e3f81ee0dfb9
+KIND_KUBECONFIG=$(shell pwd)/bin/kubeconfig.yml
+
+kind-install:
+	@[ -f $(KIND) ] || { \
+		OS=$(shell go env GOOS) ; \
+		ARCH=$(shell go env GOARCH) ; \
+		URL=https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$${OS}-$${ARCH} ; \
+		echo "Downloading kind $${URL}" ; \
+		curl -sSLo ${KIND} $${URL} ; \
+		chmod +x $(KIND) ; \
+	}
+
+kind-start: kind-install
+	EXISTS=$$($(KIND) get clusters | grep -c $(KIND_CLUSTER_NAME)) ; \
+	if [ $$EXISTS -eq "0" ] ; then \
+  		$(KIND) create cluster --image=$(KIND_IMAGE) --name=$(KIND_CLUSTER_NAME) --kubeconfig=$(KIND_KUBECONFIG) || exit 1; \
+	fi; \
+	KUBECONFIG="$(KIND_KUBECONFIG)" kubectl cluster-info ; \
+	echo "Kind cluster ready" ;
+
+kind-stop: kind-install
+	$(KIND) delete cluster --name=$(KIND_CLUSTER_NAME) ; \
+	rm -f $(KIND_KUBECONFIG) ;
 
 ##@ Build
 
@@ -173,10 +205,6 @@ controller-gen: ## Download controller-gen locally if necessary.
 KUSTOMIZE = $(shell pwd)/bin/kustomize
 kustomize: ## Download kustomize locally if necessary.
 	$(call go-get-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v3,v3.10.0)
-
-ENVTEST = $(shell pwd)/bin/setup-envtest
-envtest: ## Download envtest-setup locally if necessary.
-	$(call go-get-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,latest)
 
 # go-get-tool will 'go get' any package $2 in version $3 and install it to $1.
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))

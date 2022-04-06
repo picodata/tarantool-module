@@ -40,7 +40,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -62,9 +61,7 @@ var (
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecsWithDefaultAndCustomReporters(t,
-		"Controller Suite",
-		[]Reporter{printer.NewlineReporter{}})
+	RunSpecs(t, "Controller Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -73,11 +70,11 @@ var _ = BeforeSuite(func() {
 	ctx, cancel = context.WithCancel(context.TODO())
 
 	By("bootstrapping test environment")
-	USE_EXISTING_CLUSTER := false
+	useExistingCluster := true
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
-		UseExistingCluster:    &USE_EXISTING_CLUSTER,
+		UseExistingCluster:    &useExistingCluster,
 	}
 
 	var err error
@@ -99,10 +96,11 @@ var _ = BeforeSuite(func() {
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{})
 	Expect(err).NotTo(HaveOccurred(), "failed to create manager")
 
-	err = (&ClusterReconciler{
+	clusterReconciler := &ClusterReconciler{
 		Client: mgr.GetClient(),
 		Scheme: scheme.Scheme,
-	}).SetupWithManager(mgr)
+	}
+	err = clusterReconciler.SetupWithManager(mgr)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&RoleReconciler{

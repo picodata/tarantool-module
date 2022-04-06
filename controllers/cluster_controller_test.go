@@ -14,7 +14,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	tarantooliov1alpha1 "github.com/tarantool/tarantool-operator/api/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -30,107 +29,78 @@ func RandStringRunes(n int) string {
 
 var _ = Describe("cluster_controller unit testing", func() {
 	var (
-		namespace = "default"
-		ctx       = context.TODO()
-
-		roleName       = "" // setup for every spec in hook
-		rsTemplateName = ""
-
+		ctx         = context.TODO()
+		namespace   = "test"
 		clusterName = "test"
-		clusterId   = clusterName
-
-		defaultRolesToAssign = "[\"A\",\"B\"]"
+		clusterId   = "test"
+		ns          = &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: namespace,
+			},
+		}
+		cartridge = helpers.NewCartridge(helpers.CartridgeParams{
+			Namespace:   namespace,
+			ClusterName: clusterName,
+			ClusterID:   clusterId,
+		})
 	)
 
 	Describe("cluster_controller manage cluster resources", func() {
 		BeforeEach(func() {
-			// setup variables for each spec
-			roleName = fmt.Sprintf("test-role-%s", RandStringRunes(4))
-			rsTemplateName = fmt.Sprintf("test-rs-%s", RandStringRunes(4))
+			Expect(k8sClient.Create(ctx, ns)).
+				NotTo(
+					HaveOccurred(),
+					fmt.Sprintf("failed to create Namespace %s", ns.GetName()),
+				)
 
-			By("create new Role " + roleName)
-			role := helpers.NewRole(helpers.RoleParams{
-				Name:           roleName,
-				Namespace:      namespace,
-				RolesToAssign:  defaultRolesToAssign,
-				RsNum:          int32(1),
-				RsTemplateName: rsTemplateName,
-				ClusterId:      clusterId,
-			})
-			// mock owner reference
-			role.SetOwnerReferences([]metav1.OwnerReference{
-				{
-					APIVersion: "v0",
-					Kind:       "mockRef",
-					Name:       "mockRef",
-					UID:        "-",
-				},
-			})
-			Expect(k8sClient.Create(ctx, &role)).NotTo(HaveOccurred(), "failed to create Role")
+			Expect(k8sClient.Create(ctx, cartridge.Cluster)).
+				NotTo(
+					HaveOccurred(),
+					fmt.Sprintf("failed to create Cluster %s", cartridge.Cluster.GetName()),
+				)
 
-			By("create new Cluster " + clusterName)
-			cluster := helpers.NewCluster(helpers.ClusterParams{
-				Name:      clusterName,
-				Namespace: namespace,
-				Id:        clusterId,
-			})
-			Expect(k8sClient.Create(ctx, &cluster)).NotTo(HaveOccurred(), "failed to create Cluster")
+			for _, role := range cartridge.Roles {
+				Expect(k8sClient.Create(ctx, role)).
+					NotTo(
+						HaveOccurred(),
+						fmt.Sprintf("failed to create Role %s", role.GetName()),
+					)
+			}
+
+			for _, rs := range cartridge.ReplicasetTemplates {
+				Expect(k8sClient.Create(ctx, rs)).
+					NotTo(
+						HaveOccurred(),
+						fmt.Sprintf("failed to create ReplicasetTemplate %s", rs.GetName()),
+					)
+			}
+
+			for _, svc := range cartridge.Services {
+				Expect(k8sClient.Create(ctx, svc)).
+					NotTo(
+						HaveOccurred(),
+						fmt.Sprintf("failed to create Service %s", svc.GetName()),
+					)
+			}
 		})
 
 		AfterEach(func() {
-			By("remove role object " + roleName)
-			role := &tarantooliov1alpha1.Role{}
+			By("remove Namespace object " + namespace)
+			ns := &corev1.Namespace{}
 			Expect(
-				k8sClient.Get(ctx, client.ObjectKey{Name: roleName, Namespace: namespace}, role),
-			).NotTo(HaveOccurred(), "failed to get Role")
+				k8sClient.Get(ctx, client.ObjectKey{Name: namespace}, ns),
+			).NotTo(HaveOccurred(), "failed to get Namespace")
 
-			Expect(k8sClient.Delete(ctx, role)).NotTo(HaveOccurred(), "failed to delete Role")
-
-			By("remove Cluster object " + clusterName)
-			cluster := &tarantooliov1alpha1.Cluster{}
-			Expect(
-				k8sClient.Get(ctx, client.ObjectKey{Name: clusterName, Namespace: namespace}, cluster),
-			).NotTo(HaveOccurred(), "failed to get Cluster")
-
-			Expect(k8sClient.Delete(ctx, cluster)).NotTo(HaveOccurred(), "failed to delete Cluster")
+			Expect(k8sClient.Delete(ctx, ns)).NotTo(HaveOccurred(), "failed to delete Namespace")
 		})
 
 		Context("manage cluster leader: tarantool instance accepting admin requests", func() {
-			BeforeEach(func() {
-				By("create cluster endpoints")
-				ep := corev1.Endpoints{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      clusterId,
-						Namespace: namespace,
-					},
-					Subsets: []corev1.EndpointSubset{
-						{
-							Addresses: []corev1.EndpointAddress{
-								{IP: "1.1.1.1"},
-								{IP: "2.2.2.2"},
-								{IP: "3.3.3.3"},
-							},
-						},
-					},
-				}
-				Expect(k8sClient.Create(ctx, &ep)).NotTo(HaveOccurred(), "failed to create cluster endpoints")
-			})
-
-			AfterEach(func() {
-				ep := corev1.Endpoints{}
-				Expect(
-					k8sClient.Get(ctx, client.ObjectKey{Name: clusterId, Namespace: namespace}, &ep),
-				).NotTo(HaveOccurred(), "failed to get cluster endpoints")
-
-				Expect(k8sClient.Delete(ctx, &ep)).NotTo(HaveOccurred(), "failed to delete endpoints")
-			})
-
 			It("change the leader if the previous one does not exist", func() {
 				By("get the chosen leader")
 				ep := corev1.Endpoints{}
 				Eventually(
 					func() bool {
-						err := k8sClient.Get(ctx, client.ObjectKey{Name: clusterId, Namespace: namespace}, &ep)
+						err := k8sClient.Get(ctx, client.ObjectKey{Name: clusterName, Namespace: namespace}, &ep)
 						if err != nil {
 							return false
 						}
@@ -141,7 +111,8 @@ var _ = Describe("cluster_controller unit testing", func() {
 
 						return false
 					},
-					time.Second*100, time.Millisecond*500,
+					2*time.Minute,
+					500*time.Millisecond,
 				).Should(BeTrue())
 
 				By("save old leader")
@@ -172,13 +143,14 @@ var _ = Describe("cluster_controller unit testing", func() {
 						}
 						return false
 					},
-					time.Second*10, time.Millisecond*500,
+					2*time.Minute,
+					500*time.Millisecond,
 				).Should(BeTrue())
 			})
 		})
 	})
 
-	Describe("cluster_contriller unit testing functions", func() {
+	Describe("cluster_controller unit testing functions", func() {
 		Describe("function IsLeaderExists must check for existence of leader in annotation of cluster Endpoints", func() {
 			Context("positive cases (leader exist)", func() {
 				It("should return True if leader assigned and exist", func() {
