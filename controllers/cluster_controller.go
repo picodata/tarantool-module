@@ -31,6 +31,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -313,6 +314,15 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	for _, sts := range stsList.Items {
 		stsAnnotations := sts.GetAnnotations()
 		weight := stsAnnotations["tarantool.io/replicaset-weight"]
+
+		current_weight, err := topologyClient.GetWeight(sts.GetLabels()["tarantool.io/replicaset-uuid"])
+		if err != nil {
+			return ctrl.Result{RequeueAfter: time.Duration(5 * time.Second)}, err
+		}
+
+		if current_weight == -1 || strconv.Itoa(current_weight) == weight {
+			continue
+		}
 
 		if weight == "0" {
 			reqLogger.Info("weight is set to 0, checking replicaset buckets for scheduled deletion")

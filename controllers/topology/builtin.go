@@ -99,8 +99,9 @@ type ReplicasetsQueryResponse struct {
 
 // ReplicasetData .
 type ReplicasetData struct {
-	UUID  string   `json:"uuid"`
-	Roles []string `json:"roles"`
+	UUID   string   `json:"uuid"`
+	Roles  []string `json:"roles"`
+	Weight *int     `json:"weight"`
 }
 
 // Statistics .
@@ -141,6 +142,10 @@ var joinMutation = `mutation
 
 var setRsWeightMutation = `mutation editReplicaset($uuid: String!, $weight: Float) {
 	editReplicasetResponse: edit_replicaset(uuid: $uuid, weight: $weight)
+}`
+
+var getRsWeightQuery = `query ($uuid: String!) {
+	replicasets(uuid: $uuid) { weight }
 }`
 
 var setRsRolesMutation = `mutation editReplicaset($uuid: String!, $roles: [String!]) {
@@ -347,6 +352,34 @@ func (s *BuiltInTopologyService) SetWeight(replicasetUUID string, replicaWeight 
 	}
 
 	return errors.New("something really bad happened")
+}
+
+// GetWeight gets weight of a replicaset
+func (s *BuiltInTopologyService) GetWeight(replicasetUUID string) (int, error) {
+	client := graphql.NewClient(s.serviceHost, graphql.WithHTTPClient(&http.Client{Timeout: time.Duration(time.Second * 5)}))
+	req := graphql.NewRequest(getRsWeightQuery)
+
+	reqLogger := log.WithValues("namespace", "topology.builtin")
+
+	reqLogger.Info("getting cluster weight", "uuid", replicasetUUID)
+
+	req.Var("uuid", replicasetUUID)
+
+	resp := &ReplicasetsQueryResponse{}
+	if err := client.Run(context.TODO(), req, resp); err != nil {
+		return -1, err
+	}
+
+	if len(resp.Replicasets) == 0 {
+		return -1, fmt.Errorf("replicaset with uuid: '%s' not found", replicasetUUID)
+	}
+
+	// Instance without role vshard-storage returns null as weight
+	if resp.Replicasets[0].Weight == nil {
+		return -1, nil
+	}
+
+	return *resp.Replicasets[0].Weight, nil
 }
 
 // SetReplicasetRoles set roles list of replicaset in the Tarantool service
