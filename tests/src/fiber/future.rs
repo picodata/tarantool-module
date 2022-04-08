@@ -21,13 +21,55 @@ pub fn timer() {
     assert_eq!(res, "done");
     assert_eq!(task_rx.0.get(), true);
 
-    struct Task<T>(T);
+}
 
-    impl RcWake for Task<Cell<bool>> {
-        fn wake_by_ref(self: &Rc<Self>) {
-            (**self).0.set(true)
-        }
+struct Task<T>(T);
+
+impl RcWake for Task<Cell<bool>> {
+    fn wake_by_ref(self: &Rc<Self>) {
+        (**self).0.set(true)
     }
+}
+
+impl<'a> RcWake for Task<&'a fiber::Cond> {
+    fn wake_by_ref(self: &Rc<Self>) {
+        self.0.signal()
+    }
+}
+
+pub fn tmp() {
+    let (rx, tx) = fiber::Channel::new(1).into_clones();
+
+    let mut f = Box::pin(async {
+        let ch = fiber::future::Channel { inner: rx };
+        let mut r = ch.recv();
+        let mut f = futures::select!(
+            v = r => Some(v),
+            _ = Timer::new(100.millis()) => None,
+        );
+        if f.is_none() {
+            tx.send("hello").unwrap();
+            f = futures::select!(
+                v = r => Some(v),
+                _ = Timer::new(100.millis()) => unreachable!(),
+            );
+        }
+        f.unwrap()
+    });
+
+    let my_cond = fiber::Cond::new();
+    let waker = Rc::new(Task(&my_cond)).into_waker();
+
+    let res = loop {
+        match f.as_mut().poll(&mut Context::from_waker(&waker)) {
+            Poll::Pending => {}
+            Poll::Ready(res) => break res,
+        }
+
+        my_cond.wait();
+    };
+
+    assert_eq!(res, Some("hello"))
 }
 
 /// Just an experiment with fibers/mio. Doesn't actually use any futures
