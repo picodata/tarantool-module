@@ -12,6 +12,7 @@
 use std::cell::UnsafeCell;
 use std::ffi::CString;
 use std::marker::PhantomData;
+use std::mem::ManuallyDrop;
 use std::os::raw::c_void;
 use std::ptr::NonNull;
 use std::time::Duration;
@@ -1343,6 +1344,10 @@ impl Drop for FiberAttr {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// Cond
+////////////////////////////////////////////////////////////////////////////////
+
 /// Conditional variable for cooperative multitasking (fibers).
 ///
 /// A cond (short for "condition variable") is a synchronization primitive
@@ -1422,6 +1427,17 @@ impl Cond {
     pub fn wait(&self) -> bool {
         unsafe { ffi::fiber_cond_wait(self.inner) >= 0 }
     }
+
+    /// Create a non owning reference to the underlying conditional variable.
+    ///
+    /// Accessing the functionality through `WeakCond` is unsafe as there's no
+    /// mechanism to check that the owning instance was dropped, so use it at
+    /// your own risk.
+    pub fn weak(&self) -> WeakCond {
+        WeakCond {
+            inner: ManuallyDrop::new(Self { inner: self.inner })
+        }
+    }
 }
 
 impl Default for Cond {
@@ -1435,6 +1451,38 @@ impl Drop for Cond {
         unsafe { ffi::fiber_cond_delete(self.inner) }
     }
 }
+
+/// A non owning wrapper around a [`Cond`] that doesn't delete the underlying
+/// object when dropped. This type is meant for extreme efficiency and is unsafe
+/// to use, as there's no way of checking if the original `Cond` is dropped, so
+/// only use this if you know what you're doing.
+///
+/// Consider using `&Cond` or `[`Rc`]`<Cond>` instead.
+///
+/// [`Rc`]: std::rc::Rc
+pub struct WeakCond {
+    inner: ManuallyDrop<Cond>,
+}
+
+impl WeakCond {
+    /// Get a reference to the owning `Cond` instance.
+    ///
+    /// # Safety
+    /// This is unsafe, because there's no mechanism of checking that the owning
+    /// instance wasn't already dropped. Only use this if you're absolutely sure
+    /// the main [`Cond`] outlives this reference.
+    ///
+    /// Consider using `&Cond` or `[`Rc`]`<Cond>` instead.
+    ///
+    /// [`Rc`]: std::rc::Rc
+    pub unsafe fn get(&self) -> &Cond {
+        &self.inner
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Latch
+////////////////////////////////////////////////////////////////////////////////
 
 /// A lock for cooperative multitasking environment
 #[derive(Debug)]
