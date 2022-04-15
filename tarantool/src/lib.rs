@@ -159,7 +159,7 @@
 //! ... and this time the result will be `hello world -- easy2`.
 //!
 //! Conclusion: calling a Rust function is easy.
-pub mod async;
+pub mod r#async;
 pub mod clock;
 pub mod coio;
 pub mod decimal;

@@ -72,6 +72,14 @@ pub fn tmp() {
     assert_eq!(res, Some("hello"))
 }
 
+pub fn no_fibers() {
+    let mut f = Box::pin(async {
+        task::spawn(async {
+            fiber::sleep();
+        })
+    });
+}
+
 /// Just an experiment with fibers/mio. Doesn't actually use any futures
 pub fn socket() {
     use mio::{*, net::{TcpListener, TcpStream}};

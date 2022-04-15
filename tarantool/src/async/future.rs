@@ -5,21 +5,21 @@ use std::{
 use crate::fiber::Cond;
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Syncer
+/// Coord
 ////////////////////////////////////////////////////////////////////////////////
 
-pub trait Syncer {
+pub trait Coord {
     fn wait(&self);
     fn wake(&self);
     fn wait_timeout(&self, timeout: Duration) -> WaitTimeout;
 }
 
-enum WaitTimeout {
+pub enum WaitTimeout {
     Ok,
     TimedOut,
 }
 
-impl Syncer for Rc<Cond> {
+impl Coord for Rc<Cond> {
     fn wait(&self) {
         Cond::wait(self);
     }
@@ -50,14 +50,17 @@ pub mod mpmc {
     pub mod fixed {
         use std::{
             cell::{Cell, UnsafeCell},
+            future::Future,
             marker::PhantomData,
             mem::MaybeUninit,
             num::NonZeroUsize,
+            pin::Pin,
             ptr::{drop_in_place, NonNull},
             rc::Rc,
+            task::{Context, Poll, Waker},
         };
         use crate::fiber::Cond;
-        use super::super::Syncer;
+        use super::super::Coord;
 
         #[inline]
         pub fn channel<T, const N: usize>() -> (Sender<T, N, Rc<Cond>>, Receiver<T, N, Rc<Cond>>) {
@@ -71,55 +74,37 @@ pub mod mpmc {
         /// ChannelBox
         ////////////////////////////////////////////////////////////////////////
 
-        pub struct ChannelBox<T, const N: usize, S: Syncer> {
-            data: UnsafeCell<[MaybeUninit<T>; N]>,
+        pub struct ChannelBox<T, const N: usize, S: Coord> {
+            data: UnsafeCell<MaybeUninit<[T; N]>>,
             /// First occupied spot. If `tail == head` the buffer is empty.
             tail: Cell<usize>,
             /// First empty spot. If `tail == head` the buffer is empty.
             head: Cell<usize>,
             rx_count: Cell<Option<NonZeroUsize>>,
             tx_count: Cell<Option<NonZeroUsize>>,
-            sync: S,
+            coord: S,
         }
 
-        impl<T, const N: usize, S: Syncer> ChannelBox<T, N, S> {
+        impl<T, const N: usize, S: Coord> ChannelBox<T, N, S> {
             #[inline]
-            fn new(sync: S) -> Self {
+            fn new(coord: S) -> Self {
                 Self {
-                    data: UnsafeCell::new([MaybeUninit::uninit(); N]),
+                    data: UnsafeCell::new(MaybeUninit::uninit()),
                     tail: Cell::new(0),
                     head: Cell::new(0),
                     rx_count: Cell::new(None),
                     tx_count: Cell::new(None),
-                    sync,
+                    coord,
                 }
             }
 
-            #[inline]
-            fn is_full(&self) -> bool {
-                N - self.len() == 1
-            }
-
+            #[inline] fn is_full(&self) -> bool { N - self.len() == 1 }
             /// Return number of occupied spots in the buffer.
-            #[inline]
-            fn len(&self) -> usize {
-                self.head().wrapping_sub(self.tail()) % N
-            }
+            #[inline] fn len(&self) -> usize { self.head().wrapping_sub(self.tail()) % N }
 
-            #[inline]
-            fn is_empty(&self) -> bool {
-                self.tail == self.head
-            }
-
-            #[inline]
-            fn tail(&self) -> usize {
-                self.tail.get()
-            }
-
-            #[inline]
-            fn head(&self) -> usize {
-                self.head.get()
-            }
+            #[inline] fn is_empty(&self) -> bool { self.tail == self.head }
+            #[inline] fn tail(&self) -> usize { self.tail.get() }
+            #[inline] fn head(&self) -> usize { self.head.get() }
 
             /// # Safety
             /// `self.is_full()` must not be `true`, otherwise the data will
@@ -127,7 +112,11 @@ pub mod mpmc {
             unsafe fn push_back(&self, v: T) {
                 let head = self.head();
                 self.head.set(head.wrapping_add(1) % N);
-                std::ptr::write(self.data.get_mut()[head].as_mut_ptr(), v);
+                std::ptr::write(self.ptr_to_ith(head), v);
+            }
+
+            unsafe fn ptr_to_ith(&self, i: usize) -> *mut T {
+                self.data.get().cast::<T>().add(i)
             }
 
             #[inline]
@@ -148,7 +137,7 @@ pub mod mpmc {
             unsafe fn pop_front(&self) -> T {
                 let tail = self.tail();
                 self.tail.set(tail.wrapping_add(1) % N);
-                self.data.get_mut()[tail].assume_init()
+                std::ptr::read(self.ptr_to_ith(tail))
             }
 
             #[inline]
@@ -160,7 +149,7 @@ pub mod mpmc {
             }
 
             #[inline]
-            fn try_send(&self, v: T) -> Result<(), TrySendError<T>> {
+            fn try_send(&self, v: T, coord: &impl Coord) -> Result<(), TrySendError<T>> {
                 if self.rx().is_none() {
                     // Only a receiver can create another receiver so nobody
                     // will ever be able to receive this message
@@ -173,14 +162,15 @@ pub mod mpmc {
                     Err(TrySendError::Full(v))
                 } else {
                     if was_empty {
-                        self.sync.wake()
+                        coord.wake()
                     }
 
                     Ok(())
                 }
             }
 
-            fn send(&self, v: T) -> Result<(), T> {
+            #[inline]
+            fn send(&self, v: T, coord: &impl Coord) -> Result<(), T> {
                 if self.rx().is_none() {
                     // Only a receiver can create another receiver so nobody
                     // will ever be able to receive this message
@@ -188,7 +178,7 @@ pub mod mpmc {
                 }
 
                 while self.is_full() {
-                    self.sync.wait()
+                    coord.wait()
                 }
 
                 if self.rx().is_none() {
@@ -198,14 +188,14 @@ pub mod mpmc {
                 let was_empty = self.is_empty();
                 unsafe { self.push_back(v) }
                 if was_empty {
-                    self.sync.wake()
+                    coord.wake()
                 }
 
                 Ok(())
             }
 
             #[inline]
-            fn try_recv(&self) -> Result<T, TryRecvError> {
+            fn try_recv(&self, coord: &impl Coord) -> Result<T, TryRecvError> {
                 if self.tx().is_none() && self.is_empty() {
                     // Only a sender can create another sender so nobody
                     // will ever be able to send us a message
@@ -216,7 +206,7 @@ pub mod mpmc {
 
                 if let Some(v) = self.try_pop_front() {
                     if was_full {
-                        self.sync.wake()
+                        coord.wake()
                     }
                     Ok(v)
                 } else {
@@ -225,7 +215,7 @@ pub mod mpmc {
             }
 
             #[inline]
-            fn recv(&self) -> Option<T> {
+            fn recv(&self, coord: &impl Coord) -> Option<T> {
                 if self.tx().is_none() && self.is_empty() {
                     // Only a sender can create another sender so nobody
                     // will ever be able to send us a message
@@ -233,32 +223,21 @@ pub mod mpmc {
                 }
 
                 while self.is_empty() {
-                    self.sync.wait()
+                    coord.wait()
                 }
 
                 let was_full = self.is_full();
-                let v = self.pop_front();
+                let v = unsafe { self.pop_front() };
                 if was_full {
-                    self.sync.wake()
+                    coord.wake()
                 }
 
                 Some(v)
             }
 
-            #[inline]
-            fn no_refs(&self) -> bool {
-                self.rx().is_none() && self.tx().is_none()
-            }
-
-            #[inline]
-            fn inc_rx(&self) {
-                Self::inc(&self.rx_count)
-            }
-
-            #[inline]
-            fn inc_tx(&self) {
-                Self::inc(&self.tx_count)
-            }
+            #[inline] fn no_refs(&self) -> bool { (self.rx(), self.tx()) == (None, None) }
+            #[inline] fn inc_rx(&self) { Self::inc(&self.rx_count) }
+            #[inline] fn inc_tx(&self) { Self::inc(&self.tx_count) }
 
             #[inline]
             fn inc(count: &Cell<Option<NonZeroUsize>>) {
@@ -271,15 +250,8 @@ pub mod mpmc {
                 count.set(Some(new_count))
             }
 
-            #[inline]
-            fn dec_tx(&self) {
-                Self::dec(&self.tx_count)
-            }
-
-            #[inline]
-            fn dec_rx(&self) {
-                Self::dec(&self.rx_count)
-            }
+            #[inline] fn dec_tx(&self) { Self::dec(&self.tx_count) }
+            #[inline] fn dec_rx(&self) { Self::dec(&self.rx_count) }
 
             #[inline]
             fn dec(count: &Cell<Option<NonZeroUsize>>) {
@@ -290,30 +262,25 @@ pub mod mpmc {
                 }
             }
 
-            #[inline]
-            fn tx(&self) -> Option<NonZeroUsize> {
-                self.tx_count.get()
-            }
-
-            #[inline]
-            fn rx(&self) -> Option<NonZeroUsize> {
-                self.rx_count.get()
-            }
+            #[inline] fn tx(&self) -> Option<NonZeroUsize> { self.tx_count.get() }
+            #[inline] fn rx(&self) -> Option<NonZeroUsize> { self.rx_count.get() }
         }
 
-        impl<T, const N: usize, S: Syncer> Drop for ChannelBox<T, N, S> {
+        impl<T, const N: usize, S: Coord> Drop for ChannelBox<T, N, S> {
             fn drop(&mut self) {
-                assert!(self.no_refs());
-                if self.tail() <= self.head() {
-                    for i in self.tail()..self.head() {
-                        drop_in_place(self.data.get_mut()[i].as_mut_ptr())
-                    }
-                } else {
-                    for i in 0..self.head() {
-                        drop_in_place(self.data.get_mut()[i].as_mut_ptr())
-                    }
-                    for i in self.tail()..N {
-                        drop_in_place(self.data.get_mut()[i].as_mut_ptr())
+                unsafe {
+                    assert!(self.no_refs());
+                    if self.tail() <= self.head() {
+                        for i in self.tail()..self.head() {
+                            drop_in_place(self.ptr_to_ith(i))
+                        }
+                    } else {
+                        for i in 0..self.head() {
+                            drop_in_place(self.ptr_to_ith(i))
+                        }
+                        for i in self.tail()..N {
+                            drop_in_place(self.ptr_to_ith(i))
+                        }
                     }
                 }
             }
@@ -349,31 +316,33 @@ pub mod mpmc {
 
         macro_rules! impl_channel_part {
             ($t:ident, $inc:ident, $dec:ident) => {
-                pub struct $t<T, const N: usize, S: Syncer> {
+                pub struct $t<T, const N: usize, S: Coord> {
                     inner: NonNull<ChannelBox<T, N, S>>,
                     marker: PhantomData<ChannelBox<T, N, S>>,
                 }
 
-                impl<T, const N: usize, S: Syncer> $t<T, N, S> {
+                impl<T, const N: usize, S: Coord> $t<T, N, S> {
                     #[inline]
                     fn new(inner: NonNull<ChannelBox<T, N, S>>) -> Self {
-                        inner.as_ref().$inc();
+                        unsafe { inner.as_ref() }.$inc();
                         Self { inner, marker: PhantomData, }
                     }
                 }
 
-                impl<T, const N: usize, S: Syncer> Clone for $t<T, N, S> {
+                impl<T, const N: usize, S: Coord> Clone for $t<T, N, S> {
                     #[inline]
                     fn clone(&self) -> Self {
                         Self::new(self.inner)
                     }
                 }
 
-                impl<T, const N: usize, S: Syncer> Drop for $t<T, N, S> {
+                impl<T, const N: usize, S: Coord> Drop for $t<T, N, S> {
                     fn drop(&mut self) {
-                        self.inner.as_ref().$dec();
-                        if self.inner.as_ref().no_refs() {
-                            drop_in_place(self.inner.as_ptr())
+                        unsafe {
+                            self.inner.as_ref().$dec();
+                            if self.inner.as_ref().no_refs() {
+                                drop(Box::from_raw(self.inner.as_ptr()))
+                            }
                         }
                     }
                 }
@@ -381,6 +350,25 @@ pub mod mpmc {
         }
 
         impl_channel_part!{Sender, inc_tx, dec_tx}
+
+        impl<T, const N: usize, S: Coord> Sender<T, N, S> {
+            fn send(&self, v: T) -> Send<'_, T, N, S> {
+                todo!()
+            }
+        }
+
+        pub struct Send<'a, T, const N: usize, S: Coord> {
+            sender: &'a Sender<T, N, S>,
+        }
+
+        impl<'a, T, const N: usize, S: Coord> Future for Send<'a, T, N, S> {
+            type Output = Result<(), T>;
+
+            fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
+                todo!()
+            }
+        }
+
         impl_channel_part!{Receiver, inc_rx, dec_rx}
     }
 }
