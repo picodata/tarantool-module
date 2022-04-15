@@ -1,3 +1,28 @@
+//! We can use a single cond for communication. A channel can use 2 conds. One
+//! for waking and one for waiting. A Sender and a Receiver would have those
+//! swapped.
+//!
+//! On startup a proc will create an executor, which can spawn tasks in
+//! sepparate fibers. Those tasks will use the same cond for waking up the
+//! executor.
+//!
+//! The executor starts with a single future that it polls. It loops until the
+//! future is ready. Each iteration it checks the future and then waits on the
+//! cond with a timeout based on all of the timeouts (sleep, recv_timeout,
+//! wait_timeout, etc.).
+//!
+//! This means that all of the waitable things must have a reference to the
+//! executor. How does this work? (TODO)
+//!
+//! Channel recv future checks if the channel has a value and returns it. If it
+//! doesn't, it sets the channel's waker (cond) that will be signalled when the
+//! value is ready, waking up the executor.
+//!
+//! Receiver::recv_timeout:
+//! - value is ready => `Poll::Ready(value)`
+//! - value isn't ready =>
+//!     + set the sender's waker (`&executor.cond`)
+//!     + set the executor's timeout
 use std::{
     rc::Rc,
     time::Duration,
