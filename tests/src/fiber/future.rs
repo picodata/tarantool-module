@@ -5,7 +5,7 @@ pub fn timer() {
     };
     let mut f = Box::pin(f);
 
-    let task = Task(Cell::new(false));
+    let task = Waker(Cell::new(false));
     let (task, task_rx) = Rc::new(task).into_clones();
     let waker = task.into_waker();
 
@@ -23,15 +23,21 @@ pub fn timer() {
 
 }
 
-struct Task<T>(T);
+struct Waker<T>(T);
 
-impl RcWake for Task<Cell<bool>> {
+impl RcWake for Waker<Cell<bool>> {
     fn wake_by_ref(self: &Rc<Self>) {
         (**self).0.set(true)
     }
 }
 
-impl<'a> RcWake for Task<&'a fiber::Cond> {
+impl<'a> RcWake for Waker<&'a fiber::Cond> {
+    fn wake_by_ref(self: &Rc<Self>) {
+        self.0.signal()
+    }
+}
+
+impl<'a> RcWake for Waker<Rc<fiber::Cond>> {
     fn wake_by_ref(self: &Rc<Self>) {
         self.0.signal()
     }
@@ -58,7 +64,7 @@ pub fn tmp() {
     });
 
     let my_cond = fiber::Cond::new();
-    let waker = Rc::new(Task(&my_cond)).into_waker();
+    let waker = Rc::new(Waker(&my_cond)).into_waker();
 
     let res = loop {
         match f.as_mut().poll(&mut Context::from_waker(&waker)) {
@@ -72,12 +78,149 @@ pub fn tmp() {
     assert_eq!(res, Some("hello"))
 }
 
+struct Task {
+    future: Pin<Box<dyn Future<Output = ()>>>,
+}
+
+struct Executor {
+    queue: UnsafeCell<VecDeque<Task>>,
+    deadlines: UnsafeCell<Vec<Instant>>,
+    cond: Rc<fiber::Cond>,
+}
+
+impl Executor {
+    fn new() -> Self {
+        Self {
+            queue: UnsafeCell::default(),
+            deadlines: UnsafeCell::default(),
+            cond: Rc::default(),
+        }
+    }
+
+    fn next_wait_since(&self, now: Instant) -> Option<Duration> {
+        let mut min_dl = None;
+        unsafe { &mut *self.deadlines.get() }.retain(|&dl|
+            now <= dl && {
+                if min_dl.map(|min| dl < min).unwrap_or(true) {
+                    min_dl = Some(dl)
+                }
+                true
+            }
+        );
+        min_dl.map(|dl| dl - now)
+    }
+
+    fn next_wait(&self) -> Option<Duration> {
+        let now = Instant::now();
+        self.next_wait_since(now)
+    }
+
+    fn has_tasks(&self) -> bool {
+        !unsafe { &*self.queue.get() }.is_empty()
+    }
+
+    fn spawn(&self, future: impl Future<Output = ()> + 'static) {
+        unsafe { &mut *self.queue.get() }.push_back(
+            Task {
+                future: Box::pin(future),
+            }
+        );
+    }
+
+    async fn sleep(&self, timeout: Duration) {
+        let deadline = Instant::now() + timeout;
+        unsafe { &mut *self.deadlines.get() }.push(deadline);
+        Sleep { deadline }.await
+    }
+
+    fn do_loop(&self) {
+        let queue = unsafe { &mut *self.queue.get() };
+        // only iterate over tasks pushed before this function was called
+        for _ in 0..queue.len() {
+            let mut task = queue.pop_front().unwrap();
+            let waker = Rc::new(Waker(self.cond.clone())).into_waker();
+            match task.future.as_mut().poll(&mut Context::from_waker(&waker)) {
+                Poll::Pending => {
+                    // this tasks will be checked on the next iteration
+                    queue.push_back(task)
+                }
+                Poll::Ready(()) => {}
+            }
+        }
+        const DEFAULT_WAIT: Duration = Duration::from_secs(3);
+        self.cond.wait_timeout(self.next_wait().unwrap_or(DEFAULT_WAIT));
+    }
+
+    fn block_on<T: 'static>(&self, future: impl Future<Output = T> + 'static) -> T {
+        let (tx, rx) = channel();
+        self.spawn(async move {
+            tx.send(future.await).await.unwrap()
+        });
+        rx.blocking_recv().unwrap()
+    }
+}
+
+struct Sleep {
+    deadline: Instant,
+}
+
+impl Future for Sleep {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, _: &mut Context) -> Poll<Self::Output> {
+        if self.deadline <= Instant::now() {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
+    }
+}
+
+struct Sender<T> {
+    marker: PhantomData<T>,
+}
+
+impl<T> Sender<T> {
+    async fn send(&self, v: T) -> Option<()> {
+        todo!()
+    }
+}
+
+struct Receiver<T> {
+    marker: PhantomData<T>,
+}
+
+impl<T> Receiver<T> {
+    async fn recv(&self) -> Option<T> {
+        todo!()
+    }
+
+    fn blocking_recv(&self) -> Option<T> {
+        todo!()
+    }
+}
+
+fn channel<T>() -> (Sender<T>, Receiver<T>) {
+    todo!()
+}
+
 pub fn no_fibers() {
-    let mut f = Box::pin(async {
-        task::spawn(async {
-            fiber::sleep();
-        })
+    let (exe1, exe2, exe3) = Rc::new(Executor::new()).into_clones();
+    let jh = fiber::defer(||
+        while exe1.has_tasks() {
+            exe1.do_loop()
+        }
+    );
+    let (tx, rx) = channel();
+    let res = exe1.block_on(async move {
+        exe2.spawn(async move {
+            exe3.sleep(100.millis()).await;
+            tx.send("hello").await;
+        });
+        rx.recv().await.unwrap()
     });
+    assert_eq!(res, "hello");
+    jh.join();
 }
 
 /// Just an experiment with fibers/mio. Doesn't actually use any futures
@@ -85,7 +228,6 @@ pub fn socket() {
     use mio::{*, net::{TcpListener, TcpStream}};
     use std::{
         io::{Read, Write, ErrorKind::{Interrupted, WouldBlock}},
-        time::Duration,
     };
     let addr = "127.0.0.1:42069".parse().unwrap();
 
@@ -249,15 +391,21 @@ pub fn socket() {
 ////////////////////////////////////////////////////////////////////////////////
 
 use std::{
-    cell::Cell,
+    cell::{Cell, UnsafeCell},
+    collections::VecDeque,
     future::Future,
+    marker::PhantomData,
+    pin::Pin,
     rc::Rc,
     task::{Context, Poll},
+    time::{Duration, Instant},
 };
 
 use tarantool::{
+    clock::INFINITY,
     fiber::{
         self,
+        Cond,
         future::{RcWake, Timer},
         sleep,
     },
