@@ -165,6 +165,45 @@ impl ConnInner {
         }
     }
 
+    pub async fn request_async<Fp, Fc, R>(
+        &self,
+        request_producer: Fp,
+        response_consumer: Fc,
+    ) -> Result<R, Error>
+    where
+        Fp: FnOnce(&mut Cursor<Vec<u8>>, u64) -> Result<(), Error>,
+        Fc: FnOnce(&mut Cursor<Vec<u8>>, &Header) -> Result<R, Error>,
+    {
+        loop {
+            let state = self.state.get();
+            match state {
+                ConnState::Init => {
+                    self.init()?;
+                }
+                ConnState::Active => {
+                    return match self.send_queue.send(request_producer) {
+                        Ok(sync) => self
+                            .recv_queue
+                            .recv_async(sync, response_consumer).await
+                            .map(|response| {
+                                self.schema_version
+                                    .set(Some(response.header.schema_version));
+                                response.payload
+                            }),
+                        Err(err) => Err(self.handle_error(err).err().unwrap()),
+                    };
+                }
+                ConnState::Error => self.disconnect(),
+                ConnState::ErrorReconnect => self.reconnect_or_fail()?,
+                ConnState::Closed => {
+                    return Err(io::Error::from(io::ErrorKind::NotConnected).into())
+                }
+                _ => {
+                    self.wait_state_changed(None);
+                }
+            };
+        }
+    }
     pub fn lookup_space(&self, name: &str) -> Result<Option<u32>, Error> {
         self.refresh_schema()?;
         Ok(self.schema.lookup_space(name))

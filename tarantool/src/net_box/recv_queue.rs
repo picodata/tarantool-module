@@ -1,10 +1,12 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::io::{self, Cursor, Read};
+use std::task::{Poll, Waker};
 
 use refpool::{Pool, PoolRef};
 use rmp::decode;
 
+use crate::r#async::poll_fn;
 use crate::error::Error;
 use crate::fiber::{Cond, Latch};
 
@@ -16,6 +18,7 @@ pub struct RecvQueue {
     buffer: RefCell<Cursor<Vec<u8>>>,
     chunks: RefCell<Vec<u64>>,
     cond_map: RefCell<HashMap<u64, PoolRef<Cond>>>,
+    cond_map_new: RefCell<HashMap<u64, Result<Waker, Result<Header, Error>>>>,
     cond_pool: Pool<Cond>,
     read_offset: Cell<usize>,
     read_completed_cond: Cond,
@@ -31,12 +34,47 @@ impl RecvQueue {
             buffer: RefCell::new(Cursor::new(buffer)),
             chunks: RefCell::new(Vec::with_capacity(1024)),
             cond_map: RefCell::new(HashMap::new()),
+            cond_map_new: RefCell::new(HashMap::new()),
             cond_pool: Pool::new(1024),
             read_offset: Cell::new(0),
             read_completed_cond: Cond::new(),
             header_recv_result: RefCell::new(None),
             notification_lock: Latch::new(),
         }
+    }
+
+    pub async fn recv_async<F, R>(
+        &self,
+        sync: u64,
+        payload_consumer: F,
+    ) -> Result<Response<R>, Error>
+    where
+        F: FnOnce(&mut Cursor<Vec<u8>>, &Header) -> Result<R, Error>,
+    {
+        if !self.is_active.get() {
+            return Err(io::Error::from(io::ErrorKind::ConnectionAborted).into());
+        }
+
+        let header = poll_fn(|ctx| {
+            let mut map = self.cond_map_new.borrow_mut();
+            if let Some(Err(hdr)) = map.remove(&sync) {
+                Poll::Ready(hdr)
+            } else {
+                map.insert(sync, Ok(ctx.waker().clone()));
+                Poll::Pending
+            }
+        }).await?;
+
+        if header.status_code != 0 {
+             return Err(decode_error(self.buffer.borrow_mut().by_ref())?.into())
+        }
+
+        let result = payload_consumer(self.buffer.borrow_mut().by_ref(), &header)
+            .map(|payload| Response { payload, header });
+
+        self.read_completed_cond.signal();
+
+        result
     }
 
     pub fn recv<F, R>(
@@ -133,16 +171,22 @@ impl RecvQueue {
                     decode_header(buffer.by_ref())?
                 };
 
-                let cond_ref = {
-                    let sync = header.sync;
+                let sync = header.sync;
+                if let Some(cond_ref) = self.cond_map.borrow_mut().remove(&sync) {
                     self.header_recv_result.replace(Some(Ok(header)));
-                    self.cond_map.borrow_mut().remove(&sync)
-                };
-
-                if let Some(cond_ref) = cond_ref {
                     cond_ref.signal();
                     self.read_completed_cond.wait();
+                } else {
+                    let mut map = self.cond_map_new.borrow_mut();
+                    if let Some(Ok(waker)) = map.remove(&sync) {
+                        map.insert(sync, Err(Ok(header)));
+                        waker.wake();
+                        drop(map);
+                        self.read_completed_cond.wait();
+                    }
                 }
+
+                // nobody expects this `sync`, ignore it
             }
         }
 
@@ -170,6 +214,15 @@ impl RecvQueue {
                     io::Error::from(io::ErrorKind::ConnectionAborted).into()
                 )));
             cond_ref.signal();
+        }
+        for (_, waker_or_header) in self.cond_map_new.borrow_mut().iter_mut() {
+            let mut res = Err(Err(
+                io::Error::from(io::ErrorKind::ConnectionAborted).into()
+            ));
+            std::mem::swap(waker_or_header, &mut res);
+            if let Ok(waker) = res {
+                waker.wake()
+            }
         }
     }
 }

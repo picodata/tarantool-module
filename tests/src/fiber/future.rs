@@ -1,3 +1,6 @@
+use crate::LISTEN;
+use tarantool::net_box::{Conn, ConnOptions, ConnTriggers, Options};
+
 pub fn timer() {
     let f = async {
         Timer::new(100.millis()).await;
@@ -326,21 +329,54 @@ fn channel<T>(size: usize) -> (Sender<T>, Receiver<T>) {
 
 pub fn no_fibers() {
     eprintln!("output:");
+
+    let port = unsafe { LISTEN };
+    let conn_options = ConnOptions {
+        user: "test_user".to_string(),
+        password: "password".to_string(),
+        ..ConnOptions::default()
+    };
+    let conn = Conn::new(("localhost", port), conn_options, None).unwrap();
+    let (res,) = conn
+        .eval("return 'whats up'", &((),), &Options::default())
+        .unwrap().unwrap()
+        .into_struct::<(String,)>().unwrap();
+    assert_eq!(res, "whats up");
+
     let (exe1, exe2, exe3) = Rc::new(Executor::new()).into_clones();
-    let jh = fiber::defer(||
+    let jh = fiber::defer(|| {
+        let mut last_awoke = Instant::now();
         while exe1.has_tasks() {
-            exe1.do_loop()
+            exe1.do_loop();
+            eprintln!("slept for {:?}", last_awoke.elapsed());
+            last_awoke = Instant::now();
         }
-    );
+    });
     let (tx, rx) = channel(8);
-    let res = exe1.block_on(async move {
+    let (tx1, tx2) = tx.into_clones();
+    let (a, b) = exe1.block_on(async move {
         exe2.spawn(async move {
             exe3.sleep(100.millis()).await;
-            tx.send("hello").await;
+            tx1.send("hello".to_string()).await;
         });
-        rx.recv().await.unwrap()
+        exe2.spawn(async move {
+            let port = unsafe { LISTEN };
+            let conn_options = ConnOptions {
+                user: "test_user".to_string(),
+                password: "password".to_string(),
+                ..ConnOptions::default()
+            };
+            let conn = Conn::new(("localhost", port), conn_options, None).unwrap();
+            let (res,) = conn
+                .eval_async("return 'whats up'", &((),)).await
+                .unwrap().unwrap()
+                .into_struct::<(String,)>().unwrap();
+            tx2.send(res).await;
+        });
+        (rx.recv().await.unwrap(), rx.recv().await.unwrap())
     });
-    assert_eq!(res, "hello");
+    assert_eq!(a, "whats up");
+    assert_eq!(b, "hello");
     jh.join();
 }
 

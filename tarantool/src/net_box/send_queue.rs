@@ -11,6 +11,7 @@ pub struct SendQueue {
     front_buffer: RefCell<Cursor<Vec<u8>>>,
     back_buffer: RefCell<Cursor<Vec<u8>>>,
     swap_cond: Cond,
+    // looks like this thing is completely useless
     buffer_limit: u64,
     flush_interval: Duration,
 }
@@ -35,6 +36,7 @@ impl SendQueue {
         let sync = self.next_sync();
 
         if self.back_buffer.borrow().position() >= self.buffer_limit {
+            // this never wakes up anybody
             self.swap_cond.signal();
         }
 

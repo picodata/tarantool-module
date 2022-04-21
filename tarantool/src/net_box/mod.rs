@@ -138,6 +138,21 @@ impl Conn {
         )
     }
 
+    pub async fn call_async<T>(
+        &self,
+        function_name: &str,
+        args: &T,
+    ) -> Result<Option<Tuple>, Error>
+    where
+        T: AsTuple,
+        T: ?Sized,
+    {
+        self.inner.request_async(
+            |buf, sync| protocol::encode_call(buf, sync, function_name, args),
+            protocol::decode_call,
+        ).await
+    }
+
     /// Evaluates and executes the expression in Lua-string, which may be any statement or series of statements.
     ///
     /// An execute privilege is required; if the user does not have it, an administrator may grant it with
@@ -160,6 +175,21 @@ impl Conn {
             protocol::decode_call,
             options,
         )
+    }
+
+    pub async fn eval_async<T>(
+        &self,
+        expression: &str,
+        args: &T,
+    ) -> Result<Option<Tuple>, Error>
+    where
+        T: AsTuple,
+        T: ?Sized,
+    {
+        self.inner.request_async(
+            |buf, sync| protocol::encode_eval(buf, sync, expression, args),
+            protocol::decode_call,
+        ).await
     }
 
     /// Search space by name on remote server
