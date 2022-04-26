@@ -1,5 +1,26 @@
+use std::{
+    cell::{Cell, UnsafeCell},
+    collections::VecDeque,
+    future::Future,
+    marker::PhantomData,
+    ptr::NonNull,
+    pin::Pin,
+    rc::Rc,
+    task::{Context, Poll},
+    time::{Duration, Instant},
+};
+
 use crate::LISTEN;
-use tarantool::net_box::{Conn, ConnOptions, ConnTriggers, Options};
+use tarantool::{
+    net_box::{Conn, ConnOptions, ConnTriggers, Options},
+    fiber::{
+        self,
+        Cond,
+        future::{Executor, Waker, RcWake, channel, Timer},
+        sleep,
+    },
+    util::{IntoClones, ToDuration},
+};
 
 pub fn timer() {
     let f = async {
@@ -26,31 +47,11 @@ pub fn timer() {
 
 }
 
-struct Waker<T>(T);
-
-impl RcWake for Waker<Cell<bool>> {
-    fn wake_by_ref(self: &Rc<Self>) {
-        (**self).0.set(true)
-    }
-}
-
-impl<'a> RcWake for Waker<&'a fiber::Cond> {
-    fn wake_by_ref(self: &Rc<Self>) {
-        self.0.signal()
-    }
-}
-
-impl<'a> RcWake for Waker<Rc<fiber::Cond>> {
-    fn wake_by_ref(self: &Rc<Self>) {
-        self.0.signal()
-    }
-}
-
 pub fn tmp() {
     let (rx, tx) = fiber::Channel::new(1).into_clones();
 
     let mut f = Box::pin(async {
-        let ch = fiber::future::Channel { inner: rx };
+        let ch = fiber::future::deprecated::Channel { inner: rx };
         let mut r = ch.recv();
         let mut f = futures::select!(
             v = r => Some(v),
@@ -79,252 +80,6 @@ pub fn tmp() {
     };
 
     assert_eq!(res, Some("hello"))
-}
-
-struct Task {
-    future: Pin<Box<dyn Future<Output = ()>>>,
-    loc: &'static std::panic::Location<'static>,
-}
-
-#[derive(Default)]
-struct Executor {
-    queue: UnsafeCell<VecDeque<Task>>,
-    deadlines: UnsafeCell<Vec<Instant>>,
-    has_new_tasks: Cell<bool>,
-    cond: Rc<fiber::Cond>,
-}
-
-impl Executor {
-    fn new() -> Self {
-        Self::default()
-    }
-
-    fn next_wait_since(&self, now: Instant) -> Option<Duration> {
-        let mut min_dl = None;
-        unsafe { &mut *self.deadlines.get() }.retain(|&dl|
-            now <= dl && {
-                if min_dl.map(|min| dl < min).unwrap_or(true) {
-                    min_dl = Some(dl)
-                }
-                true
-            }
-        );
-        min_dl.map(|dl| dl - now)
-    }
-
-    fn next_wait(&self) -> Option<Duration> {
-        let now = Instant::now();
-        self.next_wait_since(now)
-    }
-
-    fn has_tasks(&self) -> bool {
-        !unsafe { &*self.queue.get() }.is_empty()
-    }
-
-    #[track_caller]
-    fn spawn(&self, future: impl Future<Output = ()> + 'static) {
-        self.has_new_tasks.set(true);
-        unsafe { &mut *self.queue.get() }.push_back(
-            Task {
-                future: Box::pin(future),
-                loc: std::panic::Location::caller(),
-            }
-        );
-    }
-
-    async fn sleep(&self, timeout: Duration) {
-        let deadline = Instant::now() + timeout;
-        unsafe { &mut *self.deadlines.get() }.push(deadline);
-        Sleep { deadline }.await
-    }
-
-    fn do_loop(&self) {
-        let queue = unsafe { &mut *self.queue.get() };
-        let mut first_time = true;
-        while first_time || self.has_new_tasks.get() {
-            first_time = false;
-            self.has_new_tasks.set(false);
-            // only iterate over tasks pushed before this function was called
-            for _ in 0..queue.len() {
-                let mut task = queue.pop_front().unwrap();
-                eprint!("task @ {} ", task.loc);
-                let waker = Rc::new(Waker(self.cond.clone())).into_waker();
-                match task.future.as_mut().poll(&mut Context::from_waker(&waker)) {
-                    Poll::Pending => {
-                        eprintln!("pending");
-                        // this tasks will be checked on the next iteration
-                        queue.push_back(task)
-                    }
-                    Poll::Ready(()) => {
-                        eprintln!("ready");
-                    }
-                }
-            }
-        }
-        const DEFAULT_WAIT: Duration = Duration::from_secs(3);
-        if !queue.is_empty() {
-            self.cond.wait_timeout(dbg!(self.next_wait().unwrap_or(DEFAULT_WAIT)));
-        }
-    }
-
-    #[track_caller]
-    fn block_on<T: 'static>(&self, future: impl Future<Output = T> + 'static) -> T {
-        let (tx, rx) = channel(1);
-        let (cond_tx, cond_rx) = Rc::new(Cond::new()).into_clones();
-        self.spawn(async move {
-            tx.send(future.await).await.unwrap();
-            cond_tx.signal()
-        });
-        cond_rx.wait();
-        rx.do_recv().unwrap()
-    }
-}
-
-struct Sleep {
-    deadline: Instant,
-}
-
-impl Future for Sleep {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, _: &mut Context) -> Poll<Self::Output> {
-        if self.deadline <= Instant::now() {
-            Poll::Ready(())
-        } else {
-            Poll::Pending
-        }
-    }
-}
-
-struct Channel<T> {
-    data: VecDeque<T>,
-    tx_count: usize,
-    rx_count: usize,
-}
-
-struct Sender<T> {
-    ch: NonNull<UnsafeCell<Channel<T>>>,
-}
-
-impl<T> Sender<T> {
-    fn from_raw(ch: NonNull<UnsafeCell<Channel<T>>>) -> Self {
-        unsafe { &mut *ch.as_ref().get() }.tx_count += 1;
-        Self { ch }
-    }
-
-    async fn send(&self, v: T) -> Option<()> {
-        if CanSend(self).await {
-            unsafe { &mut *self.ch.as_ref().get() }.data.push_back(v);
-            Some(())
-        } else {
-            None
-        }
-    }
-}
-
-struct CanSend<'a, T>(&'a Sender<T>);
-
-impl<'a, T> Future for CanSend<'a, T> {
-    type Output = bool;
-
-    fn poll(self: Pin<&mut Self>, _: &mut Context) -> Poll<Self::Output> {
-        let ch = unsafe { &mut *self.0.ch.as_ref().get() };
-        if ch.rx_count == 0 {
-            Poll::Ready(false)
-        } else if ch.data.capacity() == ch.data.len() {
-            Poll::Pending
-        } else {
-            Poll::Ready(true)
-        }
-    }
-}
-
-impl<T> Clone for Sender<T> {
-    fn clone(&self) -> Self {
-        Self::from_raw(self.ch)
-    }
-}
-
-impl<T> Drop for Sender<T> {
-    fn drop(&mut self) {
-        let ch = unsafe { &mut *self.ch.as_ref().get() };
-        assert_ne!(ch.tx_count, 0);
-        ch.tx_count -= 1;
-        if ch.rx_count == 0 && ch.tx_count == 0 {
-            let _ = ch;
-            drop(unsafe { Box::from_raw(self.ch.as_ptr()) })
-        }
-    }
-}
-
-struct Receiver<T> {
-    ch: NonNull<UnsafeCell<Channel<T>>>,
-}
-
-impl<T> Receiver<T> {
-    fn from_raw(ch: NonNull<UnsafeCell<Channel<T>>>) -> Self {
-        unsafe { &mut *ch.as_ref().get() }.rx_count += 1;
-        Self { ch }
-    }
-
-    async fn recv(&self) -> Option<T> {
-        if CanReceive(self).await {
-            self.do_recv()
-        } else {
-            None
-        }
-    }
-
-    fn do_recv(&self) -> Option<T> {
-        unsafe { &mut *self.ch.as_ref().get() }.data.pop_front()
-    }
-}
-
-struct CanReceive<'a, T>(&'a Receiver<T>);
-
-impl<'a, T> Future for CanReceive<'a, T> {
-    type Output = bool;
-
-    fn poll(self: Pin<&mut Self>, _: &mut Context) -> Poll<Self::Output> {
-        let ch = unsafe { &*self.0.ch.as_ref().get() };
-        if ch.data.is_empty() {
-            if ch.tx_count == 0 {
-                Poll::Ready(false)
-            } else {
-                Poll::Pending
-            }
-        } else {
-            Poll::Ready(true)
-        }
-    }
-}
-
-impl<T> Clone for Receiver<T> {
-    fn clone(&self) -> Self {
-        Self::from_raw(self.ch)
-    }
-}
-
-impl<T> Drop for Receiver<T> {
-    fn drop(&mut self) {
-        let ch = unsafe { &mut *self.ch.as_ref().get() };
-        assert_ne!(ch.rx_count, 0);
-        ch.rx_count -= 1;
-        if ch.rx_count == 0 && ch.tx_count == 0 {
-            let _ = ch;
-            drop(unsafe { Box::from_raw(self.ch.as_ptr()) })
-        }
-    }
-}
-
-fn channel<T>(size: usize) -> (Sender<T>, Receiver<T>) {
-    let ch = Box::into_raw(Box::new(UnsafeCell::new(Channel {
-        data: VecDeque::with_capacity(size),
-        tx_count: 0,
-        rx_count: 0,
-    })));
-    let ch = unsafe { NonNull::new_unchecked(ch) };
-    (Sender::from_raw(ch), Receiver::from_raw(ch))
 }
 
 pub fn no_fibers() {
@@ -542,30 +297,3 @@ pub fn socket() {
     assert!(serv.join().is_ok());
     assert!(clnt.join().is_ok());
 }
-
-////////////////////////////////////////////////////////////////////////////////
-// use
-////////////////////////////////////////////////////////////////////////////////
-
-use std::{
-    cell::{Cell, UnsafeCell},
-    collections::VecDeque,
-    future::Future,
-    marker::PhantomData,
-    ptr::NonNull,
-    pin::Pin,
-    rc::Rc,
-    task::{Context, Poll},
-    time::{Duration, Instant},
-};
-
-use tarantool::{
-    clock::INFINITY,
-    fiber::{
-        self,
-        Cond,
-        future::{RcWake, Timer},
-        sleep,
-    },
-    util::{IntoClones, ToDuration},
-};

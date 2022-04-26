@@ -9,6 +9,7 @@ members = [
     "examples/harder",
     "examples/hardest",
     "examples/read",
+    "examples/web",
     "examples/write",
     "examples/cluster_node"
 ]

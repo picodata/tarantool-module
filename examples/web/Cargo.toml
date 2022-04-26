@@ -1,0 +1,17 @@
+[package]
+name = "web"
+version = "0.1.0"
+edition = "2021"
+license = "BSD-2-Clause"
+
+[dependencies.tarantool]
+path = "../../tarantool"
+
+[dependencies]
+async-trait = "*"
+tide = "*"
+log = "=0.4.16"
+mio = { version = "0.8", features = ["os-poll", "net"] }
+
+[lib]
+crate-type = ["cdylib"]
