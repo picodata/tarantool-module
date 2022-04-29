@@ -104,7 +104,7 @@ spec:
             - name: TARANTOOL_MEMTX_MEMORY
               value: "{{ mul .MemtxMemoryMB 1048576 }}"
             - name: TARANTOOL_BUCKET_COUNT
-              value: "30000"
+              value: {{ $.Values.VshardBucketCount | default "30000" | quote }}
             - name: TARANTOOL_WORKDIR
               value: "{{ $.Values.TarantoolWorkDir }}"
             - name: TARANTOOL_ADVERTISE_TMP
