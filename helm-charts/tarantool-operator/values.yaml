@@ -3,6 +3,6 @@
 # Declare variables to be passed into your templates.
 
 image:
-  repository: tarantool/tarantool-operator
-  tag: 0.0.11
+  repository: docker-public.binary.picodata.io/tarantool-operator/tarantool-operator
+  tag: 0.0.12
   pullPolicy: IfNotPresent
