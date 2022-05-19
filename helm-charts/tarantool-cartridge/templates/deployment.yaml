@@ -119,6 +119,10 @@ spec:
               value: "60"
             - name: TARANTOOL_HTTP_PORT
               value: "8081"
+            {{- range $param, $value := .BoxParameters }}
+            - name: "TARANTOOL_{{ $param | upper }}"
+              value: "{{ $value }}"
+            {{- end }}
           readinessProbe:
             tcpSocket:
               port: http
