@@ -437,16 +437,24 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if stsAnnotations["tarantool.io/failoverEnabled"] == "1" {
 			reqLogger.Info("failover is enabled, not retrying")
 		} else {
-			if err := topologyClient.SetFailover(true); err != nil {
-				reqLogger.Error(err, "failed to enable cluster failover")
-			} else {
-				reqLogger.Info("enabled failover")
+			enabled, err := topologyClient.GetFailover()
+			if err != nil {
+				reqLogger.Error(err, "failed to get failover status")
+				continue
+			}
 
-				stsAnnotations["tarantool.io/failoverEnabled"] = "1"
-				sts.SetAnnotations(stsAnnotations)
-				if err := r.Update(context.TODO(), &sts); err != nil {
-					reqLogger.Error(err, "failed to set failover enabled annotation")
+			if !enabled {
+				if err := topologyClient.SetFailover(true); err != nil {
+					reqLogger.Error(err, "failed to enable cluster failover")
+					continue
 				}
+				reqLogger.Info("enabled failover")
+			}
+
+			stsAnnotations["tarantool.io/failoverEnabled"] = "1"
+			sts.SetAnnotations(stsAnnotations)
+			if err := r.Update(context.TODO(), &sts); err != nil {
+				reqLogger.Error(err, "failed to set failover enabled annotation")
 			}
 		}
 	}

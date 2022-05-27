@@ -1,6 +1,11 @@
 package topology
 
 import (
+	"encoding/json"
+	"io"
+	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -147,5 +152,169 @@ func TestGetRoles_ParseRolesFromAnnotations(t *testing.T) {
 				t.Fatalf("%d: roles must contain %s", i, v)
 			}
 		}
+	}
+}
+
+type FailoverVariables struct {
+	Mode string `json:"mode"`
+}
+
+type FailoverQuery struct {
+	Query     string            `json:"query"`
+	Variables FailoverVariables `json:"variables"`
+}
+
+var setFailoverGQL = `mutation setFailoverMode($mode: String) {
+	cluster {
+		failover_params(mode: $mode) {
+		  mode
+		}
+	}
+}`
+
+func TestSetFailover(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("%s", err)
+		}
+		query := FailoverQuery{}
+		if err = json.Unmarshal(b, &query); err != nil {
+			t.Fatalf("Wrong qeury: %s", err)
+		}
+
+		if query.Query != setFailoverGQL {
+			t.Fatalf("Wrong query: %s", query.Query)
+		}
+
+		if query.Variables.Mode != "eventual" {
+			t.Fatalf("Wrong failover type: %s", query.Variables.Mode)
+		}
+
+		_, _ = io.WriteString(w, `{
+			"data": {
+			  "cluster": {
+				"failover_params": {
+				  "mode": "eventual"
+				}
+			  }
+			}
+		}`)
+	}))
+
+	defer srv.Close()
+
+	topology := BuiltInTopologyService{
+		serviceHost: srv.URL,
+		clusterID:   "uuid",
+	}
+
+	err := topology.SetFailover(true)
+	if err != nil {
+		t.Fatalf("%s", err)
+	}
+}
+
+var getFailoverGQL = `query {
+	cluster {
+		failover_params {
+			mode
+		}
+	}
+}`
+
+func TestGetFailover(t *testing.T) {
+	var failoverMode string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("%s", err)
+		}
+		query := FailoverQuery{}
+		if err = json.Unmarshal(b, &query); err != nil {
+			t.Fatalf("Wrong qeury: %s", err)
+		}
+
+		if query.Query != getFailoverGQL {
+			t.Fatalf("Wrong query: %s", query.Query)
+		}
+
+		_, _ = io.WriteString(w, failoverMode)
+	}))
+
+	defer srv.Close()
+
+	topology := BuiltInTopologyService{
+		serviceHost: srv.URL,
+		clusterID:   "uuid",
+	}
+
+	failoverMode = `{
+		"data": {
+		  "cluster": {
+			"failover_params": {
+			  "mode": "eventual"
+			}
+		  }
+		}
+	}`
+
+	enabled, err := topology.GetFailover()
+	if err != nil {
+		t.Fatalf("%s", err)
+	}
+
+	if !enabled {
+		t.Fatal("Failover should be enabled")
+	}
+
+	failoverMode = `{
+		"data": {
+		  "cluster": {
+			"failover_params": {
+			  "mode": "stateful"
+			}
+		  }
+		}
+	}`
+
+	enabled, err = topology.GetFailover()
+	if err != nil {
+		t.Fatalf("%s", err)
+	}
+
+	if !enabled {
+		t.Fatal("Failover should be enabled")
+	}
+
+	failoverMode = `{
+		"data": {
+		  "cluster": {
+			"failover_params": {
+			  "mode": "disabled"
+			}
+		  }
+		}
+	}`
+
+	enabled, err = topology.GetFailover()
+	if err != nil {
+		t.Fatalf("%s", err)
+	}
+
+	if enabled {
+		t.Fatal("Failover should be disabled")
+	}
+
+	failoverMode = `{
+		"data": {
+		  "cluster": {
+		  }
+		}
+	}`
+
+	_, err = topology.GetFailover()
+	if err == nil {
+		t.Fatal("Wrong answer format, but error wasn't thrown")
 	}
 }

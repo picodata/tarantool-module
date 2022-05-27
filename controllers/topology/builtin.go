@@ -53,14 +53,15 @@ type BootstrapVshardResponse struct {
 	Errors []*ResponseError     `json:"errors,omitempty"`
 }
 
-// FailoverData Structure of data for changing failover status
-type FailoverData struct {
+type FailoverParams struct {
+	Mode string `json:"mode"`
 }
 
-// FailoverResponse type struct for returning on failovers
-type FailoverResponse struct {
-	Data   *FailoverData
-	Errors []*ResponseError
+type ClusterData struct {
+	FailoverParams *FailoverParams `json:"failover_params"`
+}
+type FailoverResponseData struct {
+	Cluster *ClusterData `json:"cluster"`
 }
 
 // BuiltInTopologyService .
@@ -167,6 +168,22 @@ var getServerStatQuery = `query serverList {
 			quota_used_ratio
 			arena_used_ratio
 			items_used_ratio
+		}
+	}
+}`
+
+var getFailoverStateQuery = `query {
+	cluster {
+		failover_params {
+			mode
+		}
+	}
+}`
+
+var setFailoverStateQuery = `mutation setFailoverMode($mode: String) {
+	cluster {
+		failover_params(mode: $mode) {
+		  mode
 		}
 	}
 }`
@@ -290,17 +307,40 @@ func (s *BuiltInTopologyService) Join(pod *corev1.Pod) error {
 // SetFailover enables cluster failover
 func (s *BuiltInTopologyService) SetFailover(enabled bool) error {
 	client := graphql.NewClient(s.serviceHost, graphql.WithHTTPClient(&http.Client{Timeout: time.Duration(time.Second * 5)}))
-	req := graphql.NewRequest(`mutation changeFailover($enabled: Boolean!) { cluster { failover(enabled: $enabled) }}`)
+	req := graphql.NewRequest(setFailoverStateQuery)
 
-	req.Var("enabled", enabled)
+	mode := "eventual"
+	if !enabled {
+		mode = "disabled"
+	}
+	req.Var("mode", mode)
 
-	resp := &FailoverData{}
+	resp := &FailoverResponseData{}
 	if err := client.Run(context.TODO(), req, resp); err != nil {
 		log.Error(err, "failoverError")
 		return errors.New("failed to enable cluster failover")
 	}
 
 	return nil
+}
+
+func (s *BuiltInTopologyService) GetFailover() (bool, error) {
+	client := graphql.NewClient(s.serviceHost, graphql.WithHTTPClient(&http.Client{Timeout: time.Duration(time.Second * 5)}))
+	req := graphql.NewRequest(getFailoverStateQuery)
+
+	resp := &FailoverResponseData{}
+	if err := client.Run(context.TODO(), req, resp); err != nil {
+		log.Error(err, "failoverError")
+		return false, errors.New("failed to get info about failover")
+	}
+
+	if resp == nil || resp.Cluster == nil || resp.Cluster.FailoverParams == nil || resp.Cluster.FailoverParams.Mode == "" {
+		return false, errors.New("failed to get info about failover: broken gql response")
+	}
+
+	mode := resp.Cluster.FailoverParams.Mode
+
+	return mode != "disabled", nil
 }
 
 // Expel removes an instance from the replicaset
