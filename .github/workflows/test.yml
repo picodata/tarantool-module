@@ -106,7 +106,7 @@ jobs:
 
         helm install -n ${{ env.APP_NAMESPACE }} --create-namespace \
           -f test/helpers/ci/cluster_values.yaml \
-          cartridge-app \
+          crtg \
           helm-charts/tarantool-cartridge
 
     - name: Waiting for routers Pods availability
@@ -115,10 +115,10 @@ jobs:
     - name: Сhecking the number of ready router replicas
       run : |
         desired_routers_num=1
-        ready_routers_num=$(kubectl get statefulsets/router-0 -o=jsonpath="{.status.readyReplicas}")
+        ready_routers_num=$(kubectl get statefulsets/crtg-router-0 -o=jsonpath="{.status.readyReplicas}")
 
         if [[ $ready_routers_num -ne $desired_routers_num ]]; then
-          kubectl describe statefulsets/router-0
+          kubectl describe statefulsets/crtg-router-0
           kubectl describe pod -l tarantool.io/role=router
           echo 'ERROR: invalid number of ready routers...' >&2; exit 1
         fi
@@ -129,10 +129,10 @@ jobs:
     - name: Сhecking the number of ready storage replicas
       run: |
         desired_storage_num=1
-        ready_storage_num=$(kubectl get statefulsets/storage-0 -o=jsonpath="{.status.readyReplicas}")
+        ready_storage_num=$(kubectl get statefulsets/crtg-storage-0 -o=jsonpath="{.status.readyReplicas}")
 
         if [[ $ready_storage_num -ne $desired_storage_num ]]; then
-          kubectl describe statefulsets/storage-0
+          kubectl describe statefulsets/crtg-storage-0
           kubectl describe pod -l tarantool.io/role=storage
           echo 'ERROR: invalid number of ready storages...' >&2; exit 1
         fi
