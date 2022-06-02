@@ -51,6 +51,9 @@ spec:
         name: www
       spec:
         accessModes: ["ReadWriteOnce"]
+        {{ if  $.Values.StorageClassName }}
+        storageClassName: {{ $.Values.StorageClassName }}
+        {{ end }}
         resources:
           requests:
             storage: {{ .DiskSize }}
