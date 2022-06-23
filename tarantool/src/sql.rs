@@ -51,7 +51,7 @@ impl Statement {
     /// Executes prepared statement with binding variables.
     ///
     /// Example:
-    /// ```rust
+    /// ```no_run
     /// use tarantool::sql;
     ///
     /// let stmt = sql::prepare("SELECT * FROM S WHERE ID > ?").unwrap();
