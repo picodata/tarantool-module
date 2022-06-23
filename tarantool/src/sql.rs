@@ -52,11 +52,16 @@ impl Statement {
     ///
     /// Example:
     /// ```no_run
+    /// # fn f() {
+    /// #![cfg(feature = "picodata")]
     /// use tarantool::sql;
     ///
     /// let stmt = sql::prepare("SELECT * FROM S WHERE ID > ?").unwrap();
     /// let result: Vec<(u8, String)> = stmt.execute(&(100,)).unwrap();
     /// println!("SQL query result: {:?}", result);
+    /// # }
+    /// # #[cfg(not(feature = "picodata"))] fn f() {}
+    /// # f();
     /// ```
     pub fn execute<IN, OUT>(&self, bind_params: &IN) -> crate::Result<OUT>
         where IN: AsTuple,
