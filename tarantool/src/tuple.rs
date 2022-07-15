@@ -263,9 +263,7 @@ impl Tuple {
         if field_ptr.is_null() {
             return Ok(None)
         }
-        let field_offset = field_ptr.offset_from(self.ptr.as_ref().data() as _);
-        let max_len = self.ptr.as_ref().bsize() - field_offset as usize;
-        let field_slice = std::slice::from_raw_parts(field_ptr, max_len as _);
+        let field_slice = std::slice::from_raw_parts(field_ptr, self.ptr.as_ref().bsize() as _);
         Ok(Some(rmp_serde::from_slice(field_slice)?))
     }
 }
@@ -292,17 +290,48 @@ impl TupleIndex for &str {
     where
         T: Deserialize<'a>,
     {
+        #[derive(Clone, Copy)]
+        enum APIEntryPoint {
+            InternalPre2_10_1(fn (*const ffi::BoxTupleFormat, *const c_char, *const u32, *const c_char, u32, u32) -> *const c_char),
+            PublicPost2_10_1(fn (*const ffi::BoxTuple, *const c_char, *const c_char) -> *const c_char),
+        }
+
+        static mut API_ENTRY_POINT: Option<APIEntryPoint> = None;
+
         unsafe {
-            let tuple_raw = tuple.ptr.as_ref();
-            let field_ptr = ffi::tuple_field_raw_by_full_path(
-                tuple.format().inner,
-                tuple_raw.data(),
-                tuple_raw.field_map(),
-                self.as_ptr() as _,
-                self.len() as _,
-                tlua::util::hash(self),
-            );
-            tuple.field_from_ptr(field_ptr as _)
+            if API_ENTRY_POINT.is_none() {
+                let lib = dlopen::symbor::Library::open_self()?;
+
+                if let Ok(old) = lib.symbol("tuple_field_raw_by_full_path") {
+                    API_ENTRY_POINT = Some(APIEntryPoint::InternalPre2_10_1(*old));
+                } else {
+                    let new = lib.symbol("box_tuple_field_by_full_path")?;
+                    API_ENTRY_POINT = Some(APIEntryPoint::PublicPost2_10_1(*new));
+                }
+            }
+
+            match API_ENTRY_POINT.expect("just made sure it's there or returned before this") {
+                APIEntryPoint::InternalPre2_10_1(f) => {
+                    let tuple_raw = tuple.ptr.as_ref();
+                    let field_ptr = f(
+                        tuple.format().inner,
+                        tuple_raw.data(),
+                        tuple_raw.field_map(),
+                        self.as_ptr() as _,
+                        self.len() as _,
+                        tlua::util::hash(self),
+                    );
+                    tuple.field_from_ptr(field_ptr as _)
+                }
+                APIEntryPoint::PublicPost2_10_1(f) => {
+                    let field_ptr = f(
+                        tuple.ptr.as_ptr(),
+                        self.as_ptr() as _,
+                        self.as_bytes().as_ptr_range().end as _,
+                    );
+                    tuple.field_from_ptr(field_ptr as _)
+                }
+            }
         }
     }
 }

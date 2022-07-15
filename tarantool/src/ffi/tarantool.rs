@@ -396,9 +396,6 @@ pub struct ipc_msg {
 pub type ev_tstamp = f64;
 
 extern "C" {
-    /// Infinity is roughly 100 years in seconds.
-    pub static TIMEOUT_INFINITY: ev_tstamp;
-
     /// Allocate and construct a channel.
     ///
     /// Uses `malloc()`.
@@ -860,15 +857,6 @@ extern "C" {
         key_b: *const c_char,
         key_def: *mut BoxKeyDef,
     ) -> c_int;
-
-    pub fn tuple_field_raw_by_full_path(
-        format: *const BoxTupleFormat,
-        tuple: *const c_char,
-        field_map: *const u32,
-        path: *const c_char,
-        path_len: u32,
-        path_hash: u32,
-    ) -> *const c_char;
 }
 
 #[repr(C)]

@@ -99,7 +99,7 @@ extern "C" {
     /// `string` must be at least `digits count + 14` characters long
     ///
     /// No error is possible, and no status can be set.
-    pub fn decNumberToString(dn: *const decNumber, string: *mut c_char) -> *mut c_char;
+    pub fn decimal_to_string(dn: *const decNumber, string: *mut c_char);
 
     /// Convert a given decimal to `i64`.
     /// `num` - the result.

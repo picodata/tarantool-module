@@ -90,8 +90,7 @@ impl<T> SendTimeout<T> for Channel<T> {
             let ret_code = ffi::fiber_channel_put_msg_timeout(
                 self.as_ptr(),
                 ipc_value_ptr.cast(),
-                timeout.map(|t| t.as_secs_f64())
-                    .unwrap_or(ffi::TIMEOUT_INFINITY),
+                timeout.unwrap_or(Duration::MAX).as_secs_f64(),
             );
 
             if ret_code < 0 {
@@ -123,8 +122,7 @@ impl<T> RecvTimeout<T> for Channel<T> {
             let ret_code = ffi::fiber_channel_get_msg_timeout(
                 self.as_ptr(),
                 ipc_msg_ptr_uninit.as_mut_ptr(),
-                timeout.map(|t| t.as_secs_f64())
-                    .unwrap_or(ffi::TIMEOUT_INFINITY),
+                timeout.unwrap_or(Duration::MAX).as_secs_f64(),
             );
 
             if ret_code < 0 {

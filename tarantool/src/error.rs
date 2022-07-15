@@ -78,6 +78,9 @@ pub enum Error {
     #[error("Lua error: {0}")]
     LuaError(LuaError),
 
+    #[error("DLopen error: {0}")]
+    DLopenError(#[from] dlopen::Error),
+
     #[cfg(feature = "schema")]
     #[error("Space metadata not found")]
     MetaNotFound,
