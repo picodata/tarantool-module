@@ -1,6 +1,6 @@
 use tarantool::tlua::{
     self,
-    function,
+    function_type,
     AsLua,
     Lua,
     LuaFunction,
@@ -17,7 +17,7 @@ pub fn simple_function() {
     fn ret5() -> i32 {
         5
     }
-    let f: function![() -> i32] = function0(ret5);
+    let f: function_type![() -> i32] = function0(ret5);
     lua.set("ret5", f);
 
     let val: i32 = lua.eval("return ret5()").unwrap();
@@ -30,7 +30,7 @@ pub fn one_argument() {
     fn plus_one(val: i32) -> i32 {
         val + 1
     }
-    let f: function![(i32) -> i32] = function1(plus_one);
+    let f: function_type![(i32) -> i32] = function1(plus_one);
     lua.set("plus_one", f);
 
     let val: i32 = lua.eval("return plus_one(3)").unwrap();
@@ -43,7 +43,7 @@ pub fn two_arguments() {
     fn add(val1: i32, val2: i32) -> i32 {
         val1 + val2
     }
-    let f: function![(i32, i32) -> i32] = function2(add);
+    let f: function_type![(i32, i32) -> i32] = function2(add);
     lua.set("add", f);
 
     let val: i32 = lua.eval("return add(3, 7)").unwrap();
@@ -72,7 +72,7 @@ pub fn return_result() {
     fn always_fails() -> Result<i32, &'static str> {
         Err("oops, problem")
     }
-    let f: function![() -> Result<i32, &'static str>] = function0(always_fails);
+    let f: function_type![() -> Result<i32, &'static str>] = function0(always_fails);
     lua.set("always_fails", &f);
 
     match lua.exec(r#"
@@ -160,7 +160,7 @@ static mut GLOBAL_DATA: i32 = 0;
 
 pub fn global_data() {
     let lua = Lua::new();
-    let f: function![()] = Function::new(access_global_state);
+    let f: function_type![()] = Function::new(access_global_state);
     let f: LuaFunction<_> = lua.push(f).read().unwrap();
     let () = f.call().unwrap();
     assert_eq!(unsafe { GLOBAL_DATA }, 1);
@@ -196,7 +196,7 @@ pub fn push_callback_by_ref() {
 
     #[derive(tlua::Push)]
     struct S {
-        callback: function![() -> i32],
+        callback: function_type![() -> i32],
     }
 
     let s = S { callback: Function::new(|| 42) };

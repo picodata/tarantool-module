@@ -1,6 +1,14 @@
+use proc_macro as pm;
 use proc_macro2::{TokenStream, Span};
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput, Ident, Lifetime, Type};
+
+mod function;
+
+#[proc_macro_attribute]
+pub fn function(attr: pm::TokenStream, item: pm::TokenStream) -> pm::TokenStream {
+    function::function(attr, item)
+}
 
 fn proc_macro_derive_push_impl(
     input: proc_macro::TokenStream,
@@ -707,7 +715,7 @@ impl<'a> Context<'a> {
     }
 }
 
-fn split_generics(
+pub(crate) fn split_generics(
     generics: &syn::Generics
 ) -> (Vec<&syn::LifetimeDef>, Vec<&syn::TypeParam>, Vec<&syn::ConstParam>) {
     let mut res = (vec![], vec![], vec![]);

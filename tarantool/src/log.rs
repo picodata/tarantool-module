@@ -81,7 +81,7 @@ impl From<Level> for SayLevel {
             Level::Error => SayLevel::Error,
             Level::Warn => SayLevel::Warn,
             Level::Info => SayLevel::Info,
-            Level::Debug => SayLevel::Debug,
+            Level::Debug => SayLevel::Verbose,
             Level::Trace => SayLevel::Debug,
         }
     }

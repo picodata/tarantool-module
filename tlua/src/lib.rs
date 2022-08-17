@@ -136,7 +136,7 @@ pub use userdata::UserdataOnStack;
 pub use userdata::{push_userdata, read_userdata, push_some_userdata};
 pub use values::{StringInLua, Nil, Null, True, False, Typename, ToString, Strict};
 pub use cdata::{CData, CDataOnStack, AsCData};
-pub use ::tlua_derive::*;
+pub use ::tlua_derive::{function, LuaRead, Push, PushInto};
 
 #[deprecated = "Use `CallError` instead"]
 pub type LuaFunctionCallError<E> = CallError<E>;
@@ -279,6 +279,12 @@ impl<L: AsLua> PushGuard<L> {
             lua,
             size: size as _,
         }
+    }
+
+    #[inline]
+    pub fn from_input(lua: L) -> Self {
+        let top = unsafe { ffi::lua_gettop(lua.as_lua()) };
+        PushGuard { lua, top, size: top }
     }
 
     #[inline]

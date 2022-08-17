@@ -22,14 +22,14 @@ use std::mem;
 use std::ptr;
 
 #[macro_export]
-macro_rules! function {
+macro_rules! function_type {
     (@ret) => { () };
     (@ret $t:ty) => { $t };
     (($($p:ty),*) $(-> $r:ty)?) => {
         $crate::Function<
             fn($($p),*) $(-> $r)?,
             ($($p,)*),
-            function!(@ret $($r)?)
+            function_type!(@ret $($r)?)
         >
     }
 }
@@ -439,4 +439,44 @@ where
         0
     }
 }
+
+pub struct CFunction(pub unsafe extern "C" fn(LuaState) -> i32);
+
+impl<L> PushInto<L> for CFunction
+where
+    L: AsLua,
+{
+    type Err = Void;
+    #[inline]
+    fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
+        unsafe {
+            ffi::lua_pushcfunction(lua.as_lua(), self.0);
+            Ok(PushGuard::new(lua, 1))
+        }
+    }
+}
+
+impl<L> PushOneInto<L> for CFunction
+where
+    L: AsLua,
+{}
+
+impl<L> Push<L> for CFunction
+where
+    L: AsLua,
+{
+    type Err = Void;
+    #[inline]
+    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
+        unsafe {
+            ffi::lua_pushcfunction(lua.as_lua(), self.0);
+            Ok(PushGuard::new(lua, 1))
+        }
+    }
+}
+
+impl<L> PushOne<L> for CFunction
+where
+    L: AsLua,
+{}
 
