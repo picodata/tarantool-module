@@ -1,9 +1,10 @@
 FROM centos:7
 
-RUN set -e; \
-    curl -L https://tarantool.io/release/2.8/installer.sh | bash; \
-    yum -y install gcc git tarantool tarantool-devel; \
-    yum clean all;
+RUN set -e; curl -L https://tarantool.io/release/2.8/installer.sh | bash
+RUN yum -y install gcc git
+RUN yum -y install tarantool
+RUN yum -y install tarantool-devel
+RUN yum clean all
 
 ENV PATH=/root/.cargo/bin:${PATH}
 RUN set -e; \
