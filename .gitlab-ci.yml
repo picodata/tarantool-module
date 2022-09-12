@@ -76,6 +76,7 @@ build-vanila:
         - cargo -V
         - cargo build --all
         - cargo test
+        - sleep infinity
         - ./tests/test.sh
         - cargo clippy --version
         - cargo clippy -- --deny warnings
