@@ -1182,7 +1182,7 @@ where
     T: serde::Deserialize<'de>,
 {
     fn decode(data: &'de [u8]) -> Result<Self> {
-        Ok(rmp_serde::from_slice(data)?)
+        rmp_serde::from_slice(data).map_err(|e| Error::decode::<T>(e, data))
     }
 }
 
