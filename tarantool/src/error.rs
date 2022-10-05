@@ -49,8 +49,15 @@ pub enum Error {
     #[error("Failed to encode tuple: {0}")]
     Encode(#[from] Encode),
 
+    #[error("Failed to decode tuple: {error}, expected type {expected_type}, got msgpack {actual_msgpack}")]
+    Decode {
+        error: rmp_serde::decode::Error,
+        expected_type: String,
+        actual_msgpack: String,
+    },
+
     #[error("Failed to decode tuple: {0}")]
-    Decode(rmp_serde::decode::Error),
+    DecodeRmpValue(#[from] rmp_serde::decode::Error),
 
     #[cfg(feature = "raft_node")]
     #[error("Protobuf encode/decode error: {0}")]
@@ -83,6 +90,27 @@ pub enum Error {
     MetaNotFound,
 }
 
+impl Error {
+    pub fn decode<T>(error: rmp_serde::decode::Error, data: &[u8]) -> Self {
+        use std::io::Write;
+
+        let mut msgpack = Vec::with_capacity(data.len() * 4 + 3);
+        write!(msgpack, "b\"").unwrap();
+        for byte in data {
+            write!(msgpack, "\\x{byte:02x}").unwrap();
+        }
+        write!(msgpack, "\"").unwrap();
+
+        Error::Decode {
+            error,
+            expected_type: std::any::type_name::<T>().into(),
+            // It's safe, because we've just constructed the utf8 string
+            // from pieces of utf8 strings.
+            actual_msgpack: unsafe { String::from_utf8_unchecked(msgpack) },
+        }
+    }
+}
+
 impl From<io::Error> for Error {
     fn from(error: io::Error) -> Self {
         Error::IO(error)
@@ -99,12 +127,6 @@ impl From<raft::Error> for Error {
 impl From<rmp_serde::encode::Error> for Error {
     fn from(error: rmp_serde::encode::Error) -> Self {
         Encode::from(error).into()
-    }
-}
-
-impl From<rmp_serde::decode::Error> for Error {
-    fn from(error: rmp_serde::decode::Error) -> Self {
-        Error::Decode(error)
     }
 }
 

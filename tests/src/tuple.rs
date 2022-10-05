@@ -401,3 +401,14 @@ pub fn raw_bytes() {
     assert_eq!(&**bytes, b"\x82\xa1a\x0a\xa1b\x14");
 }
 
+pub fn decode_error() {
+    use tarantool::tuple::{Decode, ToTupleBuffer};
+
+    let buf = (1, 2, 3).to_tuple_buffer().unwrap();
+
+    let err = <(String, String)>::decode(buf.as_ref()).unwrap_err();
+    assert_eq!(err.to_string(),
+        r#"Failed to decode tuple: invalid type: integer `1`, expected a string, expected type (alloc::string::String, alloc::string::String), got msgpack b"\x93\x01\x02\x03""#
+    )
+}
+

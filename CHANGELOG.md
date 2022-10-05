@@ -1,5 +1,12 @@
 # Change Log
 
+# [0.7.0] ?? ?? ??
+
+### Changed
+- `Error::Decode` now contains expected rust type and actual incorrect msgpack
+    contents.
+- `sql::Statement::execute` now returns `Error::DecodeRmpValue`.
+
 # [0.6.4] Oct ?? 2022
 
 ### Added
