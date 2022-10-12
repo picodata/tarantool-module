@@ -47,6 +47,7 @@ impl Tuple {
     pub fn new<T>(value: &T) -> Result<Self>
     where
         T: ToTupleBuffer,
+        T: ?Sized,
     {
         Ok(Self::from(&value.to_tuple_buffer()?))
     }
@@ -997,6 +998,7 @@ impl FunctionCtx {
     pub fn return_mp<T>(&self, value: &T) -> Result<c_int>
     where
         T: Serialize,
+        T: ?Sized,
     {
         let buf = rmp_serde::to_vec_named(value)?;
         self.return_bytes(&buf)
@@ -1090,6 +1092,7 @@ impl FunctionArgs {
 pub fn session_push<T>(value: &T) -> Result<()>
 where
     T: ToTupleBuffer,
+    T: ?Sized,
 {
     let buf = value.to_tuple_buffer().unwrap();
     let buf_ptr = buf.as_ptr() as *const c_char;
