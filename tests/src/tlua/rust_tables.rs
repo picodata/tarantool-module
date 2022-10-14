@@ -684,6 +684,96 @@ pub fn derive_enum_lua_read() {
     assert_eq!((&lua).read::<E>().unwrap(), E::Vec(1., 2., 3.));
     let lua = lua.push(&S { foo: 314, bar: "pi".into() });
     assert_eq!((&lua).read::<E>().unwrap(), E::S(S { foo: 314, bar: "pi".into() }));
+
+
+    #[derive(Debug)]
+    enum F {
+        A(f32, f32, f32),
+        B(i32),
+    }
+
+    impl<L> tlua::LuaRead<L> for F
+    where
+        L: tlua::AsLua,
+    {
+        const N_VALUES_EXPECTED: i32 = {
+            if !(
+                <(f32, f32, f32) as tlua::LuaRead<L>>::N_VALUES_EXPECTED
+                    == <i32 as tlua::LuaRead<L>>::N_VALUES_EXPECTED
+            )
+            {
+                panic!(
+                    "assertion failed: <(f32, f32, f32) as tlua::LuaRead<L>>::N_VALUES_EXPECTED == <(i32) as tlua::LuaRead<L>>::N_VALUES_EXPECTED",
+                )
+            }
+            <(f32, f32, f32) as tlua::LuaRead<L>>::N_VALUES_EXPECTED
+        };
+        fn lua_read(
+            __lua: L,
+        ) -> ::std::result::Result<Self, L> {
+            let _ = <Self as tlua::LuaRead<L>>::N_VALUES_EXPECTED;
+            let top = unsafe { tlua::ffi::lua_gettop(__lua.as_lua()) };
+            let n_vals = <( f32, f32, f32) as tlua::LuaRead<L>>::N_VALUES_EXPECTED;
+            let __lua = if top >= n_vals {
+                let __index = top - n_vals + 1;
+                match tlua::AsLua::read_at(__lua, __index) {
+                    ::std::result::Result::Ok((field_0, field_1, field_2)) => {
+                        return ::std::result::Result::Ok(
+                            Self::A(field_0, field_1, field_2),
+                        );
+                    }
+                    ::std::result::Result::Err(__lua) => __lua,
+                }
+            } else {
+                __lua
+            };
+            let n_vals = <i32 as tlua::LuaRead<L >>::N_VALUES_EXPECTED;
+            let __lua = if top >= n_vals {
+                let __index = top - n_vals + 1;
+                match tlua::AsLua::read_at(__lua, __index) {
+                    ::std::result::Result::Ok(v) => {
+                        return ::std::result::Result::Ok(Self::B(v));
+                    }
+                    ::std::result::Result::Err(__lua) => __lua,
+                }
+            } else {
+                __lua
+            };
+            Err(__lua)
+        }
+        #[inline(always)]
+        fn lua_read_at_position(
+            __lua: L,
+            __index: ::std::num::NonZeroI32,
+        ) -> ::std::result::Result<Self, L> {
+            let _ = <Self as tlua::LuaRead<L>>::N_VALUES_EXPECTED;
+            Self::lua_read_at_maybe_zero_position(__lua, __index.into())
+        }
+        fn lua_read_at_maybe_zero_position(
+            __lua: L,
+            __index: i32,
+        ) -> ::std::result::Result<Self, L> {
+            let _ = <Self as tlua::LuaRead<L>>::N_VALUES_EXPECTED;
+            let __lua = match tlua::AsLua::read_at(__lua, __index) {
+                ::std::result::Result::Ok((field_0, field_1, field_2)) => {
+                    return ::std::result::Result::Ok(
+                        Self::A(field_0, field_1, field_2),
+                    );
+                }
+                ::std::result::Result::Err(__lua) => __lua,
+            };
+            let __lua = match tlua::AsLua::read_at(__lua, __index) {
+                ::std::result::Result::Ok(v) => {
+                    return ::std::result::Result::Ok(Self::B(v));
+                }
+                ::std::result::Result::Err(__lua) => __lua,
+            };
+            Err(__lua)
+        }
+    }
+
+    let f: F = lua.into_inner().into_inner().eval("return 1").unwrap();
+    dbg!(f);
 }
 
 pub fn derive_generic_enum_lua_read() {

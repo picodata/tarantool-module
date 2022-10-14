@@ -259,6 +259,7 @@ pub fn optional_params() {
         Left(L),
         Right(R),
     }
+    dbg!(<Either<(String, Option<Opts>), Option<Opts>> as tlua::LuaRead<tlua::StaticLua>>::N_VALUES_EXPECTED);
     lua.set("foo", Function::new(|args: Either<(String, Option<Opts>), Option<Opts>>| -> String {
         let (sailor, opts) = match args {
             Either::Left((who, opts)) => (Some(who), opts),

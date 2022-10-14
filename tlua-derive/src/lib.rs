@@ -90,12 +90,16 @@ pub fn proc_macro_derive_lua_read(input: proc_macro::TokenStream) -> proc_macro:
             fn lua_read_at_position(__lua: #l, __index: ::std::num::NonZeroI32)
                 -> ::std::result::Result<Self, #l>
             {
+                // // force checking N_VALUES_EXPECTED predicate
+                // let _ = Self::N_VALUES_EXPECTED;
                 Self::lua_read_at_maybe_zero_position(__lua, __index.into())
             }
 
             fn lua_read_at_maybe_zero_position(__lua: #l, __index: i32)
                 -> ::std::result::Result<Self, #l>
             {
+                // // force checking N_VALUES_EXPECTED predicate
+                // let _ = Self::N_VALUES_EXPECTED;
                 #read_at_code
             }
         }
@@ -305,14 +309,32 @@ impl<'a> Info<'a> {
             Self::Struct(fields) => {
                 let n_values = fields.n_values(ctx);
                 quote! {
-                    #[inline(always)]
-                    fn n_values_expected() -> i32 {
-                        #n_values
-                    }
+                    const N_VALUES_EXPECTED: i32 = #n_values;
                 }
             }
-            Self::Enum(_) => {
-                quote! {}
+            Self::Enum(r#enum) => {
+                if r#enum.variants.is_empty() {
+                    // Enum with no variants cannot be constructed
+                    return quote! {}
+                }
+                let mut n_values = r#enum.variants.iter()
+                    .map(|v| {
+                        if let Some(fields) = &v.info {
+                            fields.n_values(ctx)
+                        } else {
+                            // No fields info means a unit variant
+                            quote! { 1 }
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let tail = n_values.split_off(1);
+                let head = &n_values[0];
+                quote! {
+                    const N_VALUES_EXPECTED: i32 = {
+                        assert!(#(#head == #tail)&&*);
+                        #head
+                    };
+                }
             }
         }
     }
@@ -461,7 +483,7 @@ impl<'a> FieldsInfo<'a> {
                 let l = &ctx.as_lua_type_param;
                 // Corresponds to multiple values on the stack (same as tuple)
                 quote! {
-                    <(#(#ty),*) as tlua::LuaRead<#l>>::n_values_expected()
+                    <(#(#ty),*) as tlua::LuaRead<#l>>::N_VALUES_EXPECTED
                 }
             }
             Self::Unnamed { .. } => {

@@ -81,9 +81,7 @@ macro_rules! tuple_impl {
             LU: AsLua,
             $ty: LuaRead<LU>,
         {
-            fn n_values_expected() -> i32 {
-                $ty::n_values_expected()
-            }
+            const N_VALUES_EXPECTED: i32 = $ty::N_VALUES_EXPECTED;
 
             #[inline]
             fn lua_read_at_position(lua: LU, index: NonZeroI32) -> Result<($ty,), LU> {
@@ -262,10 +260,7 @@ macro_rules! tuple_impl {
             $first: for<'a> LuaRead<&'a LU>,
             $($other: for<'a> LuaRead<&'a LU>),+
         {
-            #[inline(always)]
-            fn n_values_expected() -> i32 {
-                $first::n_values_expected() $( + $other::n_values_expected() )+
-            }
+            const N_VALUES_EXPECTED: i32 = $first::N_VALUES_EXPECTED $( + $other::N_VALUES_EXPECTED )+;
 
             #[inline]
             fn lua_read_at_position(lua: LU, index: NonZeroI32) -> Result<($first, $($other),+), LU> {
@@ -282,7 +277,8 @@ macro_rules! tuple_impl {
                 let mut i = index;
                 // TODO(gmoshkin): + n_values_expected
                 // see comment below
-                i = if i == 0 { 0 } else { i + 1 };
+                let candidate_i = i + $first::N_VALUES_EXPECTED;
+                i = if i <= 0 && candidate_i >= 0 { 0 } else { candidate_i };
 
                 $(
                     let $other: $other = match LuaRead::lua_read_at_maybe_zero_position(&lua, i) {
@@ -294,7 +290,9 @@ macro_rules! tuple_impl {
                     // situation correctly (e.g. Option<T>, (), ...)
                     // TODO(gmoshkin): + n_values_expected but make sure not to
                     // ignore going over 0
-                    i = if i == 0 { 0 } else { i + 1 };
+                    // i = if i == 0 { 0 } else { i + 1 };
+                    let candidate_i = i + $other::N_VALUES_EXPECTED;
+                    i = if i <= 0 && candidate_i >= 0 { 0 } else { candidate_i };
                 )+
 
                 Ok(($first, $($other),+))

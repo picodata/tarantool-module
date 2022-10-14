@@ -590,6 +590,7 @@ where
     A: for<'a> LuaRead<&'a L>,
     B: for<'b> LuaRead<&'b L>,
 {
+    const N_VALUES_EXPECTED: i32 = { assert!(A::N_VALUES_EXPECTED == B::N_VALUES_EXPECTED); A::N_VALUES_EXPECTED };
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Result<A, B>, L> {
         if let Ok(a) = A::lua_read_at_position(&lua, index) {
             return Ok(Ok(a))
