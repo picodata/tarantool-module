@@ -259,6 +259,31 @@ pub fn optional_params() {
         Left(L),
         Right(R),
     }
+    use Either::*;
+    fn handle_ok<T>(_: T){}
+    fn handle_err<T>(_: T){}
+
+    let code = "
+        if random() then
+            return 'ok'
+        else
+            return nil, 'error'
+        end
+    ";
+    let res: Either<String, (tlua::Nil, String)> = lua.eval(code).unwrap();
+    match res {
+        Left(ok) => handle_ok(ok),
+        Right((_, err)) => handle_err(err),
+    };
+
+    let res: (Option<String>, Option<String>) = lua.eval(code).unwrap();
+    match res {
+        (Some(ok), None) => handle_ok(ok),
+        (None, Some(err)) => handle_err(err),
+        (Some(what), Some(how)) => unreachable!(),
+        (None, None) => unreachable!(),
+    };
+
     dbg!(<Either<(String, Option<Opts>), Option<Opts>> as tlua::LuaRead<tlua::StaticLua>>::N_VALUES_EXPECTED);
     lua.set("foo", Function::new(|args: Either<(String, Option<Opts>), Option<Opts>>| -> String {
         let (sailor, opts) = match args {
