@@ -88,10 +88,21 @@ package.cpath = string.format(
     package.cpath
 )
 
+local test_name
+local print
+if arg[1] == "--print" then
+    print = true
+    test_name = ""
+else   
+    print = false
+    test_name = arg[1]
+end
+
 -- Prepare config
 cfg = json.encode {
-    filter = arg[1] or "",
+    test_name = test_name,
     listen = port,
+    print = print,
 }
 
 -- Run tests
