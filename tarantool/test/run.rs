@@ -50,21 +50,54 @@ fn main() {
     });
     let mut failures = vec![];
     let mut passed: usize = 0;
+    let num_cpus = num_cpus::get();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(dbg!(num_cpus)).build().unwrap();
+    enum TestResult {
+        Passed,
+        Failed(Vec<u8>),
+        Error(std::io::Error),
+    }
     for test in tests {
+        let tx = tx.clone();
+        let tarantool_exec = tarantool_exec.clone();
+        let workspace_root = metadata.workspace_root.clone();
+        pool.spawn(move || {
+            let output = Command::new(tarantool_exec)
+                .arg(format!("{}/tests/run_tests.lua", workspace_root))
+                .arg(test.clone())
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped())
+                .output();
+            let output = tarantool::unwrap_ok_or!{output,
+                Err(e) => {
+                    tx.send((test, TestResult::Error(e))).unwrap();
+                    return;
+                }
+            };
+            if output.status.success() {
+                tx.send((test, TestResult::Passed)).unwrap();
+            } else {
+                tx.send((test, TestResult::Failed(output.stderr))).unwrap();
+            }
+        });
+    }
+    drop(tx);
+
+    for (test, result) in rx {
         print!("test {} ... ", test);
-        let output = Command::new(tarantool_exec.clone())
-            .arg(format!("{}/tests/run_tests.lua", metadata.workspace_root))
-            .arg(test.clone())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .output()
-            .unwrap_or_else(|err| panic!("Failed to run tarantool for test {}: {}", test, err));
-        if output.status.success() {
-            println!("{}", PASSED);
-            passed += 1;
-        } else {
-            println!("{}", FAILED);
-            failures.push((test, output))
+        match result {
+            TestResult::Passed => {
+                println!("{}", PASSED);
+                passed += 1;
+            }
+            TestResult::Failed(output) => {
+                println!("{}", FAILED);
+                failures.push((test, output))
+            }
+            TestResult::Error(err) => {
+                panic!("Failed to run tarantool for test {}: {}", test, err)
+            }
         }
     }
     println!();
@@ -72,7 +105,7 @@ fn main() {
     for (test, output) in failures {
         println!("test {} failed", test);
         println!("STDERR:");
-        println!("{}", String::from_utf8_lossy(&output.stderr));
+        println!("{}", String::from_utf8_lossy(&output));
     }
     let test_result = if failures_len == 0 { PASSED } else { FAILED };
     println!();
