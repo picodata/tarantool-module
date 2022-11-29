@@ -62,10 +62,12 @@ fn main() {
         let tx = tx.clone();
         let tarantool_exec = tarantool_exec.clone();
         let workspace_root = metadata.workspace_root.clone();
+        let wal_dir = tempfile::tempdir().unwrap().into_path();
         pool.spawn(move || {
             let output = Command::new(tarantool_exec)
                 .arg(format!("{}/tests/run_tests.lua", workspace_root))
                 .arg(test.clone())
+                .env("TT_WAL_DIR", wal_dir)
                 .stdout(Stdio::null())
                 .stderr(Stdio::piped())
                 .output();
