@@ -350,7 +350,7 @@ impl_push_read! { String,
     }
     read_at_position(lua, index) {
         lua_read_string_impl!(lua, index,
-            |slice: &[u8], lua| String::from_utf8(slice.to_vec()).map_err(|_| lua)
+            |slice: &[u8], _| Ok(String::from_utf8_unchecked(slice.to_vec()))
         )
     }
 }
