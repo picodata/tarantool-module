@@ -556,6 +556,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 proc::custom_ret,
                 proc::inject,
                 proc::inject_with_packed,
+                proc::send_raw_msgpack,
                 uuid::to_tuple,
                 uuid::from_tuple,
                 uuid::to_lua,

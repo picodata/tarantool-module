@@ -310,3 +310,31 @@ pub fn inject_with_packed() {
         Some(vec![2, 3, 4]),
     );
 }
+
+pub fn send_raw_msgpack() {
+    use tarantool::tuple::Decode;
+
+    let lua = tarantool::lua_state();
+    let proc_name = format!("{}.proc_send_raw_msgpack", lib_name());
+    lua.exec_with("box.schema.func.create(..., { language = 'C' })", proc_name).unwrap();
+    lua.exec("box.schema.user.grant('guest', 'super')").unwrap();
+
+    let port = unsafe { crate::LISTEN };
+    let conn = tarantool::net_box::Conn::new(("localhost", port), Default::default(), None).unwrap();
+
+    #[tarantool::proc(packed_args)]
+    fn proc_send_raw_msgpack(msgpack: RawByteBuf) -> RawByteBuf {
+        let (s, n) = <(String, i32)>::decode(&msgpack).unwrap();
+        assert_eq!(s, "foo");
+        assert_eq!(n, 42);
+        return RawByteBuf(b"\x92\xa3bar\x0d".to_vec());
+    }
+
+    let proc_name = format!("{}.proc_send_raw_msgpack", lib_name());
+    let tuple = unsafe { Tuple::from_slice(b"\x92\xa3foo\x2a") };
+    let res = conn.call(&proc_name, &tuple, &Default::default()).unwrap().unwrap();
+
+    let (((s, n),),): (((String, i32),),) = res.decode().unwrap();
+    assert_eq!(s, "bar");
+    assert_eq!(n, 13);
+}
