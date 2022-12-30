@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use tarantool::c_ptr;
 use tarantool::ffi::tarantool as ffi;
-use tarantool::index::IteratorType;
+use tarantool::index::{Index, IteratorType};
 use tarantool::space::Space;
 use tarantool::tuple::Tuple;
 
@@ -72,6 +72,11 @@ pub fn space_ephemeral_new() {
         let index_id = ffi::pico_index_id(i);
         assert_eq!(index_id, 1);
         assert_eq!(ffi::pico_space_index(s, index_id), i);
+
+        let index: Index = std::mem::transmute((space_id, index_id));
+        assert!(index.get(&["not-found"]).unwrap().is_none());
+        let t = index.get(&["friend"]).unwrap().unwrap();
+        assert_eq!(t.get::<_, i32>(0).unwrap(), 37);
 
         ffi::pico_space_ephemeral_delete(s);
     }
