@@ -982,3 +982,30 @@ extern "C" {
         old_handler: Option<extern "C" fn(*mut c_void) -> c_int>,
     ) -> c_int;
 }
+
+#[repr(C)]
+pub struct BoxSpace {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+pub struct BoxIndex {
+    _unused: [u8; 0],
+}
+
+crate::define_dlsym_reloc! {
+    pub fn pico_space_ephemeral_new(space_def: *const BoxTuple) -> *mut BoxSpace;
+    pub fn pico_space_ephemeral_delete(space: *mut BoxSpace) -> *mut BoxSpace;
+    pub fn pico_space_ephemeral_index_new(
+        space: *const BoxSpace,
+        name: *const c_char,
+        name_len: u32,
+        r#type: *const c_char,
+        type_len: u32,
+        opts_map: *const c_char,
+        parts: *const c_char,
+    ) -> *mut BoxIndex;
+    pub fn pico_space_id(space: *mut BoxSpace) -> u32;
+    pub fn pico_space_index(space: *mut BoxSpace, index_id: u32) -> *mut BoxIndex;
+    pub fn pico_index_id(index: *mut BoxIndex) -> u32;
+}

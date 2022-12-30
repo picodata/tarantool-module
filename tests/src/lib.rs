@@ -27,6 +27,7 @@ mod common;
 mod decimal;
 mod define_str_enum;
 mod enums;
+mod ephemeral;
 mod error;
 mod fiber;
 mod latch;
@@ -581,6 +582,11 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                     tuple_picodata::tuple_as_named_buffer,
                 ])
             }
+
+            tests.append(&mut tests![
+                [should_panic_if: !tarantool::ffi::has_space_ephemeral()]
+                ephemeral::space_ephemeral_new,
+            ]);
 
             tests
         },
