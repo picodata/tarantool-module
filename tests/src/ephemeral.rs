@@ -1,9 +1,9 @@
 use std::collections::HashMap;
-use tarantool::ffi::tarantool as ffi;
-use tarantool::tuple::Tuple;
-use tarantool::space::Space;
-use tarantool::index::IteratorType;
 use tarantool::c_ptr;
+use tarantool::ffi::tarantool as ffi;
+use tarantool::index::IteratorType;
+use tarantool::space::Space;
+use tarantool::tuple::Tuple;
 
 pub fn space_ephemeral_new() {
     unsafe {
@@ -32,8 +32,10 @@ pub fn space_ephemeral_new() {
         let parts = rmp_serde::to_vec(&[(0, "unsigned")]).unwrap();
         let i = ffi::pico_space_ephemeral_index_new(
             s,
-            c_ptr!("pk"), 2,
-            c_ptr!("TREE"), 4,
+            c_ptr!("pk"),
+            2,
+            c_ptr!("TREE"),
+            4,
             opts.as_ptr() as _,
             parts.as_ptr() as _,
         );
@@ -46,16 +48,23 @@ pub fn space_ephemeral_new() {
         space.insert(&(13, "hello")).unwrap();
         space.insert(&(37, "friend")).unwrap();
 
-        let rows = space.select(IteratorType::All, &()).unwrap()
+        let rows = space
+            .select(IteratorType::All, &())
+            .unwrap()
             .map(|t| t.decode::<(i32, String)>().unwrap())
             .collect::<Vec<_>>();
-        assert_eq!(rows, [(13, "hello".to_string()), (37, "friend".to_string())]);
+        assert_eq!(
+            rows,
+            [(13, "hello".to_string()), (37, "friend".to_string())]
+        );
 
         let parts = rmp_serde::to_vec(&[(1, "string")]).unwrap();
         let i = ffi::pico_space_ephemeral_index_new(
             s,
-            c_ptr!("value"), 2,
-            c_ptr!("HASH"), 4,
+            c_ptr!("value"),
+            2,
+            c_ptr!("HASH"),
+            4,
             opts.as_ptr() as _,
             parts.as_ptr() as _,
         );
