@@ -1,5 +1,6 @@
 use crate::{
     error::TarantoolErrorCode::ProcC,
+    ffi::tarantool::TarantoolProc,
     set_error,
     tuple::{FunctionCtx, RawByteBuf, RawBytes, Tuple, TupleBuffer},
 };
@@ -16,6 +17,70 @@ macro_rules! unwrap_or_report_err {
             }
         }
     };
+}
+
+/// All stored procedures collected by
+/// [`collect_proc!`](crate::collect_proc) macro.
+pub struct AllProcs;
+
+#[doc(hidden)]
+#[::linkme::distributed_slice]
+pub static ALL_PROCS: [(&'static str, TarantoolProc)] = [..];
+
+impl AllProcs {
+    /// Returns an iterator over all procs names.
+    pub fn names() -> impl Iterator<Item = &'static str> {
+        ALL_PROCS.iter().map(|v| v.0)
+    }
+}
+
+#[macro_export]
+/// Collects a function to be used as a tarantool stored procedure.
+///
+/// The objective of this macro is to simplify creating stored
+/// procedures (`box.schema.func.create` invoked during the instance
+/// initialization). And, since those functions aren't invoked directly,
+/// to prevent symbols removal due to the link-time optimization.
+///
+/// For retrieving collected items refer to [`AllProcs`].
+///
+macro_rules! collect_proc {
+    ($proc:ident) => {
+        impl $crate::proc::AllProcs {
+            #[allow(dead_code)]
+            #[doc(hidden)]
+            fn $proc() {
+                // Enclosing static variable in a function allows to avoid name clash.
+                #[::linkme::distributed_slice($crate::proc::ALL_PROCS)]
+                pub static PROC: (&str, $crate::ffi::tarantool::TarantoolProc) =
+                    ($crate::stringify_cfunc!($proc), $proc);
+            }
+        }
+    };
+}
+
+/// Checks that the given function exists and returns it's name suitable for
+/// calling it via tarantool rpc.
+///
+/// The argument can be a full path to the function.
+#[macro_export]
+macro_rules! stringify_cfunc {
+    ( $($func_name:tt)+ ) => {{
+        use $crate::tuple::FunctionArgs;
+        use $crate::tuple::FunctionCtx;
+        use libc::c_int;
+
+        // Existence check
+        const _: unsafe extern "C" fn(FunctionCtx, FunctionArgs) -> c_int = $($func_name)+;
+
+        concat!(".", $crate::stringify_last_token!($($func_name)+))
+    }};
+}
+
+#[macro_export]
+macro_rules! stringify_last_token {
+    ($tail:tt) => { std::stringify!($tail) };
+    ($head:tt $($tail:tt)+) => { $crate::stringify_last_token!($($tail)+) };
 }
 
 ////////////////////////////////////////////////////////////////////////////////
