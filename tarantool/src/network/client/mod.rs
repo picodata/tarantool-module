@@ -319,39 +319,26 @@ async fn receiver(client: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<TcpStre
 mod tests {
     use super::*;
     use crate::fiber::r#async::timeout::IntoTimeout as _;
-    use crate::test::{TestCase, TARANTOOL_LISTEN, TESTS};
-    use crate::test_name;
+    use crate::test::TARANTOOL_LISTEN;
 
-    use linkme::distributed_slice;
-
-    #[distributed_slice(TESTS)]
-    static CONNECT: TestCase = TestCase {
-        name: test_name!("connect"),
-        f: || {
+    crate::tests! {
+        fn connect() {
             fiber::block_on(async {
                 let client = Client::connect("localhost", TARANTOOL_LISTEN)
                     .await
                     .unwrap();
             });
-        },
-    };
+        }
 
-    #[distributed_slice(TESTS)]
-    static CONNECT_FAILURE: TestCase = TestCase {
-        name: test_name!("connect_failure"),
-        f: || {
+        fn connect_failure() {
             fiber::block_on(async {
                 // Can be any other unused port
                 let err = Client::connect("localhost", 3300).await.unwrap_err();
                 assert!(matches!(dbg!(err), Error::ClosedWithErr(_)))
             });
-        },
-    };
+        }
 
-    #[distributed_slice(TESTS)]
-    static PING: TestCase = TestCase {
-        name: test_name!("ping"),
-        f: || {
+        fn ping() {
             fiber::block_on(async {
                 let client = Client::connect("localhost", TARANTOOL_LISTEN)
                     .await
@@ -361,6 +348,6 @@ mod tests {
                     client.ping().timeout(Duration::from_secs(3)).await.unwrap();
                 }
             });
-        },
-    };
+        }
+    }
 }

@@ -542,14 +542,9 @@ where
 #[cfg(feature = "tarantool_test")]
 mod tests {
     use super::*;
-    use crate::test::{TestCase, TLUA_TESTS};
-    use crate::test_name;
-    use linkme::distributed_slice;
 
-    #[distributed_slice(TLUA_TESTS)]
-    static C_FUNCTION: TestCase = TestCase {
-        name: test_name!("c_function"),
-        f: || {
+    crate::tests! {
+        fn c_function() {
             let lua = crate::Lua::new();
 
             unsafe extern "C" fn return_42(lua: crate::LuaState) -> libc::c_int {
@@ -562,6 +557,6 @@ mod tests {
                     .unwrap(),
                 42
             );
-        },
-    };
+        }
+    }
 }

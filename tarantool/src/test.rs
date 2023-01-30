@@ -1,19 +1,7 @@
 //! Internals used by custom test runtime to run tests that require tarantool environment
 
-use linkme::distributed_slice;
 use tester::{ShouldPanic, TestDesc, TestDescAndFn, TestFn, TestName, TestType};
 
-/// The recommended way to describe tests in `tarantool` crate
-///
-/// # Example
-/// ```
-/// use tarantool::test::{TESTS, TestCase};
-/// use tarantool::test_name;
-/// use linkme::distributed_slice;
-///
-/// #[distributed_slice(TESTS)]
-/// static MY_TEST: TestCase = TestCase { name: test_name!("my_test"), f: || { assert!(true) }};
-/// ```
 #[derive(Clone)]
 pub struct TestCase {
     pub name: &'static str,
@@ -21,19 +9,35 @@ pub struct TestCase {
     pub f: fn(),
 }
 
-/// Combines a user defined test name with its module path
+/// The recommended way to describe tests in `tarantool` crate
+///
+/// # Example
+/// ```
+/// tarantool::tests! {
+///     fn my_test() {
+///         assert!(true);
+///     }
+/// }
+/// ```
 #[macro_export]
-macro_rules! test_name {
-    ($name:literal) => {
-        concat!(module_path!(), "::", $name)
-    };
+macro_rules! tests {
+    ($(fn $test:ident () $body:block)+) => {
+        $(
+            #[::linkme::distributed_slice($crate::test::TARANTOOL_MODULE_TESTS)]
+            #[allow(non_upper_case_globals)]
+            static $test: $crate::test::TestCase = $crate::test::TestCase {
+                name: concat!(module_path!(), "::", ::std::stringify!($test)),
+                f: || $body,
+            };
+        )+
+    }
 }
 
-#[distributed_slice]
-pub static TESTS: [TestCase] = [..];
+#[linkme::distributed_slice]
+pub static TARANTOOL_MODULE_TESTS: [TestCase] = [..];
 
 pub fn collect() -> Vec<TestDescAndFn> {
-    TESTS
+    TARANTOOL_MODULE_TESTS
         .iter()
         .map(|case| TestDescAndFn {
             desc: TestDesc {

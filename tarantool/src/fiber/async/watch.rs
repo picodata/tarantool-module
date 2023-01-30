@@ -345,18 +345,13 @@ mod tests {
     use super::*;
     use crate::fiber;
     use crate::fiber::r#async::timeout::{self, IntoTimeout};
-    use crate::test::{TestCase, TESTS};
-    use crate::test_name;
     use futures::join;
-    use linkme::distributed_slice;
     use std::time::Duration;
 
     const _1_SEC: Duration = Duration::from_secs(1);
 
-    #[distributed_slice(TESTS)]
-    static RECEIVE_NOTIFICATION_SENT_BEFORE: TestCase = TestCase {
-        name: test_name!("receive_notification_sent_before"),
-        f: || {
+    crate::tests! {
+        fn receive_notification_sent_before() {
             let (tx, mut rx_1) = channel::<i32>(10);
             let mut rx_2 = rx_1.clone();
             // Subscribe should work same as rx clone
@@ -369,13 +364,9 @@ mod tests {
                 }),
                 (20, 20, 20)
             );
-        },
-    };
+        }
 
-    #[distributed_slice(TESTS)]
-    static RECEIVE_NOTIFICATION_SENT_AFTER: TestCase = TestCase {
-        name: test_name!("receive_notification_sent_after"),
-        f: || {
+        fn receive_notification_sent_after() {
             let (tx, mut rx_1) = channel::<i32>(10);
             let mut rx_2 = rx_1.clone();
             // Subscribe should work same as rx clone
@@ -386,13 +377,9 @@ mod tests {
             });
             tx.send(20).unwrap();
             assert_eq!(jh.join(), (20, 20, 20))
-        },
-    };
+        }
 
-    #[distributed_slice(TESTS)]
-    static RECEIVE_MULTIPLE_NOTIFICATIONS: TestCase = TestCase {
-        name: test_name!("receive_multiple_notifications"),
-        f: || {
+        fn receive_multiple_notifications() {
             let (tx, mut rx_1) = channel::<i32>(10);
             let jh = fiber::start_async(async {
                 rx_1.changed().await.unwrap();
@@ -406,13 +393,9 @@ mod tests {
             });
             tx.send(2).unwrap();
             assert_eq!(jh.join(), 2);
-        },
-    };
+        }
 
-    #[distributed_slice(TESTS)]
-    static RETAINS_ONLY_LAST_NOTIFICATION: TestCase = TestCase {
-        name: test_name!("retains_only_last_notification"),
-        f: || {
+        fn retains_only_last_notification() {
             let (tx, mut rx_1) = channel::<i32>(10);
             tx.send(1).unwrap();
             tx.send(2).unwrap();
@@ -427,24 +410,16 @@ mod tests {
                 fiber::block_on(rx_1.changed().timeout(_1_SEC)),
                 Err(timeout::Expired)
             );
-        },
-    };
+        }
 
-    #[distributed_slice(TESTS)]
-    static NOTIFICATION_RECEIVE_ERROR: TestCase = TestCase {
-        name: test_name!("notification_receive_error"),
-        f: || {
+        fn notification_receive_error() {
             let (tx, mut rx_1) = channel::<i32>(10);
             let jh = fiber::start_async(rx_1.changed());
             drop(tx);
             assert_eq!(jh.join(), Err(RecvError));
-        },
-    };
+        }
 
-    #[distributed_slice(TESTS)]
-    static NOTIFICATION_RECEIVED_IN_CONCURRENT_FIBER: TestCase = TestCase {
-        name: test_name!("notification_received_in_concurrent_fiber"),
-        f: || {
+        fn notification_received_in_concurrent_fiber() {
             let (tx, mut rx_1) = channel::<i32>(10);
             let mut rx_2 = rx_1.clone();
             let jh_1 = fiber::start_async(rx_1.changed());
@@ -452,13 +427,9 @@ mod tests {
             tx.send(1).unwrap();
             assert!(jh_1.join().is_ok());
             assert!(jh_2.join().is_ok());
-        },
-    };
+        }
 
-    #[distributed_slice(TESTS)]
-    static SEND_MODIFY: TestCase = TestCase {
-        name: test_name!("send_modify"),
-        f: || {
+        fn send_modify() {
             let (tx, mut rx) = channel(vec![13]);
             let jh = fiber::start(|| {
                 fiber::block_on(rx.changed()).unwrap();
@@ -466,13 +437,9 @@ mod tests {
             });
             tx.send_modify(|v| v.push(37)).unwrap();
             assert_eq!(jh.join(), [13, 37]);
-        },
-    };
+        }
 
-    #[distributed_slice(TESTS)]
-    static SENDER_GET: TestCase = TestCase {
-        name: test_name!("sender_get"),
-        f: || {
+        fn sender_get() {
             let (tx, _) = channel(69);
             assert_eq!(tx.get(), 69);
             tx.send(420).unwrap();
@@ -502,6 +469,6 @@ mod tests {
             tx.send_modify(|v| v.get_mut().push(1.61)).unwrap();
             fiber::block_on(rx.changed()).unwrap();
             assert_eq!(*rx.get_cloned().borrow(), [3.14, 2.71, 1.61]);
-        },
-    };
+        }
+    }
 }

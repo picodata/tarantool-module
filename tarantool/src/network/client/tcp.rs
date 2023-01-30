@@ -243,14 +243,12 @@ mod tests {
     use super::*;
 
     use crate::fiber;
-    use crate::test::{TestCase, TARANTOOL_LISTEN, TESTS};
-    use crate::test_name;
+    use crate::test::TARANTOOL_LISTEN;
 
     use std::net::TcpListener;
     use std::thread;
 
     use futures::{AsyncReadExt, AsyncWriteExt, FutureExt};
-    use linkme::distributed_slice;
 
     const _10_SEC: Duration = Duration::from_secs(10);
     const _0_SEC: Duration = Duration::from_secs(0);
@@ -261,37 +259,25 @@ mod tests {
         }
     }
 
-    #[distributed_slice(TESTS)]
-    static RESOLVE_ADDRESS: TestCase = TestCase {
-        name: test_name!("resolve_address"),
-        f: || unsafe {
-            let _ = get_address_info("localhost", _10_SEC).unwrap();
-        },
-    };
+    crate::tests! {
+        fn resolve_address() {
+            unsafe {
+                let _ = get_address_info("localhost", _10_SEC).unwrap();
+            }
+        }
 
-    #[distributed_slice(TESTS)]
-    static CONNECT: TestCase = TestCase {
-        name: test_name!("connect"),
-        f: || {
+        fn connect() {
             let _ = TcpStream::connect("localhost", TARANTOOL_LISTEN, _10_SEC).unwrap();
-        },
-    };
+        }
 
-    #[distributed_slice(TESTS)]
-    static READ: TestCase = TestCase {
-        name: test_name!("read"),
-        f: || {
+        fn read() {
             let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN, _10_SEC).unwrap();
             // Read greeting
             let mut buf = vec![0; 128];
             fiber::block_on(timeout::timeout(_10_SEC, stream.read_exact(&mut buf)));
-        },
-    };
+        }
 
-    #[distributed_slice(TESTS)]
-    static READ_TIMEOUT: TestCase = TestCase {
-        name: test_name!("read_timeout"),
-        f: || {
+        fn read_timeout() {
             let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN, _10_SEC).unwrap();
             // Read greeting
             let mut buf = vec![0; 128];
@@ -299,13 +285,9 @@ mod tests {
                 fiber::block_on(timeout::timeout(_0_SEC, stream.read_exact(&mut buf))).unwrap_err(),
                 timeout::Expired
             );
-        },
-    };
+        }
 
-    #[distributed_slice(TESTS)]
-    static WRITE: TestCase = TestCase {
-        name: test_name!("write"),
-        f: || {
+        fn write() {
             let (sender, receiver) = std::sync::mpsc::channel();
             let listener = TcpListener::bind("127.0.0.1:3302").unwrap();
             // Spawn listener
@@ -331,13 +313,9 @@ mod tests {
             }
             let buf = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
             assert_eq!(buf, vec![1, 2, 3, 4, 5])
-        },
-    };
+        }
 
-    #[distributed_slice(TESTS)]
-    static SPLIT: TestCase = TestCase {
-        name: test_name!("split"),
-        f: || {
+        fn split() {
             let (sender, receiver) = std::sync::mpsc::channel();
             let listener = TcpListener::bind("127.0.0.1:3303").unwrap();
             // Spawn listener
@@ -374,13 +352,9 @@ mod tests {
             }
             let buf = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
             assert_eq!(buf, vec![1, 2, 3, 4, 5])
-        },
-    };
+        }
 
-    #[distributed_slice(TESTS)]
-    static JOIN_CORRECT_TIMEOUT: TestCase = TestCase {
-        name: test_name!("join_correct_timeout"),
-        f: || {
+        fn join_correct_timeout() {
             {
                 let mut stream =
                     TcpStream::connect("localhost", TARANTOOL_LISTEN, _10_SEC).unwrap();
@@ -410,13 +384,9 @@ mod tests {
                     is_ok.unwrap();
                 });
             }
-        },
-    };
+        }
 
-    #[distributed_slice(TESTS)]
-    static SELECT_CORRECT_TIMEOUT: TestCase = TestCase {
-        name: test_name!("select_correct_timeout"),
-        f: || {
+        fn select_correct_timeout() {
             {
                 let mut stream =
                     TcpStream::connect("localhost", TARANTOOL_LISTEN, _10_SEC).unwrap();
@@ -452,6 +422,6 @@ mod tests {
                     assert!(is_ok);
                 });
             }
-        },
-    };
+        }
+    }
 }
