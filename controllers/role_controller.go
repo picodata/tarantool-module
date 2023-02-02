@@ -278,7 +278,10 @@ func CreateStatefulSetFromTemplate(ctx context.Context, replicasetNumber int, na
 	sts.Spec.ServiceName = role.GetAnnotations()["tarantool.io/cluster-id"]
 	replicasetUUID := uuid.NewSHA1(space, []byte(sts.GetName()))
 	sts.ObjectMeta.Labels["tarantool.io/replicaset-uuid"] = replicasetUUID.String()
-	sts.ObjectMeta.Labels["tarantool.io/vshardGroupName"] = role.GetLabels()["tarantool.io/role"]
+	if name, ok := sts.ObjectMeta.Labels["tarantool.io/vshardGroupName"]; ok {
+		sts.ObjectMeta.Labels["tarantool.io/vshardGroupName"] = name
+		sts.ObjectMeta.Labels["tarantool.io/useVshardGroups"] = "1"
+	}
 
 	if sts.ObjectMeta.Annotations == nil {
 		sts.ObjectMeta.Annotations = make(map[string]string)
@@ -288,7 +291,10 @@ func CreateStatefulSetFromTemplate(ctx context.Context, replicasetNumber int, na
 	sts.ObjectMeta.Annotations["tarantool.io/replicaset-weight"] = "100"
 
 	sts.Spec.Template.Labels["tarantool.io/replicaset-uuid"] = replicasetUUID.String()
-	sts.Spec.Template.Labels["tarantool.io/vshardGroupName"] = role.GetLabels()["tarantool.io/role"]
+	if name, ok := sts.ObjectMeta.Labels["tarantool.io/vshardGroupName"]; ok {
+		sts.Spec.Template.Labels["tarantool.io/vshardGroupName"] = name
+		sts.Spec.Template.Labels["tarantool.io/useVshardGroups"] = "1"
+	}
 
 	return sts
 }
