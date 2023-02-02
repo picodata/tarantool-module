@@ -4,5 +4,5 @@
 
 image:
   repository: docker-public.binary.picodata.io/tarantool-operator/tarantool-operator
-  tag: 0.0.13
+  tag: 0.0.14
   pullPolicy: IfNotPresent
