@@ -32,7 +32,12 @@ metadata:
     tarantool.io/cluster-id: {{ $.Values.ClusterName }}
     tarantool.io/replicaset-template: "{{ .RoleName }}-template"
     tarantool.io/role: {{ .RoleName }}
+    {{ if  .VshardGroup }}
+    tarantool.io/useVshardGroups: "1"
+    tarantool.io/vshardGroupName: {{ .VshardGroup }}
+    {{ else }}
     tarantool.io/useVshardGroups: "0"
+    {{ end }}
   annotations:
     tarantool.io/rolesToAssign: {{ $r }}
 spec:
@@ -55,7 +60,12 @@ spec:
         tarantool.io/cluster-id: "{{ $.Values.ClusterName }}"
         tarantool.io/cluster-domain-name: "{{ $.Values.ClusterDomainName }}"
         tarantool.io/pod-template: "{{ .RoleName }}-pod-template"
+        {{ if .VshardGroup }}
+        tarantool.io/useVshardGroups: "1"
+        tarantool.io/vshardGroupName: {{ .VshardGroup }}
+        {{ else }}
         tarantool.io/useVshardGroups: "0"
+        {{ end }}
       annotations:
         tarantool.io/rolesToAssign: {{ $r }}
         prometheus.io/path: "{{ $.Values.Prometheus.path }}"
