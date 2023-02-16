@@ -128,3 +128,42 @@ impl<'de> serde::Deserialize<'de> for Datetime {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time_macros::datetime;
+
+    #[test]
+    pub fn serialize() {
+        let exp = [
+            216, 4, 176, 109, 109, 56, 0, 0, 0, 0, 0, 0, 0, 0, 76, 255, 0, 0,
+        ];
+        let dt: Datetime = datetime!(2000-01-01 0:00 -3).into();
+        let buf = vec![];
+        let mut s = rmp_serde::encode::Serializer::new(buf);
+        dt.serialize(&mut s).unwrap();
+        let result = s.get_ref();
+
+        assert_eq!(18, result.len());
+
+        let matching = exp
+            .iter()
+            .zip(result.iter())
+            .filter(|&(a, b)| a == b)
+            .count();
+        assert!(matching == exp.len() && matching == result.len());
+    }
+
+    #[test]
+    pub fn deserialize() {
+        let exp: Datetime = datetime!(2000-01-01 0:00 -3).into();
+        let data: &[u8] = &[
+            216, 4, 176, 109, 109, 56, 0, 0, 0, 0, 0, 0, 0, 0, 76, 255, 0, 0,
+        ];
+        let mut d = rmp_serde::decode::Deserializer::new(data);
+        let result = Datetime::deserialize(&mut d).unwrap();
+
+        assert_eq!(exp, result);
+    }
+}
