@@ -169,6 +169,7 @@ pub mod msgpack;
 pub mod net_box;
 pub mod network;
 pub mod proc;
+pub mod region;
 pub mod schema;
 pub mod sequence;
 pub mod session;
