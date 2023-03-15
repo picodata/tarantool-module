@@ -40,14 +40,13 @@ impl Client {
             *self.client.borrow_mut() = self.new_client_rx.borrow().get_cloned();
         // Reconnect if asked and it didn't already happen on other client clones
         } else if self.should_reconnect.get() {
-            *self.client.borrow_mut() = Some(
-                super::Client::connect_with_config(
-                    &self.url,
-                    self.port,
-                    self.protocol_config.clone(),
-                )
-                .await?,
-            );
+            let new_client = super::Client::connect_with_config(
+                &self.url,
+                self.port,
+                self.protocol_config.clone(),
+            )
+            .await?;
+            *self.client.borrow_mut() = Some(new_client);
             self.new_client_tx
                 .borrow_mut()
                 .send(self.client.borrow().clone())
@@ -133,19 +132,15 @@ impl Client {
 
 #[async_trait::async_trait(?Send)]
 impl super::AsClient for Client {
-    // This warning about `self.client.borrow()` can be ingored as this ref cell is not shared between fibers
-    #[allow(clippy::await_holding_refcell_ref)]
     async fn send<R: protocol::api::Request>(&self, request: &R) -> Result<R::Response, Error> {
         self.handle_reconnect().await?;
+        // This is an Rc clone so it is cheap.
+        // It is used not to hold Ref across await point in send.
+        let client = self.client.borrow().clone().expect("already set");
 
         #[cfg(not(feature = "internal_test"))]
         {
-            self.client
-                .borrow()
-                .as_ref()
-                .expect("already set")
-                .send(request)
-                .await
+            client.send(request).await
         }
         // Allow error injection in tests
         #[cfg(feature = "internal_test")]
@@ -154,12 +149,7 @@ impl super::AsClient for Client {
             if let Some(error) = inject_error {
                 Err(error)
             } else {
-                self.client
-                    .borrow()
-                    .as_ref()
-                    .expect("already set")
-                    .send(request)
-                    .await
+                client.send(request).await
             }
         }
     }
@@ -287,5 +277,19 @@ mod tests {
             assert!(!client.new_client_rx.borrow().has_changed());
         });
         jh.join();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn concurrent_messages_one_fiber() {
+        fiber::block_on(async {
+            let client = test_client();
+            let mut ping_futures = vec![];
+            for _ in 0..10 {
+                ping_futures.push(client.ping());
+            }
+            for res in futures::future::join_all(ping_futures).await {
+                res.unwrap();
+            }
+        });
     }
 }
