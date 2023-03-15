@@ -556,4 +556,89 @@ mod tests {
             assert_eq!(result.unwrap().decode::<(i32, i32)>().unwrap(), (1, 2));
         });
     }
+
+    #[crate::test(tarantool = "crate")]
+    fn http() {
+        use std::io::Write;
+        use std::convert::TryInto;
+        use std::sync::Arc;
+        use std::os::unix::prelude::FromRawFd;
+
+        fiber::block_on(async {
+            let host = "wttr.in";
+            let tcp_stream = TcpStream::connect(host, 80).await.unwrap();
+            let fd = tcp_stream.raw_fd();
+            let (mut reader, mut writer) = tcp_stream.split();
+            let root_certs = rustls::RootCertStore::empty();
+            let config = rustls::ClientConfig::builder()
+                .with_safe_defaults()
+                .with_root_certificates(root_certs)
+                .with_no_client_auth();
+            let config = Arc::new(config);
+            let server_name = host.try_into().unwrap();
+            let mut tls = rustls::ClientConnection::new(config, server_name).unwrap();
+            // let mut tls_buf = std::io::Cursor::new(vec![]);
+            let mut tcp_conn = unsafe { std::net::TcpStream::from_raw_fd(fd) };
+            tcp_conn.set_nonblocking(false).unwrap();
+            let mut tls_stream = rustls::Stream::new(&mut tls, &mut tcp_conn);
+
+            // send request
+            let body: [u8; 0] = [];
+            let req = http::Request::get("goa").body(body).unwrap();
+            let mut buf = Vec::with_capacity(1024);
+            let (meta, _) = req.into_parts();
+            write!(buf, "{m} /{u} {v:?}\r\n",
+                m = meta.method.as_str(),
+                u = meta.uri,
+                v = meta.version,
+            ).unwrap();
+            // write!(buf, "Connection: close\r\n").unwrap();
+            // write!(buf, "Accept-Encoding: identity\r\n").unwrap();
+            write!(buf, "Host: {}\r\n", host).unwrap();
+            write!(buf, "\r\n").unwrap();
+
+            // tls.writer().write_all(&buf).unwrap();
+            // let mut buf = vec![];
+            // tls.write_tls(&mut buf).unwrap();
+
+            let err = tls_stream.write_all(&buf);
+            let err = err.unwrap_err();
+            assert_eq!(err.kind(), std::io::ErrorKind::UnexpectedEof);
+
+            // let buf = tls_stream.sock.get_ref();
+            // writer.write_all(&buf).await.unwrap();
+
+            // receive response
+            let mut received_response_data = vec![];
+            let response = loop {
+                let mut response_headers = [httparse::EMPTY_HEADER; 64];
+                let mut resp = httparse::Response::new(&mut response_headers);
+                let status = resp.parse(&received_response_data);
+                match status {
+                    Ok(httparse::Status::Complete(headers_len)) => {
+                        let httparse::Response { code, version, reason, headers } = resp;
+                        let mut content_length = 0;
+                        for header in &*headers {
+                            if header.name == "Content-Length" {
+                                let content_length_str = std::str::from_utf8(header.value).unwrap();
+                                content_length = content_length_str.parse::<usize>().unwrap();
+                                break;
+                            }
+                        }
+                        let body = &received_response_data[headers_len..headers_len + content_length];
+                        let body = std::str::from_utf8(body).unwrap();
+                        break (body, code, version, reason, headers.to_owned());
+                    },
+                    _ => {}
+                }
+                drop(resp);
+                drop(response_headers);
+                let mut buf = [0_u8; 64 * 1024];
+                let bytes_read = reader.read(&mut buf).await.unwrap();
+                received_response_data.extend(&buf[0..bytes_read])
+            };
+
+            eprintln!("{:?}", response);
+        })
+    }
 }

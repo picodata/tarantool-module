@@ -89,6 +89,10 @@ impl TcpStream {
         })
     }
 
+    pub fn raw_fd(&self) -> RawFd {
+        self.fd
+    }
+
     /// Close token for [`TcpStream`] to be able to close it from other fibers.
     pub fn close_token(&self) -> CloseToken {
         CloseToken(self.fd)
