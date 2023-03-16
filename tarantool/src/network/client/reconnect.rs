@@ -75,6 +75,10 @@ impl Client {
     ///
     /// When reconnection happens ongoing requests (processing in other fibers) will
     /// continue on the old connection, but any new request will use the new connection.
+    ///
+    /// # Errors
+    /// Error is returned if reconnection fails.
+    /// See [`Error`].
     pub async fn reconnect_now(&self) -> Result<(), Error> {
         self.reconnect();
         self.handle_reconnect().await
@@ -82,10 +86,6 @@ impl Client {
 
     /// Creates a new client but does not yet try to establish connection
     /// to `url:port`. This will happen at the first call through [`super::AsClient`] methods.
-    ///
-    /// # Errors
-    /// Error is returned if an attempt to connect failed.
-    /// See [`Error`].
     pub fn new(url: String, port: u16) -> Self {
         Self::with_config(url, port, Default::default())
     }
@@ -93,12 +93,8 @@ impl Client {
     /// Creates a new client but does not yet try to establish connection
     /// to `url:port`. This will happen at the first call through [`AsClient`] methods.
     ///
-    /// Takes explicit `config` in comparison to [`Client::connect`]
+    /// Takes explicit `config` in comparison to [`Self::new`]
     /// where default values are used.
-    ///
-    /// # Errors
-    /// Error is returned if an attempt to connect failed.
-    /// See [`Error`].
     fn with_config(url: String, port: u16, config: protocol::Config) -> Self {
         let (new_client_tx, new_client_rx) = watch::channel(None);
         Self {
