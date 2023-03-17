@@ -5,8 +5,11 @@ use std::{
 };
 
 use super::Error;
-use crate::fiber::r#async::watch;
+use crate::fiber::r#async::Mutex;
 use crate::network::protocol;
+
+#[cfg(feature = "internal_test")]
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// A reconnecting version of [`super::Client`].
 ///
@@ -16,12 +19,10 @@ use crate::network::protocol;
 /// See [`super::AsClient`] for the full API.
 #[derive(Debug, Clone)]
 pub struct Client {
-    // Client is optional here as con construction it is `None`
+    // Client is optional here as at structure creation it is `None`
     // but it will always be `Some` after the first `handle_reconnect` call
-    client: RefCell<Option<super::Client>>,
-    new_client_rx: RefCell<watch::Receiver<Option<super::Client>>>,
-    new_client_tx: Rc<RefCell<watch::Sender<Option<super::Client>>>>,
-    should_reconnect: Cell<bool>,
+    client: Rc<Mutex<Option<super::Client>>>,
+    should_reconnect: Rc<Cell<bool>>,
     url: String,
     port: u16,
     protocol_config: protocol::Config,
@@ -29,31 +30,33 @@ pub struct Client {
     // Testing related code
     #[cfg(feature = "internal_test")]
     inject_error: Rc<RefCell<Option<super::Error>>>,
+    #[cfg(feature = "internal_test")]
+    reconnect_count: Rc<AtomicUsize>,
 }
 
 impl Client {
     async fn handle_reconnect(&self) -> Result<(), Error> {
-        let has_changed = self.new_client_rx.borrow().has_changed();
         // Send new messages over new connection if it exists
-        if has_changed {
-            self.new_client_rx.borrow_mut().mark_seen();
-            *self.client.borrow_mut() = self.new_client_rx.borrow().get_cloned();
         // Reconnect if asked and it didn't already happen on other client clones
-        } else if self.should_reconnect.get() {
+        if self.should_reconnect.get() {
+            let mut client = self.client.lock().await;
+            // Check if some other client already reconnected while this one was waiting for the lock
+            if !self.should_reconnect.get() {
+                return Ok(());
+            }
             let new_client = super::Client::connect_with_config(
                 &self.url,
                 self.port,
                 self.protocol_config.clone(),
             )
             .await?;
-            *self.client.borrow_mut() = Some(new_client);
-            self.new_client_tx
-                .borrow_mut()
-                .send(self.client.borrow().clone())
-                .expect("no references should be held");
-            self.new_client_rx.borrow_mut().mark_seen();
+            *client = Some(new_client);
+            self.should_reconnect.set(false);
+            #[cfg(feature = "internal_test")]
+            {
+                self.reconnect_count.fetch_add(1, Ordering::Relaxed);
+            }
         }
-        self.should_reconnect.set(false);
         Ok(())
     }
 
@@ -96,18 +99,17 @@ impl Client {
     /// Takes explicit `config` in comparison to [`Self::new`]
     /// where default values are used.
     fn with_config(url: String, port: u16, config: protocol::Config) -> Self {
-        let (new_client_tx, new_client_rx) = watch::channel(None);
         Self {
-            client: RefCell::new(None),
+            client: Default::default(),
             url,
             port,
             protocol_config: config,
-            new_client_rx: RefCell::new(new_client_rx),
-            new_client_tx: Rc::new(RefCell::new(new_client_tx)),
+            should_reconnect: Rc::new(Cell::new(true)),
 
             #[cfg(feature = "internal_test")]
             inject_error: Default::default(),
-            should_reconnect: Cell::new(true),
+            #[cfg(feature = "internal_test")]
+            reconnect_count: Default::default(),
         }
     }
 
@@ -117,12 +119,8 @@ impl Client {
     }
 
     #[cfg(feature = "internal_test")]
-    pub fn reconnect_count(&self) -> u64 {
-        // - 1 for initial value
-        self.new_client_rx
-            .borrow()
-            .value_version()
-            .saturating_sub(1)
+    pub fn reconnect_count(&self) -> usize {
+        self.reconnect_count.load(Ordering::Relaxed)
     }
 }
 
@@ -131,8 +129,7 @@ impl super::AsClient for Client {
     async fn send<R: protocol::api::Request>(&self, request: &R) -> Result<R::Response, Error> {
         self.handle_reconnect().await?;
         // This is an Rc clone so it is cheap.
-        // It is used not to hold Ref across await point in send.
-        let client = self.client.borrow().clone().expect("already set");
+        let client = self.client.lock().await.clone().expect("already set");
 
         #[cfg(not(feature = "internal_test"))]
         {
@@ -177,7 +174,7 @@ mod tests {
             // Can be any other unused port
             let client = Client::new("localhost".to_string(), 3300);
             let err = client.ping().await.unwrap_err();
-            assert!(matches!(dbg!(err), Error::Tcp(_)))
+            assert_eq!(err.to_string(), "tcp stream error: failed to connect to supplied address: Connection refused (os error 111)")
         });
     }
 
@@ -189,12 +186,13 @@ mod tests {
             for _ in 0..2 {
                 client.ping().timeout(_3_SEC).await.unwrap();
             }
-            assert_eq!(client.reconnect_count(), 0);
+            // Initial connection also counts
+            assert_eq!(client.reconnect_count(), 1);
             client.reconnect();
             for _ in 0..2 {
                 client.ping().timeout(_3_SEC).await.unwrap();
             }
-            assert_eq!(client.reconnect_count(), 1);
+            assert_eq!(client.reconnect_count(), 2);
         });
     }
 
@@ -204,17 +202,17 @@ mod tests {
             let client = test_client();
             // Client initializes at initial request
             client.ping().timeout(_3_SEC).await.unwrap();
-            assert_eq!(client.reconnect_count(), 0);
+            assert_eq!(client.reconnect_count(), 1);
 
             // Reconnect happens at the first send
             client.reconnect();
-            assert_eq!(client.reconnect_count(), 0);
-            client.ping().timeout(_3_SEC).await.unwrap();
             assert_eq!(client.reconnect_count(), 1);
+            client.ping().timeout(_3_SEC).await.unwrap();
+            assert_eq!(client.reconnect_count(), 2);
 
             // Reconnect happens right away
             client.reconnect_now().await.unwrap();
-            assert_eq!(client.reconnect_count(), 2);
+            assert_eq!(client.reconnect_count(), 3);
         });
     }
 
@@ -228,12 +226,12 @@ mod tests {
             client.inject_error(Error::from(ErrorKind::ConnectionAborted).into());
             client.ping().timeout(_3_SEC).await.unwrap_err();
             client.reconnect_now().await.unwrap();
-            assert_eq!(client.reconnect_count(), 1);
+            assert_eq!(client.reconnect_count(), 2);
 
             client.inject_error(Error::from(ErrorKind::ConnectionAborted).into());
             client.ping().timeout(_3_SEC).await.unwrap_err();
             client.reconnect_now().await.unwrap();
-            assert_eq!(client.reconnect_count(), 2);
+            assert_eq!(client.reconnect_count(), 3);
         });
     }
 
@@ -246,10 +244,12 @@ mod tests {
         )
         .unwrap();
         let client = test_client();
+        fiber::block_on(client.ping()).unwrap();
+        assert_eq!(client.reconnect_count(), 1);
         let client_clone = client.clone();
         let jh = fiber::defer_async(async move {
             client_clone.reconnect_now().await.unwrap();
-            assert_eq!(client_clone.reconnect_count(), 1);
+            assert_eq!(client_clone.reconnect_count(), 2);
             lua.exec("_G.reconnect_test_chan:put(42)").unwrap();
         });
         fiber::block_on(async move {
@@ -264,13 +264,7 @@ mod tests {
             // value received on an old connection, though there was a reconnect request
             assert_eq!(result, (42,));
             // Globally the client has 1 reconnection
-            assert_eq!(client.reconnect_count(), 1);
-            // but this clone of a client does not yet use the new connection
-            assert!(client.new_client_rx.borrow().has_changed());
-
-            client.ping().timeout(_3_SEC).await.unwrap();
-            // it does use the new connection for the new request
-            assert!(!client.new_client_rx.borrow().has_changed());
+            assert_eq!(client.reconnect_count(), 2);
         });
         jh.join();
     }
