@@ -249,13 +249,9 @@ impl<T: ?Sized + fmt::Display> fmt::Display for MutexGuard<'_, T> {
 mod tests {
     use std::{rc::Rc, time::Duration};
 
-    use crate::{
-        fiber::{
-            self,
-            r#async::{timeout::IntoTimeout, watch},
-        },
-        test::util::ok,
-    };
+    use crate::fiber;
+    use crate::fiber::r#async::{timeout::IntoTimeout, watch};
+    use crate::test::util::ok;
 
     use super::*;
 
