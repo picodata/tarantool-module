@@ -1,8 +1,4 @@
-use std::{
-    cell::{Cell, RefCell},
-    rc::Rc,
-    time::Duration,
-};
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use super::Error;
 use crate::fiber::r#async::Mutex;
@@ -19,10 +15,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// See [`super::AsClient`] for the full API.
 #[derive(Debug, Clone)]
 pub struct Client {
-    // Client is optional here as at structure creation it is `None`
-    // but it will always be `Some` after the first `handle_reconnect` call
     client: Rc<Mutex<Option<super::Client>>>,
-    should_reconnect: Rc<Cell<bool>>,
     url: String,
     port: u16,
     protocol_config: protocol::Config,
@@ -35,29 +28,22 @@ pub struct Client {
 }
 
 impl Client {
-    async fn handle_reconnect(&self) -> Result<(), Error> {
-        // Send new messages over new connection if it exists
-        // Reconnect if asked and it didn't already happen on other client clones
-        if self.should_reconnect.get() {
-            let mut client = self.client.lock().await;
-            // Check if some other client already reconnected while this one was waiting for the lock
-            if !self.should_reconnect.get() {
-                return Ok(());
-            }
-            let new_client = super::Client::connect_with_config(
-                &self.url,
-                self.port,
-                self.protocol_config.clone(),
-            )
-            .await?;
-            *client = Some(new_client);
-            self.should_reconnect.set(false);
-            #[cfg(feature = "internal_test")]
-            {
-                self.reconnect_count.fetch_add(1, Ordering::Relaxed);
-            }
+    /// Send new messages over new connection if it exists.
+    /// Reconnect if asked and it didn't already happen on other client clones.
+    async fn client(&self) -> Result<super::Client, Error> {
+        let mut client = self.client.lock().await;
+        if let Some(ref client) = *client {
+            return Ok(client.clone());
         }
-        Ok(())
+        let new_client =
+            super::Client::connect_with_config(&self.url, self.port, self.protocol_config.clone())
+                .await?;
+        *client = Some(new_client.clone());
+        #[cfg(feature = "internal_test")]
+        {
+            self.reconnect_count.fetch_add(1, Ordering::Relaxed);
+        }
+        Ok(new_client)
     }
 
     /// Request client to reconnect before executing next operation.
@@ -68,7 +54,11 @@ impl Client {
     /// When reconnection happens ongoing requests (processing in other fibers) will
     /// continue on the old connection, but any new request will use the new connection.
     pub fn reconnect(&self) {
-        self.should_reconnect.set(true);
+        if let Some(mut client) = self.client.try_lock() {
+            *client = None;
+        } else {
+            // if the lock is already captured, then the client is already in the process of reconnecting
+        }
     }
 
     /// Force reconnection.
@@ -84,7 +74,8 @@ impl Client {
     /// See [`Error`].
     pub async fn reconnect_now(&self) -> Result<(), Error> {
         self.reconnect();
-        self.handle_reconnect().await
+        self.client().await?;
+        Ok(())
     }
 
     /// Creates a new client but does not yet try to establish connection
@@ -104,7 +95,6 @@ impl Client {
             url,
             port,
             protocol_config: config,
-            should_reconnect: Rc::new(Cell::new(true)),
 
             #[cfg(feature = "internal_test")]
             inject_error: Default::default(),
@@ -127,9 +117,7 @@ impl Client {
 #[async_trait::async_trait(?Send)]
 impl super::AsClient for Client {
     async fn send<R: protocol::api::Request>(&self, request: &R) -> Result<R::Response, Error> {
-        self.handle_reconnect().await?;
-        // This is an Rc clone so it is cheap.
-        let client = self.client.lock().await.clone().expect("already set");
+        let client = self.client().await?;
 
         #[cfg(not(feature = "internal_test"))]
         {
