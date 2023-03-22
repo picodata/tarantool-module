@@ -1,5 +1,15 @@
 # Change Log
 
+# [0.?.?] Dec ?? 2023
+
+### Added
+- `trait ToTupleBuffer` now has a generic associated type `Data` and a method
+    `tuple_data` which returns it. This allows for more efficiency when getting
+    tuple data from `RawBytes`.
+
+### Changed
+- Minimum support rust version is bumped to 1.66.
+
 # [0.7.0] Mar ?? 2023
 
 ### Added

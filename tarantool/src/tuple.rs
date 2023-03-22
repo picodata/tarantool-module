@@ -55,7 +55,9 @@ impl Tuple {
     where
         T: ToTupleBuffer + ?Sized,
     {
-        Ok(Self::from(&value.to_tuple_buffer()?))
+        let data = value.tuple_data()?;
+        let data = data.as_ref();
+        unsafe { Ok(Self::from_raw_data(data.as_ptr() as _, data.len() as _)) }
     }
 
     /// Creates new tuple from `value`.
@@ -93,7 +95,7 @@ impl Tuple {
     }
 
     pub fn try_from_slice(data: &[u8]) -> Result<Self> {
-        let data = validate_msgpack(data)?;
+        validate_msgpack(data)?;
         unsafe { Ok(Self::from_slice(data)) }
     }
 
@@ -426,24 +428,39 @@ impl Clone for Tuple {
 /// Types implementing this trait can be converted to tarantool tuple (msgpack
 /// array).
 pub trait ToTupleBuffer {
+    type Data<'a>: AsRef<[u8]>
+    where
+        Self: 'a;
+
+    fn tuple_data(&self) -> Result<Self::Data<'_>>;
+
     fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
-        let mut buf = Vec::with_capacity(128);
-        self.write_tuple_data(&mut buf)?;
-        TupleBuffer::try_from_vec(buf)
+        let data = self.tuple_data()?;
+        let res = TupleBuffer::try_from(Vec::from(data.as_ref()))?;
+        Ok(res)
     }
 
-    fn write_tuple_data(&self, w: &mut impl Write) -> Result<()>;
+    #[inline(always)]
+    fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
+        let data = self.tuple_data()?;
+        w.write_all(data.as_ref())?;
+        Ok(())
+    }
 }
 
 impl ToTupleBuffer for Tuple {
-    #[inline]
-    fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
+    type Data<'a> = TupleBuffer
+    where
+        Self: 'a;
+
+    #[inline(always)]
+    fn tuple_data(&self) -> Result<TupleBuffer> {
         Ok(TupleBuffer::from(self))
     }
 
-    #[inline]
-    fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
-        w.write_all(&self.as_buffer()).map_err(Into::into)
+    #[inline(always)]
+    fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
+        self.tuple_data()
     }
 }
 
@@ -453,6 +470,22 @@ where
     T: ?Sized,
     T: AsTuple,
 {
+    type Data<'a> = TupleBuffer
+    where
+        Self: 'a;
+
+    #[inline(always)]
+    fn tuple_data(&self) -> Result<TupleBuffer> {
+        let mut buf = Vec::with_capacity(128);
+        self.write_tuple_data(&mut buf)?;
+        TupleBuffer::try_from_vec(buf)
+    }
+
+    #[inline(always)]
+    fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
+        self.tuple_data()
+    }
+
     #[inline]
     fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
         self.serialize_to(w)
@@ -795,7 +828,7 @@ impl TupleBuffer {
 
     #[inline]
     pub fn try_from_vec(data: Vec<u8>) -> Result<Self> {
-        let data = validate_msgpack(data)?;
+        validate_msgpack(&data)?;
         unsafe { Ok(Self::from_vec_unchecked(data)) }
     }
 }
@@ -848,14 +881,11 @@ impl Debug for TupleBuffer {
 }
 
 impl ToTupleBuffer for TupleBuffer {
-    #[inline]
-    fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
-        Ok(self.clone())
-    }
+    type Data<'a> = &'a [u8];
 
-    #[inline]
-    fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
-        w.write_all(self.as_ref()).map_err(Into::into)
+    #[inline(always)]
+    fn tuple_data(&self) -> Result<&[u8]> {
+        Ok(self.as_ref())
     }
 }
 
@@ -1148,10 +1178,10 @@ impl KeyDef {
     where
         K: ToTupleBuffer + ?Sized,
     {
-        let key_buf = key.to_tuple_buffer().unwrap();
-        let key_buf_ptr = key_buf.as_ptr() as _;
+        let key_data = key.tuple_data().unwrap();
+        let key_ptr = key_data.as_ref().as_ptr() as _;
         unsafe {
-            ffi::box_tuple_compare_with_key(tuple.ptr.as_ptr(), key_buf_ptr, self.inner.as_ptr())
+            ffi::box_tuple_compare_with_key(tuple.ptr.as_ptr(), key_ptr, self.inner.as_ptr())
                 .cmp(&0)
         }
     }
@@ -1314,9 +1344,9 @@ pub fn session_push<T>(value: &T) -> Result<()>
 where
     T: ToTupleBuffer + ?Sized,
 {
-    let buf = value.to_tuple_buffer().unwrap();
-    let buf_ptr = buf.as_ptr() as *const c_char;
-    if unsafe { ffi::box_session_push(buf_ptr, buf_ptr.add(buf.len())) } < 0 {
+    let data = value.tuple_data().unwrap();
+    let Range { start, end } = data.as_ref().as_ptr_range();
+    if unsafe { ffi::box_session_push(start as _, end as _) } < 0 {
         Err(TarantoolError::last().into())
     } else {
         Ok(())
@@ -1324,16 +1354,16 @@ where
 }
 
 #[inline(always)]
-fn validate_msgpack<T>(data: T) -> Result<T>
+fn validate_msgpack<T>(data: T) -> Result<()>
 where
-    T: AsRef<[u8]> + Into<Vec<u8>>,
+    T: AsRef<[u8]>,
 {
     let mut slice = data.as_ref();
     let m = rmp::decode::read_marker(&mut slice)?;
     if !matches!(m, Marker::FixArray(_) | Marker::Array16 | Marker::Array32) {
-        return Err(error::Encode::InvalidMP(data.into()).into());
+        return Err(error::Encode::InvalidMP(slice.into()).into());
     }
-    Ok(data)
+    Ok(())
 }
 
 impl<L> tlua::Push<L> for Tuple
@@ -1490,6 +1520,13 @@ impl<'a> From<&'a [u8]> for &'a RawBytes {
     }
 }
 
+impl AsRef<[u8]> for RawBytes {
+    #[inline(always)]
+    fn as_ref(&self) -> &[u8] {
+        self
+    }
+}
+
 impl<'de> Decode<'de> for &'de RawBytes {
     #[inline(always)]
     fn decode(data: &'de [u8]) -> Result<Self> {
@@ -1499,11 +1536,12 @@ impl<'de> Decode<'de> for &'de RawBytes {
 }
 
 impl ToTupleBuffer for RawBytes {
+    type Data<'a> = &'a [u8];
+
     #[inline(always)]
-    fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
-        let data = &**self;
-        validate_msgpack(data)?;
-        w.write_all(data).map_err(Into::into)
+    fn tuple_data(&self) -> Result<&[u8]> {
+        validate_msgpack(self)?;
+        Ok(self)
     }
 }
 
@@ -1556,6 +1594,20 @@ impl From<Vec<u8>> for RawByteBuf {
     }
 }
 
+impl AsRef<[u8]> for RawByteBuf {
+    #[inline(always)]
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl From<RawByteBuf> for Vec<u8> {
+    #[inline(always)]
+    fn from(b: RawByteBuf) -> Self {
+        b.0
+    }
+}
+
 impl Decode<'_> for RawByteBuf {
     #[inline(always)]
     fn decode(data: &[u8]) -> Result<Self> {
@@ -1565,11 +1617,12 @@ impl Decode<'_> for RawByteBuf {
 }
 
 impl ToTupleBuffer for RawByteBuf {
+    type Data<'a> = &'a [u8];
+
     #[inline(always)]
-    fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
-        let data = self.as_slice();
-        validate_msgpack(data)?;
-        w.write_all(data).map_err(Into::into)
+    fn tuple_data(&self) -> Result<&[u8]> {
+        validate_msgpack(self)?;
+        Ok(self)
     }
 }
 

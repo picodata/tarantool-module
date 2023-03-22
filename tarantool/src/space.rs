@@ -8,6 +8,7 @@
 //! - [C API reference: Module box](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/box/)
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::Range;
 use std::os::raw::c_char;
 
 use num_derive::ToPrimitive;
@@ -557,13 +558,13 @@ impl Space {
     {
         // TODO: use region allocation for this
         // TODO: add ability to not copy data, if the data doesn't need copying
-        let buf = value.to_tuple_buffer().unwrap();
-        let buf_ptr = buf.as_ptr() as *const c_char;
+        let data = value.tuple_data().unwrap();
+        let std::ops::Range { start, end } = data.as_ref().as_ptr_range();
         tuple_from_box_api!(
             ffi::box_insert[
                 self.id,
-                buf_ptr,
-                buf_ptr.add(buf.len()),
+                start as _,
+                end as _,
                 @out
             ]
         )
@@ -583,13 +584,13 @@ impl Space {
     where
         T: ToTupleBuffer + ?Sized,
     {
-        let buf = value.to_tuple_buffer().unwrap();
-        let buf_ptr = buf.as_ptr() as *const c_char;
+        let data = value.tuple_data().unwrap();
+        let Range { start, end } = data.as_ref().as_ptr_range();
         tuple_from_box_api!(
             ffi::box_replace[
                 self.id,
-                buf_ptr,
-                buf_ptr.add(buf.len()),
+                start as _,
+                end as _,
                 @out
             ]
         )
@@ -1136,7 +1137,7 @@ macro_rules! update {
     ($target:expr, $key:expr, $($op:expr),+ $(,)?) => {{
         use $crate::tuple::ToTupleBuffer;
         let mut f = || -> $crate::Result<Option<$crate::tuple::Tuple>> {
-            let key_buf = $key.to_tuple_buffer()?;
+            let key_buf = $key.tuple_data()?;
             const len: u32 = $crate::expr_count!($($op),+);
             let mut ops_buf = Vec::with_capacity((4 + len * 4) as _);
             $crate::msgpack::write_array_len(&mut ops_buf, len)?;
@@ -1165,7 +1166,7 @@ macro_rules! upsert {
     ($target:expr, $value: expr, $($op:expr),+ $(,)?) => {{
         use $crate::tuple::ToTupleBuffer;
         let mut f = || -> $crate::Result<()> {
-            let value_buf = $value.to_tuple_buffer()?;
+            let value_buf = $value.tuple_data()?;
             const len: u32 = $crate::expr_count!($($op),+);
             let mut ops_buf = Vec::with_capacity((4 + len * 4) as _);
             $crate::msgpack::write_array_len(&mut ops_buf, len)?;
