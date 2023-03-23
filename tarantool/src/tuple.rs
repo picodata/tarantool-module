@@ -1612,7 +1612,7 @@ mod picodata {
             let field_count = self.len();
             let mut named_buffer = Vec::with_capacity(buff.len());
 
-            let mut cursor = Cursor::new(&buff);
+            let mut cursor = Cursor::new(buff.as_slice());
 
             rmp::encode::write_map_len(&mut named_buffer, field_count)?;
             rmp::decode::read_array_len(&mut cursor)?;

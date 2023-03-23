@@ -1,12 +1,12 @@
 use std::io::Cursor;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Seek, SeekFrom};
 
 use byteorder::{BigEndian, ReadBytesExt};
 
 use super::tuple::{Decode, RawBytes, ToTupleBuffer};
 use crate::Result;
 
-pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
+pub fn skip_value(cur: &mut Cursor<&[u8]>) -> Result<()> {
     use rmp::Marker;
 
     match rmp::decode::read_marker(cur)? {

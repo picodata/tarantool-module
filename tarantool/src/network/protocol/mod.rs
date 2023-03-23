@@ -11,7 +11,7 @@ pub mod codec;
 
 use std::cmp;
 use std::collections::HashMap;
-use std::io::{self, Cursor, Read, Seek};
+use std::io::{self, Cursor, Read};
 use std::str::Utf8Error;
 use std::vec::Drain;
 
@@ -176,7 +176,7 @@ impl Protocol {
             Ok(response) => response,
             Err(err) => return Some(Err(err.into())),
         };
-        Some(request.decode_body(&mut Cursor::new(response)))
+        Some(request.decode_body(&mut Cursor::new(&response)))
     }
 
     /// Drop response by [`SyncIndex`] if it exists. If not - does nothing.
@@ -205,9 +205,9 @@ impl Protocol {
     ///
     /// Returns a [`SyncIndex`] if non-technical message was received.
     /// This message can be retreived by this index with [`Protocol::take_response`].
-    pub fn process_incoming<R: Read + Seek>(
+    pub fn process_incoming(
         &mut self,
-        chunk: &mut R,
+        chunk: &mut Cursor<&[u8]>,
     ) -> Result<Option<SyncIndex>, Error> {
         if self.msg_size_hint.is_some() {
             // Message size hint was already read at previous call - now processing message
@@ -225,10 +225,7 @@ impl Protocol {
         }
     }
 
-    fn process_message<R: Read + Seek>(
-        &mut self,
-        message: &mut R,
-    ) -> Result<Option<SyncIndex>, Error> {
+    fn process_message(&mut self, message: &mut Cursor<&[u8]>) -> Result<Option<SyncIndex>, Error> {
         let sync = match self.state {
             State::Init => {
                 let salt = codec::decode_greeting(message)?;
@@ -353,7 +350,7 @@ mod tests {
         assert!(!conn.is_ready());
         assert_eq!(conn.msg_size_hint, Some(128));
         assert_eq!(conn.read_size_hint(), 128);
-        conn.process_incoming(&mut Cursor::new(fake_greeting()))
+        conn.process_incoming(&mut Cursor::new(&fake_greeting()))
             .unwrap();
         assert_eq!(conn.msg_size_hint, None);
         assert_eq!(conn.read_size_hint(), 5);
@@ -363,7 +360,7 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     fn send_bytes_generated() {
         let mut conn = Protocol::new();
-        conn.process_incoming(&mut Cursor::new(fake_greeting()))
+        conn.process_incoming(&mut Cursor::new(&fake_greeting()))
             .unwrap();
         conn.send_request(&api::Ping).unwrap();
         assert!(conn.ready_outgoing_len() > 0);

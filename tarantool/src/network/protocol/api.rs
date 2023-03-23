@@ -22,7 +22,7 @@ pub trait Request {
         Ok(())
     }
 
-    fn decode_body(&self, r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error>;
+    fn decode_body(&self, r#in: &mut Cursor<&[u8]>) -> Result<Self::Response, Error>;
 }
 
 // TODO: Implement `Request` for other types in `IProtoType`
@@ -37,7 +37,7 @@ impl Request for Ping {
         codec::encode_ping(out)
     }
 
-    fn decode_body(&self, _in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
+    fn decode_body(&self, _in: &mut Cursor<&[u8]>) -> Result<Self::Response, Error> {
         Ok(())
     }
 }
@@ -58,7 +58,7 @@ where
         codec::encode_call(out, self.fn_name, self.args)
     }
 
-    fn decode_body(&self, r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
+    fn decode_body(&self, r#in: &mut Cursor<&[u8]>) -> Result<Self::Response, Error> {
         codec::decode_call(r#in)
     }
 }
@@ -79,7 +79,7 @@ where
         codec::encode_eval(out, self.expr, self.args)
     }
 
-    fn decode_body(&self, r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
+    fn decode_body(&self, r#in: &mut Cursor<&[u8]>) -> Result<Self::Response, Error> {
         codec::decode_call(r#in)
     }
 }
@@ -101,7 +101,7 @@ where
         codec::encode_execute(out, self.sql, self.bind_params)
     }
 
-    fn decode_body(&self, r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
+    fn decode_body(&self, r#in: &mut Cursor<&[u8]>) -> Result<Self::Response, Error> {
         codec::decode_multiple_rows(r#in, self.limit)
     }
 }
@@ -120,7 +120,7 @@ impl<'u, 'p, 's> Request for Auth<'u, 'p, 's> {
         codec::encode_auth(out, self.user, self.pass, self.salt)
     }
 
-    fn decode_body(&self, _in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
+    fn decode_body(&self, _in: &mut Cursor<&[u8]>) -> Result<Self::Response, Error> {
         Ok(())
     }
 }

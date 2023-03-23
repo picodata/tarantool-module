@@ -405,7 +405,7 @@ async fn receiver(client: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<TcpStre
         let result = client
             .borrow_mut()
             .protocol
-            .process_incoming(&mut Cursor::new(buf));
+            .process_incoming(&mut Cursor::new(buf.as_slice()));
         let result = handle_result!(client.borrow_mut(), result);
         if let Some(sync) = result {
             let subscription = client.borrow_mut().awaiting_response.remove(&sync);

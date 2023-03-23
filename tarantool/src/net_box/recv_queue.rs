@@ -9,6 +9,7 @@ use rmp::decode;
 
 use crate::error::Error;
 use crate::fiber::{Cond, Latch};
+use crate::util::to_slice_cursor;
 
 use super::options::Options;
 use super::protocol::{decode_error, decode_header, Consumer, Header, Response, Sync};
@@ -52,7 +53,7 @@ impl RecvQueue {
         options: &Options,
     ) -> Result<Response<R>, Error>
     where
-        F: FnOnce(&mut Cursor<Vec<u8>>, &Header) -> Result<R, Error>,
+        F: FnOnce(&mut Cursor<&[u8]>, &Header) -> Result<R, Error>,
     {
         if !self.is_active.get() {
             return Err(io::Error::from(io::ErrorKind::ConnectionAborted).into());
@@ -74,11 +75,12 @@ impl RecvQueue {
 
                 match header {
                     Ok(header) => {
+                        let mut buf = self.buffer.borrow_mut();
                         if header.status_code != 0 {
-                            return Err(decode_error(self.buffer.borrow_mut().by_ref())?.into());
+                            return Err(decode_error(&mut *buf)?.into());
                         }
 
-                        payload_consumer(self.buffer.borrow_mut().by_ref(), &header)
+                        payload_consumer(&mut to_slice_cursor(&buf), &header)
                             .map(|payload| Response { payload, header })
                     }
                     Err(e) => return Err(e),
@@ -150,7 +152,7 @@ impl RecvQueue {
                 let header = {
                     let mut buffer = self.buffer.borrow_mut();
                     buffer.set_position(start as _);
-                    decode_header(buffer.by_ref())?
+                    decode_header(&mut to_slice_cursor(&buffer))?
                 };
 
                 let sync = header.sync;

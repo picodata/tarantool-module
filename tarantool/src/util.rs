@@ -142,3 +142,12 @@ macro_rules! unwrap_ok_or {
         }
     }
 }
+
+use std::io::Cursor;
+pub fn to_slice_cursor(vec_cursor: &Cursor<Vec<u8>>) -> Cursor<&[u8]> {
+    let pos = vec_cursor.position();
+    let buf = vec_cursor.get_ref();
+    let mut slice_cursor = Cursor::new(buf.as_slice());
+    slice_cursor.set_position(pos);
+    slice_cursor
+}

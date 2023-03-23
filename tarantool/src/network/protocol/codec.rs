@@ -1,6 +1,6 @@
 use std::cmp::min;
 use std::convert::TryFrom;
-use std::io::{self, Cursor, Read, Seek, Write};
+use std::io::{self, Cursor, Read, Write};
 use std::os::raw::c_char;
 use std::str::from_utf8;
 
@@ -316,7 +316,7 @@ pub struct Response<T> {
     pub payload: T,
 }
 
-pub fn decode_header(stream: &mut (impl Read + Seek)) -> Result<Header, Error> {
+pub fn decode_header(stream: &mut Cursor<&[u8]>) -> Result<Header, Error> {
     let mut sync: Option<u64> = None;
     let mut status_code: Option<u32> = None;
     let mut schema_version: Option<u64> = None;
@@ -368,7 +368,7 @@ pub fn decode_greeting(stream: &mut impl Read) -> Result<Vec<u8>, Error> {
     Ok(salt)
 }
 
-pub fn decode_call(buffer: &mut Cursor<Vec<u8>>) -> Result<Option<Tuple>, Error> {
+pub fn decode_call(buffer: &mut Cursor<&[u8]>) -> Result<Option<Tuple>, Error> {
     let payload_len = rmp::decode::read_map_len(buffer)?;
     for _ in 0..payload_len {
         let key = rmp::decode::read_pfix(buffer)?;
@@ -385,7 +385,7 @@ pub fn decode_call(buffer: &mut Cursor<Vec<u8>>) -> Result<Option<Tuple>, Error>
 }
 
 pub fn decode_multiple_rows(
-    buffer: &mut Cursor<Vec<u8>>,
+    buffer: &mut Cursor<&[u8]>,
     limit: Option<usize>,
 ) -> Result<Vec<Tuple>, Error> {
     let payload_len = rmp::decode::read_map_len(buffer)?;
@@ -413,7 +413,7 @@ pub fn decode_multiple_rows(
     Ok(vec![])
 }
 
-pub fn decode_single_row(buffer: &mut Cursor<Vec<u8>>) -> Result<Option<Tuple>, Error> {
+pub fn decode_single_row(buffer: &mut Cursor<&[u8]>) -> Result<Option<Tuple>, Error> {
     let payload_len = rmp::decode::read_map_len(buffer)?;
     for _ in 0..payload_len {
         let key = rmp::decode::read_pfix(buffer)?;
@@ -434,21 +434,15 @@ pub fn decode_single_row(buffer: &mut Cursor<Vec<u8>>) -> Result<Option<Tuple>, 
     Ok(None)
 }
 
-pub fn decode_tuple(buffer: &mut Cursor<Vec<u8>>) -> Result<Tuple, Error> {
+pub fn decode_tuple(buffer: &mut Cursor<&[u8]>) -> Result<Tuple, Error> {
     let payload_offset = buffer.position();
     msgpack::skip_value(buffer)?;
     let payload_len = buffer.position() - payload_offset;
-    let buf = buffer.get_mut();
+    let buf = buffer.get_ref();
     unsafe {
         Ok(Tuple::from_raw_data(
-            buf.as_slice().as_ptr().add(payload_offset as usize) as *mut c_char,
+            buf.as_ptr().add(payload_offset as usize) as *mut c_char,
             payload_len as u32,
         ))
     }
-}
-
-pub fn value_slice(cursor: &mut Cursor<impl AsRef<[u8]>>) -> crate::Result<&[u8]> {
-    let start = cursor.position() as usize;
-    msgpack::skip_value(cursor)?;
-    Ok(&cursor.get_ref().as_ref()[start..(cursor.position() as usize)])
 }

@@ -11,6 +11,7 @@ use crate::fiber::{is_cancelled, set_cancellable, sleep, time, Cond, Fiber};
 use crate::net_box::stream::ConnStream;
 use crate::tuple::Decode;
 use crate::unwrap_or;
+use crate::util::to_slice_cursor;
 
 use super::options::{ConnOptions, ConnTriggers, Options};
 use super::promise::Promise;
@@ -133,7 +134,7 @@ impl ConnInner {
     ) -> Result<R, Error>
     where
         Fp: FnOnce(&mut Cursor<Vec<u8>>, u64) -> Result<(), Error>,
-        Fc: FnOnce(&mut Cursor<Vec<u8>>, &Header) -> Result<R, Error>,
+        Fc: FnOnce(&mut Cursor<&[u8]>, &Header) -> Result<R, Error>,
     {
         loop {
             let state = self.state.get();
@@ -297,7 +298,7 @@ impl ConnInner {
             cur.set_position(0);
         }
 
-        let header = protocol::decode_header(&mut cur)?;
+        let header = protocol::decode_header(&mut to_slice_cursor(&cur))?;
         if header.status_code != 0 {
             return Err(protocol::decode_error(stream)?.into());
         }
