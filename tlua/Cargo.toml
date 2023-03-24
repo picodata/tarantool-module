@@ -15,5 +15,5 @@ rust-version = "1.59"
 
 [dependencies]
 libc = "0.2"
-tlua-derive = { path = "../tlua-derive", version = "0.1" }
+tlua-derive = { path = "../tlua-derive", version = "0.1.3" }
 serde = { version = "1.0", features = ["derive"] }
