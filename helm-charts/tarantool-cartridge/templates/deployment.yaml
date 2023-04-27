@@ -12,7 +12,7 @@ spec:
 apiVersion: tarantool.io/v1alpha1
 kind: Role
 metadata:
-  name: {{ .RoleName | replace "_" "" }}
+  name: "{{ $.Release.Name }}-{{ .RoleName | replace "_" "" }}"
   labels:
     tarantool.io/cluster-id: {{ $.Values.ClusterName }}
     tarantool.io/role: {{ .RoleName }}
@@ -21,16 +21,16 @@ metadata:
 spec:
   selector:
     matchLabels:
-      tarantool.io/replicaset-template: "{{ .RoleName }}-template"
+      tarantool.io/replicaset-template: "{{ $.Release.Name }}-{{ .RoleName }}-template"
   numReplicasets: {{ .ReplicaSetCount }}
 ---
 apiVersion: tarantool.io/v1alpha1
 kind: ReplicasetTemplate
 metadata:
-  name: "{{ .RoleName | replace "_" "" }}-template"
+  name: "{{ $.Release.Name }}-{{ .RoleName | replace "_" "" }}-template"
   labels:
     tarantool.io/cluster-id: {{ $.Values.ClusterName }}
-    tarantool.io/replicaset-template: "{{ .RoleName }}-template"
+    tarantool.io/replicaset-template: "{{ $.Release.Name }}-{{ .RoleName }}-template"
     tarantool.io/role: {{ .RoleName }}
     {{ if  .VshardGroup }}
     tarantool.io/useVshardGroups: "1"
@@ -42,15 +42,18 @@ metadata:
     tarantool.io/rolesToAssign: {{ $r }}
 spec:
   replicas: {{ .ReplicaCount }}
-  serviceName: {{ .RoleName }}
+  serviceName: "{{ $.Release.Name }}-{{ .RoleName }}"
   selector:
     matchLabels:
-      tarantool.io/pod-template: "{{ .RoleName }}-pod-template"
+      tarantool.io/pod-template: "{{ $.Release.Name }}-{{ .RoleName }}-pod-template"
   volumeClaimTemplates:
     - metadata:
-        name: www
+        name: {{ $.Release.Name }}
       spec:
         accessModes: ["ReadWriteOnce"]
+        {{ if  $.Values.StorageClassName }}
+        storageClassName: {{ $.Values.StorageClassName }}
+        {{ end }}
         resources:
           requests:
             storage: {{ .DiskSize }}
@@ -59,7 +62,7 @@ spec:
       labels:
         tarantool.io/cluster-id: "{{ $.Values.ClusterName }}"
         tarantool.io/cluster-domain-name: "{{ $.Values.ClusterDomainName }}"
-        tarantool.io/pod-template: "{{ .RoleName }}-pod-template"
+        tarantool.io/pod-template: "{{ $.Release.Name }}-{{ .RoleName }}-pod-template"
         {{ if .VshardGroup }}
         tarantool.io/useVshardGroups: "1"
         tarantool.io/vshardGroupName: {{ .VshardGroup }}
@@ -80,10 +83,10 @@ spec:
       securityContext:
         fsGroup: {{ $.Values.securityContext.fsGroup }}
       containers:
-        - name: pim-storage
+        - name: "{{ $.Release.Name }}-container"
           image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"
           volumeMounts:
-            - name: www
+            - name: {{ $.Release.Name }}
               mountPath: "{{ $.Values.TarantoolWorkDir }}"
           resources:
             requests:
@@ -142,7 +145,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .RoleName }}
+  name: "{{ $.Release.Name }}-{{ .RoleName }}"
   labels:
     tarantool.io/role: {{ .RoleName }}
 spec:
