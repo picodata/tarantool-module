@@ -12,5 +12,6 @@ members = [
     "examples/read",
     "examples/write",
     "examples/tokio-hyper",
-    "perf-test"
+    "perf-test",
+    "set-error-test"
 ]
