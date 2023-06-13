@@ -1,11 +1,11 @@
 #![cfg(feature = "picodata")]
 
-use std::sync::{Arc, Mutex as StdMutex};
-use std::thread::ThreadId;
+use std::sync::Arc;
+use std::thread::{JoinHandle, ThreadId};
 use std::time::Duration;
 use std::{mem, thread};
 use tarantool::cbus;
-use tarantool::cbus::{oneshot, RecvError};
+use tarantool::cbus::{oneshot, unbound, RecvError};
 use tarantool::cbus::{Message, MessageHop};
 use tarantool::fiber;
 use tarantool::fiber::{check_yield, Cond, Fiber, YieldResult};
@@ -138,5 +138,86 @@ pub fn oneshot_sender_drop_test() {
     assert!(matches!(result, Err(RecvError::Disconnected)));
 
     thread.join().unwrap();
+    cbus_fiber.cancel();
+}
+
+#[tarantool::test]
+pub fn unbound_test() {
+    let mut cbus_fiber = run_cbus_endpoint("unbound_test");
+
+    let chan = unbound::Channel::new();
+    let (tx, rx) = chan.split("unbound_test");
+
+    let thread = thread::spawn(move || {
+        for i in 0..1000 {
+            tx.send(i);
+            if i % 100 == 0 {
+                thread::sleep(Duration::from_millis(1000));
+            }
+        }
+    });
+
+    assert_eq!(
+        check_yield(|| {
+            let mut recv_results = vec![];
+            for _ in 0..1000 {
+                recv_results.push(rx.receive().unwrap());
+            }
+            recv_results
+        }),
+        YieldResult::Yielded((0..1000).collect::<Vec<_>>())
+    );
+    thread.join().unwrap();
+    cbus_fiber.cancel();
+}
+
+#[tarantool::test]
+pub fn unbound_disconnect_test() {
+    let mut cbus_fiber = run_cbus_endpoint("unbound_disconnect_test");
+
+    let chan = unbound::Channel::new();
+    let (tx, rx) = chan.split("unbound_disconnect_test");
+
+    let thread = thread::spawn(move || {
+        tx.send(1);
+        tx.send(2);
+    });
+
+    assert!(matches!(rx.receive(), Ok(1)));
+    assert!(matches!(rx.receive(), Ok(2)));
+    assert!(matches!(rx.receive(), Err(RecvError::Disconnected)));
+
+    thread.join().unwrap();
+    cbus_fiber.cancel();
+}
+
+#[tarantool::test]
+pub fn unbound_mpsc_test() {
+    const MESSAGES_PER_PRODUCER: i32 = 10_000;
+    let mut cbus_fiber = run_cbus_endpoint("unbound_mpsc_test");
+
+    let chan = unbound::Channel::new();
+    let (tx, rx) = chan.split("unbound_mpsc_test");
+
+    fn create_producer(sender: unbound::Sender<i32>) -> JoinHandle<()> {
+        thread::spawn(move || {
+            for i in 0..MESSAGES_PER_PRODUCER {
+                sender.send(i);
+            }
+        })
+    }
+
+    let jh1 = create_producer(tx.clone());
+    let jh2 = create_producer(tx.clone());
+    let jh3 = create_producer(tx);
+
+    for _ in 0..MESSAGES_PER_PRODUCER * 3 {
+        assert!(matches!(rx.receive(), Ok(_)));
+    }
+    assert!(matches!(rx.receive(), Err(RecvError::Disconnected)));
+
+    jh1.join().unwrap();
+    jh2.join().unwrap();
+    jh3.join().unwrap();
     cbus_fiber.cancel();
 }
