@@ -1,4 +1,4 @@
-FROM docker-public.binary.picodata.io/tarantool:2.10.0
+FROM docker-public.binary.picodata.io/tarantool:2.11.0
 
 RUN set -e; \
     yum -y install gcc git; \

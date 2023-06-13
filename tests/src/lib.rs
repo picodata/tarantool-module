@@ -21,6 +21,7 @@ use tarantool::index::IndexType;
 use tarantool::space::{Field, FieldType, Space};
 
 mod r#box;
+mod cbus;
 mod coio;
 mod common;
 mod datetime;
