@@ -6,7 +6,7 @@ use std::time::Duration;
 use std::{mem, thread};
 use tarantool::cbus;
 use tarantool::cbus::{oneshot, unbound, RecvError};
-use tarantool::cbus::{Message, MessageHop};
+use tarantool::cbus::Message;
 use tarantool::fiber;
 use tarantool::fiber::{check_yield, Cond, Fiber, YieldResult};
 
@@ -36,12 +36,11 @@ pub fn cbus_send_message_test() {
     let thread = thread::spawn(move || {
         unsafe { SENDER_THREAD_ID = Some(thread::current().id()) };
         let pipe = cbus::LCPipe::new("cbus_send_message_test");
-        let hop = MessageHop::new(|msg: Box<Message<CondPtr>>| {
+        let msg = Message::new(move || {
             unsafe { TX_THREAD_ID = Some(thread::current().id()) };
-            let cond = unsafe { msg.user_data().0.as_ref().unwrap() };
+            let cond = unsafe { cond_ptr.0.as_ref().unwrap() };
             cond.broadcast();
         });
-        let msg = Message::new(hop, cond_ptr);
         pipe.push_message(msg);
     });
 
