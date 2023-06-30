@@ -316,9 +316,11 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
 mod tests {
     use std::cell::Cell;
 
+    use futures::{AsyncReadExt, FutureExt};
+
     use super::timeout::IntoTimeout as _;
     use super::*;
-    use crate::test::util::{always_pending, ok};
+    use crate::test::util::{always_pending, ok, TARANTOOL_LISTEN};
 
     #[crate::test(tarantool = "crate")]
     fn on_drop_is_executed() {
@@ -352,5 +354,53 @@ mod tests {
             f.timeout(Duration::from_secs(0)).await.unwrap_err();
         });
         assert!(executed.get());
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn never_finishes() {
+        block_on(async {
+            let listener = std::net::TcpListener::bind("127.0.0.1:3304").unwrap();
+            // Responsive listener
+            std::thread::spawn(move || {
+                for stream in listener.incoming() {
+                    let mut stream = stream.unwrap();
+                    std::thread::sleep(Duration::from_secs(1));
+                    <std::net::TcpStream as std::io::Write>::write(&mut stream, &[1, 2, 3])
+                        .unwrap();
+                }
+            });
+
+            let listener = std::net::TcpListener::bind("127.0.0.1:3305").unwrap();
+            // Unresponsive listener
+            std::thread::spawn(move || {
+                for stream in listener.incoming() {
+                    let _stream = stream.unwrap();
+                    loop {}
+                }
+            });
+            let mut tcp = crate::network::client::tcp::TcpStream::connect("127.0.0.1", 3304)
+                .await
+                .unwrap();
+            let mut buf_1 = vec![0; 3];
+            let responsive_fut = tcp.read_exact(&mut buf_1).fuse();
+
+            let mut tcp = crate::network::client::tcp::TcpStream::connect("127.0.0.1", 3305)
+                .await
+                .unwrap();
+            let mut buf_2 = vec![0; 3];
+            let unresponsive_fut = tcp.read_exact(&mut buf_2).fuse();
+            futures::pin_mut!(unresponsive_fut);
+            futures::pin_mut!(responsive_fut);
+            futures::select! {
+                _ = responsive_fut => {
+                    // BUG: Will never reach this. But by semantics of `select`,
+                    // it should reach this point and finish. This future should be the first to complete
+                    // and even though the other future hangs forever, `select` finishes as soon as the
+                    // the first future does.
+                    unreachable!("responsive_fut")
+                    },
+                _ = unresponsive_fut => unreachable!("unresponsive_fut"),
+            };
+        });
     }
 }
