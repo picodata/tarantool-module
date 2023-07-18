@@ -1,6 +1,12 @@
 # Change Log
 
 
+# [0.6.6] Jul 18 2023
+
+### Fixed
+- A copy of fiber name used to leak in `Fiber::new` and `Fiber::new_with_attr`.
+
+
 # [0.6.5] Apr 5 2023
 
 ### Changed
