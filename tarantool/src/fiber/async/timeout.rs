@@ -9,7 +9,6 @@ use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
 
-use super::context::ContextExt;
 use crate::fiber;
 use crate::time::Instant;
 
@@ -29,6 +28,11 @@ pub type Result<T, E> = std::result::Result<T, Error<E>>;
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Timeout<F> {
     future: F,
+
+    /// event loop timer to manage this timeout.
+    timer: *mut std::os::raw::c_void,
+
+    /// A time when this fiber must be woken up.
     deadline: Option<Instant>,
 }
 
@@ -57,15 +61,73 @@ pub struct Timeout<F> {
 pub fn timeout<F: Future>(timeout: Duration, f: F) -> Timeout<F> {
     Timeout {
         future: f,
+
+        timer: std::ptr::null_mut(),
         deadline: fiber::clock().checked_add(timeout),
     }
 }
+
+// to allow as_mut() for Timeout
+impl<F> Unpin for Timeout<F> {}
 
 impl<F: Future> Timeout<F> {
     #[inline]
     fn pin_get_future(self: Pin<&mut Self>) -> Pin<&mut F> {
         // This is okay because `future` is pinned when `self` is.
         unsafe { self.map_unchecked_mut(|s| &mut s.future) }
+    }
+
+    fn timer_expired(&self) -> bool {
+        if let Some(deadline) = self.deadline {
+            return fiber::clock() >= deadline;
+        }
+
+        // deadline is None means invalid input parameter, let's
+        // stop this future immediately by saying timeout expired
+        true
+    }
+
+    fn timer_reset(&mut self) {
+        if self.timer.is_null() {
+            return;
+        }
+
+        unsafe { crate::ffi::tarantool::coio_wake_up_timer_reset(self.timer) };
+    }
+
+    fn get_delay(&self) -> Option<f64> {
+        if let Some(deadline) = self.deadline {
+            return Some((deadline - crate::fiber::clock()).as_secs_f64());
+        }
+
+        None
+    }
+
+    fn timer_update(&mut self) {
+        if self.timer.is_null() {
+            // further self.timer can't be null because in that case
+            // xcalloc inside the coio_wake_up_timer_alloc will panic
+            self.timer = unsafe { crate::ffi::tarantool::coio_wake_up_timer_alloc() };
+        }
+
+        if unsafe { crate::ffi::tarantool::coio_wake_up_timer_active(self.timer) } {
+            return;
+        }
+
+        if let Some(delay) = self.get_delay() {
+            unsafe { crate::ffi::tarantool::coio_wake_up_timer_set(self.timer, delay) };
+        }
+    }
+}
+
+impl<F> Drop for Timeout<F> {
+    fn drop(&mut self) {
+        if self.timer.is_null() {
+            // possible for nested_on_drop_is_executed() on zero timeout
+            return;
+        }
+
+        unsafe { crate::ffi::tarantool::coio_wake_up_timer_free(self.timer) };
     }
 }
 
@@ -74,32 +136,21 @@ where
     F: Future<Output = std::result::Result<T, E>>,
 {
     type Output = Result<T, E>;
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let deadline = self.deadline;
-
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         // First, try polling the future
-        if let Poll::Ready(v) = self.pin_get_future().poll(cx) {
+        if let Poll::Ready(v) = self.as_mut().pin_get_future().poll(cx) {
+            self.as_mut().timer_reset();
+
             return Poll::Ready(v.map_err(Error::Failed));
         }
 
-        // Then check deadline and, if necessary, update wakup condition
-        // in the context.
-        match deadline {
-            Some(deadline) if fiber::clock() >= deadline => {
-                Poll::Ready(Err(Error::Expired)) // expired
-            }
-            Some(deadline) => {
-                // SAFETY: This is safe as long as the `Context` really
-                // is the `ContextExt`. It's always true within provided
-                // `block_on` async runtime.
-                unsafe { ContextExt::set_deadline(cx, deadline) };
-                Poll::Pending
-            }
-            None => {
-                // No deadline, wait forever
-                Poll::Pending
-            }
+        if self.timer_expired() {
+            return Poll::Ready(Err(Error::Expired));
         }
+
+        self.as_mut().timer_update();
+
+        Poll::Pending
     }
 }
 
@@ -131,6 +182,46 @@ mod tests {
 
     const _0_SEC: Duration = Duration::ZERO;
     const _1_SEC: Duration = Duration::from_secs(1);
+    const _2_SEC: Duration = Duration::from_secs(2);
+    const _3_SEC: Duration = Duration::from_secs(3);
+
+    async fn join_waits_for_longest_timeout_future(small_timeout: Duration, big_timeout: Duration) {
+        use crate::test::util::always_pending;
+
+        let now = fiber::clock();
+        let (err1, err2) = futures::join!(
+            timeout(small_timeout, always_pending()),
+            timeout(big_timeout, always_pending()),
+        );
+        assert!(err1.is_err());
+        assert!(err2.is_err());
+        assert!(now.elapsed() >= big_timeout);
+    }
+
+    #[crate::test(tarantool = "crate")]
+    async fn join_waits_for_longest_timeout() {
+        join_waits_for_longest_timeout_future(_1_SEC, _3_SEC).await;
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn join_waits_for_longest_timeout_in_n_fibers() {
+        let mut futures = Vec::new();
+        for _ in 0..10 {
+            futures.push(join_waits_for_longest_timeout_future(_1_SEC, _3_SEC));
+            futures.push(join_waits_for_longest_timeout_future(_1_SEC, _2_SEC));
+        }
+
+        let mut join_handles = Vec::new();
+        for _ in 0..20 {
+            let future = futures.pop().unwrap();
+
+            join_handles.push(fiber::start(move || fiber::block_on(future)));
+        }
+
+        for jh in join_handles {
+            jh.join();
+        }
+    }
 
     #[crate::test(tarantool = "crate")]
     fn instant_future() {
@@ -139,6 +230,9 @@ mod tests {
 
         let fut = timeout(Duration::ZERO, async { ok(79) });
         assert_eq!(fiber::block_on(fut), Ok(79));
+
+        let res = fiber::block_on(async { async { ok(0) }.timeout(_1_SEC).await });
+        assert_eq!(res, Ok(0));
     }
 
     #[crate::test(tarantool = "crate")]

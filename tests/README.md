@@ -10,6 +10,18 @@ cargo build -p tarantool-module-test-runner
 cargo test
 ```
 
+Manually, all tests:
+```bash
+cd path_to/tarantool-module
+path_to/tarantool/build/src/tarantool tests/run_tests.lua
+```
+
+Manually, one test:
+```bash
+cd path_to/tarantool-module
+path_to/tarantool/build/src/tarantool tests/run_tests.lua test_name
+```
+
 ## Under the hood
 When running `cargo test` some of the steps would be as you would expect:
 - Unit tests and integration tests defined with `#[test]` macro

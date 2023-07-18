@@ -13,6 +13,7 @@ use bitflags::bitflags;
 
 #[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
 use ::va_list::VaList;
+use libc::c_double;
 
 #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 use crate::va_list::VaList;
@@ -38,7 +39,94 @@ bitflags! {
     }
 }
 
+#[repr(C)]
+pub struct CAResAddrInfoCName {
+    pub ttl: c_int,
+    pub alias: *mut c_char,
+    pub name: *mut c_char,
+    pub next: *mut Self,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct CAResAddrInfoNode {
+    pub ai_ttl: c_int,
+    pub ai_flags: c_int,
+    pub ai_family: c_int,
+    pub ai_socktype: c_int,
+    pub ai_protocol: c_int,
+    pub ai_addrlen: libc::socklen_t,
+    pub ai_addr: *mut libc::sockaddr,
+    pub ai_next: *mut Self,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct CAResAddrInfo {
+    pub cnames: *mut CAResAddrInfoCName,
+    pub nodes: *mut CAResAddrInfoNode,
+    pub name: *mut c_char,
+}
+
 extern "C" {
+    /// Initiate a host query by name and service and allocate context
+    /// to allow working with libev async io waiting.
+    ///
+    /// Does not yield.
+    ///
+    /// Params:
+    /// - `host` - domain name or ip in string representation.
+    /// - `ares_result` - asynchronous result of the DNS resolving routine.
+    /// Content of the ares must be freed by coio_ares_freeaddrinfo.
+    /// - `error` - error returned by resolving routine.
+    ///
+    /// Returns:
+    /// - `context` - allocated memory for internal use. Must be
+    /// freed by coio_ares_request_cancel() after use even if result didn't
+    /// return.
+    pub fn coio_ares_getaddrinfo(
+        host: *const c_char,
+        ares_result: *mut *mut CAResAddrInfo,
+        error: *mut bool,
+    ) -> *mut c_void;
+
+    /// Free memory of the asynchronous resolving result returned in ares
+    /// parameeter by coio_ares_getaddrinfo().
+    pub fn coio_ares_freeaddrinfo(addrinfo: *mut CAResAddrInfo);
+
+    /// Drop all processes initiated by getaddrinfo request:
+    /// close file descriptors and free memory after coio_ares_getaddrinfo().
+    pub fn coio_ares_request_cancel(memory: *mut c_void);
+
+    /// Register the given file descriptor as event to wait until
+    /// it will be ready to allow read or(and) write operations.
+    /// Not yields.
+    /// - `fd` - non-blocking file descriptor.
+    /// - `events` - requested events to wait combination of
+    /// TNT_IO_READ | TNT_IO_WRITE bit flags.
+    ///
+    /// Returns:
+    /// - `evt` - pointer to the initialized io event memory,
+    /// must be passed to coio_wait_event_free() when event no
+    /// longer needed.
+    pub fn coio_wait_event_register(fd: c_int, events: c_int) -> *mut c_void;
+
+    pub fn coio_wait_event_update(io_watcher: *mut c_void, events: c_int);
+
+    /// Free memory previously allocated by coio_wait_event_alloc()
+    pub fn coio_wait_event_free(evt: *mut c_void);
+
+    /// Set and start a generic timeout which will wake the corresponding
+    /// fiber after expiration.
+    pub fn coio_wake_up_timer_set(timer: *mut c_void, delay: c_double);
+    pub fn coio_wake_up_timer_active(timer: *mut c_void) -> bool;
+
+    pub fn coio_wake_up_timer_alloc() -> *mut c_void;
+    pub fn coio_wake_up_timer_free(timer: *mut c_void);
+
+    /// Stop and reset a generic timeout installed by coio_wake_up_timer_set().
+    pub fn coio_wake_up_timer_reset(timer: *mut c_void);
+
     /// Wait until **READ** or **WRITE** event on socket (`fd`). Yields.
     /// - `fd` - non-blocking socket file description
     /// - `events` - requested events to wait.
@@ -51,10 +139,8 @@ extern "C" {
     /// bit flags.
     pub fn coio_wait(fd: c_int, event: c_int, timeout: f64) -> c_int;
 
-    /**
-     * Close the fd and wake any fiber blocked in
-     * coio_wait() call on this fd.
-     */
+    /// Close the fd and wake any fiber blocked in
+    /// coio_wait() call on this fd.
     pub fn coio_close(fd: c_int) -> c_int;
 
     /// Fiber-friendly version of getaddrinfo(3).

@@ -479,6 +479,18 @@ mod tests {
     }
 
     #[crate::test(tarantool = "crate")]
+    fn ping_async() {
+        let client = fiber::block_on(test_client());
+
+        let fut1 = client.ping();
+        let fut2 = client.ping();
+
+        fiber::block_on(async move {
+            let _ = futures::future::join_all(vec![fut1, fut2]).await;
+        });
+    }
+
+    #[crate::test(tarantool = "crate")]
     async fn execute() {
         Space::find("test_s1")
             .unwrap()

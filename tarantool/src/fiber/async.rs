@@ -111,105 +111,6 @@ mod waker {
     }
 }
 
-pub(crate) mod coio {
-    use std::cell::Cell;
-    use std::ffi::CString;
-    use std::rc::Rc;
-
-    /// Request for address resolution. After being set in [`super::context::ContextExt`] it will be executed by `block_on`.
-    /// See [coio_getaddrinfo](crate::ffi::tarantool::coio_getaddrinfo) for low level details.
-    #[derive(Clone, Debug)]
-    pub struct GetAddrInfo {
-        pub host: CString,
-        pub hints: libc::addrinfo,
-        pub res: Rc<Cell<*mut libc::addrinfo>>,
-        pub err: Rc<Cell<bool>>,
-    }
-}
-
-pub(crate) mod context {
-    use super::coio::GetAddrInfo;
-    use std::os::unix::io::RawFd;
-    use std::task::Context;
-    use std::task::Waker;
-
-    use crate::ffi::tarantool as ffi;
-    use crate::time::Instant;
-
-    /// The context is primarily used to pass wakup conditions from a
-    /// pending future to the async executor (i.e `block_on`). There's
-    /// no place for that in returned `Poll` enum, so we use a
-    /// workaround.
-    #[repr(C)]
-    pub struct ContextExt<'a> {
-        /// Important: the `Context` field must come at the first place.
-        /// Otherwise, reinterpreting (and further dereferencing) a `Context`
-        /// pointer would be an UB.
-        cx: Context<'a>,
-
-        /// A time limit to wake up the fiber. If `None`, the `block_on`
-        /// async executor will use `Duration::MAX` value as a timeout.
-        pub(super) deadline: Option<Instant>,
-
-        /// Wait an event on a file descriptor rather than on a
-        /// `fiber::Cond` (that is under the hood of a `Waker`).
-        pub(super) coio_wait: Option<(RawFd, ffi::CoIOFlags)>,
-
-        /// Wait for address resolution rather than on a
-        /// `fiber::Cond` (that is under the hood of a `Waker`).
-        pub(super) coio_getaddrinfo: Option<GetAddrInfo>,
-    }
-
-    impl<'a> ContextExt<'a> {
-        #[must_use]
-        pub fn from_waker(waker: &'a Waker) -> Self {
-            Self {
-                cx: Context::from_waker(waker),
-                deadline: None,
-                coio_wait: None,
-                coio_getaddrinfo: None,
-            }
-        }
-
-        pub fn cx(&mut self) -> &mut Context<'a> {
-            &mut self.cx
-        }
-
-        /// SAFETY: The following conditions must be met:
-        /// 1. The `Contex` must be the first field of `ContextExt`.
-        /// 2. Provided `cx` must really be the `ContextExt`. It's up to
-        ///    the caller, so the function is still marked unsafe.
-        pub(crate) unsafe fn as_context_ext<'b>(cx: &'b mut Context<'_>) -> &'b mut Self {
-            let cx: &mut ContextExt = &mut *(cx as *mut Context).cast();
-            cx
-        }
-
-        /// SAFETY: `cx` must really be the `ContextExt`
-        pub unsafe fn set_deadline(cx: &mut Context<'_>, new: Instant) {
-            let cx = Self::as_context_ext(cx);
-            if let Some(ref mut deadline) = cx.deadline {
-                if new < *deadline {
-                    *deadline = new
-                }
-            } else {
-                cx.deadline = Some(new)
-            }
-        }
-
-        /// SAFETY: `cx` must really be the `ContextExt`
-        pub unsafe fn set_coio_wait(cx: &mut Context<'_>, fd: RawFd, event: ffi::CoIOFlags) {
-            let cx = Self::as_context_ext(cx);
-            cx.coio_wait = Some((fd, event));
-        }
-
-        /// SAFETY: `cx` must really be the `ContextExt`
-        pub unsafe fn set_coio_getaddrinfo(cx: &mut Context<'_>, v: GetAddrInfo) {
-            let cx = Self::as_context_ext(cx);
-            cx.coio_getaddrinfo = Some(v);
-        }
-    }
-}
-
 /// A wrapper around a future which has on_drop behavior.
 /// See [`on_drop`].
 pub struct OnDrop<Fut, Fun: FnOnce()> {
@@ -266,43 +167,21 @@ impl<T> IntoOnDrop for T where T: Future + Sized {}
 /// This runs the given future on the current fiber, blocking until it is complete, and yielding its resolved result.
 ///
 /// For examples see module level documentation in [`super::async`].
-pub fn block_on<F: Future>(f: F) -> F::Output {
+pub fn block_on<F: Future>(future: F) -> F::Output {
     let rcw: Rc<waker::FiberWaker> = Default::default();
     let waker = waker::with_rcw(rcw.clone());
 
-    pin_mut!(f);
+    let mut cx = std::task::Context::from_waker(&waker);
+
+    pin_mut!(future);
     loop {
-        let mut cx = context::ContextExt::from_waker(&waker);
-
-        if let Poll::Ready(t) = f.as_mut().poll(cx.cx()) {
-            return t;
+        if let Poll::Ready(output) = future.as_mut().poll(&mut cx) {
+            return output;
         }
 
-        let timeout = match cx.deadline {
-            Some(deadline) => deadline.duration_since(super::clock()),
-            None => Duration::MAX,
-        };
-
-        if let Some(getaddrinfo) = cx.coio_getaddrinfo {
-            let mut res = std::ptr::null_mut();
-            let out = unsafe {
-                crate::ffi::tarantool::coio_getaddrinfo(
-                    getaddrinfo.host.as_ptr(),
-                    std::ptr::null(),
-                    &getaddrinfo.hints as *const _,
-                    &mut res as *mut _,
-                    timeout.as_secs_f64(),
-                )
-            };
-            getaddrinfo.err.set(out != 0);
-            getaddrinfo.res.set(res);
-        } else if let Some((fd, event)) = cx.coio_wait {
-            unsafe {
-                crate::ffi::tarantool::coio_wait(fd, event.bits(), timeout.as_secs_f64());
-            }
-        } else {
-            rcw.cond().wait_timeout(timeout);
-        }
+        // TODO: Do an unconditional `fiber_yield()`,
+        // update channels, mutexes and etc. based on `cond` to support this
+        rcw.cond().wait();
     }
 }
 
