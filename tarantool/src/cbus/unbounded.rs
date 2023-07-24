@@ -2,7 +2,7 @@ use super::{LCPipe, Message};
 use crate::cbus::RecvError;
 use crate::fiber::Cond;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 /// A synchronization component between producers and a consumer.
 struct Waker {
@@ -97,7 +97,7 @@ impl<T> Default for Channel<T> {
 pub fn channel<T>(cbus_endpoint: &str) -> (Sender<T>, EndpointReceiver<T>) {
     let chan = Arc::new(Channel::new());
     let s = SenderInner {
-        chan: Arc::clone(&chan),
+        chan: Arc::downgrade(&chan),
         pipe: LCPipe::new(cbus_endpoint),
     };
     let r = EndpointReceiver {
@@ -107,7 +107,7 @@ pub fn channel<T>(cbus_endpoint: &str) -> (Sender<T>, EndpointReceiver<T>) {
 }
 
 struct SenderInner<T> {
-    chan: Arc<Channel<T>>,
+    chan: Weak<Channel<T>>,
     pipe: LCPipe,
 }
 
@@ -115,8 +115,10 @@ unsafe impl<T> Send for SenderInner<T> {}
 
 impl<T> Drop for SenderInner<T> {
     fn drop(&mut self) {
-        self.chan.disconnected.store(true, Ordering::Release);
-        self.chan.waker.wakeup(&self.pipe);
+        if let Some(chan) = self.chan.upgrade() {
+            chan.disconnected.store(true, Ordering::Release);
+            chan.waker.wakeup(&self.pipe);
+        }
     }
 }
 
@@ -146,9 +148,11 @@ impl<T> Sender<T> {
     ///
     /// * `message`: message to send
     pub fn send(&self, msg: T) {
-        self.inner.chan.list.push(msg);
-        // wake up a sleeping receiver
-        self.inner.chan.waker.wakeup(&self.inner.pipe);
+        if let Some(chan) = self.inner.chan.upgrade() {
+            chan.list.push(msg);
+            // wake up a sleeping receiver
+            chan.waker.wakeup(&self.inner.pipe);
+        }
     }
 }
 
@@ -191,10 +195,11 @@ impl<T> EndpointReceiver<T> {
 mod tests {
     use super::super::tests::run_cbus_endpoint;
     use crate::cbus::{unbounded, RecvError};
+    use crate::fiber;
     use crate::fiber::{check_yield, YieldResult};
-    use std::thread;
     use std::thread::JoinHandle;
     use std::time::Duration;
+    use std::{mem, thread};
 
     #[crate::test(tarantool = "crate")]
     pub fn unbounded_test() {
@@ -222,6 +227,27 @@ mod tests {
             YieldResult::Yielded((0..1000).collect::<Vec<_>>())
         );
         thread.join().unwrap();
+        cbus_fiber.cancel();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    pub fn unbounded_test_drop_rx_before_tx() {
+        let mut cbus_fiber = run_cbus_endpoint("unbounded_test_drop_rx_before_tx");
+        let (tx, rx) = unbounded::channel("unbounded_test_drop_rx_before_tx");
+
+        let thread = thread::spawn(move || {
+            for i in 1..300 {
+                tx.send(i);
+                if i % 100 == 0 {
+                    thread::sleep(Duration::from_secs(1));
+                }
+            }
+        });
+
+        fiber::sleep(Duration::from_secs(1));
+        mem::drop(rx);
+        thread.join().unwrap();
+
         cbus_fiber.cancel();
     }
 
