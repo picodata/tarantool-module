@@ -50,6 +50,11 @@ pub fn coio_read_write() {
     writer_fiber.join();
 }
 
+pub fn spawn() {
+    let res = coio::spawn(|| 100);
+    assert!(matches!(res, Ok(100)));
+}
+
 pub fn coio_call() {
     let res = coio::coio_call(
         &mut |x| {

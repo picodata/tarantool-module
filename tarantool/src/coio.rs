@@ -202,6 +202,30 @@ where
     unsafe { ffi::coio_call(trampoline, callback_ptr, Box::into_raw(Box::<T>::new(arg))) }
 }
 
+/// Create a new eio task with the specified function. Yield
+/// and wait until the task is complete or a timeout occurs.
+///
+/// Returns:
+/// - `Ok(R)` in case of success
+/// - `Err(std::io::Error)` in case of failure, e.g. `ENOMEM`.
+///
+/// See [`coio_call`] for more information.
+pub fn spawn<F, R>(mut callback: F) -> std::io::Result<R>
+where
+    F: FnMut() -> R,
+{
+    let mut out = None;
+    let mut callback = |_| {
+        out.replace(callback());
+        0
+    };
+
+    match coio_call(&mut callback, ()) {
+        0 => Ok(out.expect("missing value")),
+        _ => Err(std::io::Error::last_os_error()),
+    }
+}
+
 /// Fiber-friendly version of `getaddrinfo(3)`.
 ///
 /// - `host` - host name, i.e. "tarantool.org"
