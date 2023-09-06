@@ -1,5 +1,31 @@
 # Change Log
 
+# [3.0.0] Unreleased
+
+### Added
+- Method `space::Builder::space_type`, field `SpaceCreateOptions::space_type` and
+  enum `SpaceType` which is now the primary way of specify the type of space.
+- Fully-temporary spaces can now be created, destroyed and indexes can be created
+  for them as well (see `SpaceType::Temporary`). This feature requires your
+  tarantool executable to support some low level APIs, you can use the newly
+  added `ffi::has_fully_temporary_spaces` function to check if the required
+  APIs are supported.
+- `SystemSpace::as_space` method for easier conversion to `Space`.
+- `schema::space::space_metadata` function
+- `space::SPACE_ID_MAX` constant with a value of the maximum possible space id.
+
+### Changed
+- Updated some doc comments for Space and Index methods.
+
+### Deprecated
+- Methods `temporary`, `is_local` & `is_sync` of struct `space::Builder` are
+  deprecated in favour of new method `space_type`.
+- `schema::space::SpaceMetadata` is now a deprecated alias of `space::Metadata`.
+
+### Breaking Changes
+- `SpaceCreateOptions` fields `is_temporary`, `is_local` & `is_sync` are
+    removed in favour of new field `space_type`.
+
 # [2.0.0] Aug 28 2023
 
 ### Added
