@@ -301,6 +301,8 @@ impl Protocol {
     }
 }
 
+const IPROTO_PACKET_SIZE_MAX: u64 = 2 * 1024 * 1024 * 1024;
+
 fn write_to_buffer(
     buffer: &mut Cursor<&mut Vec<u8>>,
     sync: SyncIndex,
@@ -317,7 +319,12 @@ fn write_to_buffer(
 
     // calculate and write MSG_SIZE
     buffer.set_position(msg_start_offset);
-    rmp::encode::write_u32(buffer, (payload_end_offset - payload_start_offset) as u32)?;
+    let payload_size = payload_end_offset - payload_start_offset;
+    if payload_size > IPROTO_PACKET_SIZE_MAX {
+        let err = crate::set_and_get_error!(crate::error::TarantoolErrorCode::InvalidMsgpack, "packet size is too big: {}", payload_size);
+        return Err(Error::Tarantool(Box::new(err.into())));
+    }
+    rmp::encode::write_u32(buffer, payload_size as _)?;
     buffer.set_position(payload_end_offset);
 
     Ok(())
