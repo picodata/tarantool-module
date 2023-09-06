@@ -95,6 +95,6 @@ cfg = json.encode {
 }
 
 -- Run tests
-local test_main = require('libtarantool_module_test_runner')
+local test_main = require('test_runner')
 local exit_code = test_main(cfg)
 os.exit(exit_code)

@@ -20,7 +20,7 @@ pub fn with_custom_section() {
     assert_eq!(
         test_names,
         [&TestCase::new(
-            "tarantool_module_test_runner::test_attr::with_custom_section",
+            concat!(env!("CARGO_CRATE_NAME"), "::test_attr::with_custom_section"),
             with_custom_section,
             false,
         )]

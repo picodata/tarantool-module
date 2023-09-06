@@ -318,7 +318,7 @@ fn module_path() {
     let path = ::tarantool::proc::module_path(module_path as _).unwrap();
     assert_eq!(
         path.file_stem(),
-        Some(OsStr::new("libtarantool_module_test_runner"))
+        Some(OsStr::new(concat!("lib", env!("CARGO_CRATE_NAME"))))
     );
     assert_eq!(
         ::tarantool::proc::module_path(::tarantool::ffi::tarantool::box_txn as _),

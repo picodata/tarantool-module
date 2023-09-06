@@ -1,4 +1,5 @@
 use crate::common::{BoolExt, LuaStackIntegrityGuard};
+use pretty_assertions::assert_eq;
 use std::{
     any::type_name,
     cell::RefCell,
@@ -1010,22 +1011,25 @@ pub fn derive_generic_enum_lua_read() {
     let res = lua.eval::<E1>("return { foo = { 'wrong', 'type' } }");
     assert_eq!(
         res.unwrap_err().to_string(),
-        "variant #1: failed reading Lua value: f64 expected, got table
+        format!(
+            "variant #1: failed reading Lua value: f64 expected, got table
     while reading enum variant: A expected, got table
 variant #2: failed reading Lua value: i32 expected, got string
     while converting Lua table to Vec<_>: alloc::vec::Vec<alloc::string::String> expected, got table key of wrong type
     while reading enum variant: B expected, got table
 variant #3: failed reading value from Lua table: alloc::string::String expected, got nil
-    while converting Lua table to struct: struct with fields { f: F, g: Vec < G > } expected, got wrong field type for key 'f'
+    while converting Lua table to struct: struct with fields {{ f: F, g: Vec < G > }} expected, got wrong field type for key 'f'
     while reading enum variant: D expected, got table
 variant #4: failed reading Lua value: alloc::string::String expected, got table
     while reading one of multiple values: alloc::string::String at index 1 (1-based) expected, got incorrect value
     while reading enum variant: H expected, got (table, no value, no value)
 variant #5: failed reading value from Lua table: alloc::string::String expected, got table
-    while converting Lua table to struct: tarantool_module_test_runner::tlua::rust_tables::derive_generic_enum_lua_read::S<alloc::string::String, alloc::vec::Vec<u8>> expected, got wrong field type for key 'foo'
+    while converting Lua table to struct: {crate}::tlua::rust_tables::derive_generic_enum_lua_read::S<alloc::string::String, alloc::vec::Vec<u8>> expected, got wrong field type for key 'foo'
     while reading enum variant: L expected, got table
-    while reading any of the variants: tarantool_module_test_runner::tlua::rust_tables::derive_generic_enum_lua_read::E<f64, alloc::string::String, alloc::string::String, u8, alloc::string::String, u8, u64, alloc::string::String, alloc::vec::Vec<u8>> expected, got something else
-    while reading value(s) returned by Lua: tarantool_module_test_runner::tlua::rust_tables::derive_generic_enum_lua_read::E<f64, alloc::string::String, alloc::string::String, u8, alloc::string::String, u8, u64, alloc::string::String, alloc::vec::Vec<u8>> expected, got table"
+    while reading any of the variants: {crate}::tlua::rust_tables::derive_generic_enum_lua_read::E<f64, alloc::string::String, alloc::string::String, u8, alloc::string::String, u8, u64, alloc::string::String, alloc::vec::Vec<u8>> expected, got something else
+    while reading value(s) returned by Lua: {crate}::tlua::rust_tables::derive_generic_enum_lua_read::E<f64, alloc::string::String, alloc::string::String, u8, alloc::string::String, u8, u64, alloc::string::String, alloc::vec::Vec<u8>> expected, got table",
+            crate = env!("CARGO_CRATE_NAME"),
+        )
     );
 }
 
@@ -1142,10 +1146,13 @@ pub fn derive_unit_structs_lua_read() {
     let res = (&lua).push("f_oo").read::<E>();
     assert_eq!(
         res.unwrap_err().1.to_string(),
-        "variant #1: failed reading unit struct: case incensitive match with 'a' expected, got 'f_oo'
+        format!(
+            "variant #1: failed reading unit struct: case incensitive match with 'a' expected, got 'f_oo'
 variant #2: failed reading unit struct: case incensitive match with 'foo' expected, got 'f_oo'
 variant #3: failed reading unit struct: case incensitive match with 'xxx' expected, got 'f_oo'
-    while reading any of the variants: tarantool_module_test_runner::tlua::rust_tables::derive_unit_structs_lua_read::E expected, got something else",
+    while reading any of the variants: {crate}::tlua::rust_tables::derive_unit_structs_lua_read::E expected, got something else",
+            crate = env!("CARGO_CRATE_NAME"),
+        ),
     );
 
     #[derive(LuaRead, Debug, PartialEq, Eq)]
@@ -1505,8 +1512,11 @@ pub fn derive_tuple_structs() {
 
     assert_eq!(
         lua.eval::<Int>("return 'not a number'").unwrap_err().to_string(),
-        "failed reading Lua value: i32 expected, got string
-    while reading value(s) returned by Lua: tarantool_module_test_runner::tlua::rust_tables::derive_tuple_structs::Int expected, got string"
+        format!(
+            "failed reading Lua value: i32 expected, got string
+    while reading value(s) returned by Lua: {crate}::tlua::rust_tables::derive_tuple_structs::Int expected, got string",
+            crate = env!("CARGO_CRATE_NAME"),
+        ),
     );
 
     // PushInto

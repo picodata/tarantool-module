@@ -600,10 +600,8 @@ pub unsafe extern "C" fn start(l: *mut ffi_lua::lua_State) -> c_int {
 }
 
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
-pub unsafe extern "C" fn luaopen_libtarantool_module_test_runner(
-    l: *mut ffi_lua::lua_State,
-) -> c_int {
+#[export_name = concat!("luaopen_", env!("CARGO_CRATE_NAME"))]
+pub unsafe extern "C" fn luaopen_callback(l: *mut ffi_lua::lua_State) -> c_int {
     ffi_lua::lua_pushcfunction(l, start);
     1
 }

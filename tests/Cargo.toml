@@ -1,5 +1,5 @@
 [package]
-name = "tarantool-module-test-runner"
+name = "test-runner"
 version = "0.1.0"
 authors = [
     "Dmitriy Koltsov <dkoltsov@picodata.io>",
@@ -27,6 +27,7 @@ futures = "0.3.25"
 linkme = "0.2.10"
 time = "=0.3.17"
 time-macros = "=0.2.6"
+pretty_assertions = "1.4.0"
 
 [dependencies.tarantool]
 path = "../tarantool"
