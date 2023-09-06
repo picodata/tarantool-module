@@ -27,6 +27,22 @@ use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::ffi::tarantool as ffi;
 
+#[inline(always)]
+pub fn default_logger() -> &'static crate::log::TarantoolLogger {
+    static LOGGER: crate::log::TarantoolLogger = crate::log::TarantoolLogger::new();
+    &LOGGER
+}
+
+#[inline(always)]
+pub fn init_default() {
+    let res = ::log::set_logger(default_logger());
+    if res.is_err() {
+        ::log::warn!("log::set_logger was called again");
+        return;
+    }
+    ::log::set_max_level(::log::LevelFilter::Info);
+}
+
 /// [Log](https://docs.rs/log/latest/log/trait.Log.html) trait implementation. Wraps [say()](fn.say.html).
 pub struct TarantoolLogger(fn(Level) -> SayLevel);
 
