@@ -378,11 +378,10 @@ async fn sender(
             return;
         }
         // TODO: Set max drain
-        let data: Vec<_> = client
+        let data = client
             .borrow_mut()
             .protocol
-            .drain_outgoing_data(None)
-            .collect();
+            .take_outgoing_data();
         if data.is_empty() {
             // Wait for explicit wakeup, it should happen when there is new outgoing data
             waker.changed().await.expect("channel should be open");
