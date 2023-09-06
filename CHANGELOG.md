@@ -13,6 +13,8 @@
 - `SystemSpace::as_space` method for easier conversion to `Space`.
 - `schema::space::space_metadata` function
 - `space::SPACE_ID_MAX` constant with a value of the maximum possible space id.
+- `ViaMsgpack` wrapper type for passing values to/from lua by converting them
+  to msgpack first.
 
 ### Changed
 - Updated some doc comments for Space and Index methods.
