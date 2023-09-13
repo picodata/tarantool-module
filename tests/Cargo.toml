@@ -30,7 +30,7 @@ time-macros = "=0.2.6"
 
 [dependencies.tarantool]
 path = "../tarantool"
-features = ["all", "internal_test"]
+features = ["all", "internal_test", "tokio"]
 
 [dependencies.tarantool-proc]
 path = "../tarantool-proc"

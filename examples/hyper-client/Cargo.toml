@@ -1,0 +1,13 @@
+[package]
+name = "hyper-client"
+version = "0.1.0"
+edition = "2021"
+license = "BSD-2-Clause"
+
+[dependencies]
+tarantool = { path = "../../tarantool", features = ["tokio", "hyper"] }
+hyper = { version = "0.14.27", features = ["client", "http1"] }
+
+[lib]
+test = false
+crate-type = ["cdylib"]

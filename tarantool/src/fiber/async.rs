@@ -36,9 +36,11 @@ pub mod watch;
 
 pub use mutex::Mutex;
 
-#[cfg(feature = "async_std")]
+#[cfg(feature = "async-std")]
 pub use async_std;
 pub use futures;
+#[cfg(feature = "tokio")]
+pub use tokio;
 
 /// Error that happens on the receiver side of the channel.
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]
@@ -319,6 +321,17 @@ pub async fn sleep(time: Duration) {
     let (tx, rx) = oneshot::channel::<()>();
     rx.timeout(time).await.unwrap_err();
     drop(tx);
+}
+
+#[cfg(feature = "hyper")]
+pub struct FiberExecutor;
+
+#[cfg(feature = "hyper")]
+impl<F: Future> hyper::rt::Executor<F> for FiberExecutor {
+    fn execute(&self, f: F) {
+        let jh = super::defer_async(f);
+        std::mem::forget(jh);
+    }
 }
 
 #[cfg(feature = "internal_test")]

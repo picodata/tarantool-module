@@ -29,9 +29,9 @@ use std::rc::Rc;
 use std::task::{Context, Poll};
 use std::{io, ptr};
 
-#[cfg(feature = "async_std")]
+#[cfg(feature = "async-std")]
 use async_std::io::{Read as AsyncRead, Write as AsyncWrite};
-#[cfg(not(feature = "async_std"))]
+#[cfg(not(feature = "async-std"))]
 use futures::{AsyncRead, AsyncWrite};
 
 use crate::ffi::tarantool as ffi;
@@ -135,28 +135,30 @@ unsafe fn get_addrs_from_info(
     Ok(out_addrs)
 }
 
-async unsafe fn get_address_info(url: &str) -> Result<*mut libc::addrinfo, Error> {
-    struct GetAddrInfo(r#async::coio::GetAddrInfo);
+struct GetAddrInfo(r#async::coio::GetAddrInfo);
 
-    impl Future for GetAddrInfo {
-        type Output = Result<*mut libc::addrinfo, Error>;
+unsafe impl Send for GetAddrInfo {}
 
-        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-            unsafe {
-                if self.0.err.get() {
-                    return Poll::Ready(Err(Error::ResolveAddress));
-                }
-                if self.0.res.get().is_null() {
-                    ContextExt::set_coio_getaddrinfo(cx, self.0.clone());
-                    Poll::Pending
-                } else {
-                    Poll::Ready(Ok(self.0.res.get()))
-                }
+impl Future for GetAddrInfo {
+    type Output = Result<*mut libc::addrinfo, Error>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        unsafe {
+            if self.0.err.get() {
+                return Poll::Ready(Err(Error::ResolveAddress));
+            }
+            if self.0.res.get().is_null() {
+                ContextExt::set_coio_getaddrinfo(cx, self.0.clone());
+                Poll::Pending
+            } else {
+                Poll::Ready(Ok(self.0.res.get()))
             }
         }
     }
+}
 
-    let host = CString::new(url).map_err(Error::ConstructCString)?;
+unsafe fn get_address_info(url: &str) -> GetAddrInfo {
+    let host = CString::new(url).map_err(Error::ConstructCString).unwrap();
     let mut hints = MaybeUninit::<libc::addrinfo>::zeroed().assume_init();
     hints.ai_family = libc::AF_UNSPEC;
     hints.ai_socktype = libc::SOCK_STREAM;
@@ -166,7 +168,6 @@ async unsafe fn get_address_info(url: &str) -> Result<*mut libc::addrinfo, Error
         res: Rc::new(Cell::new(ptr::null_mut())),
         err: Rc::new(Cell::new(false)),
     })
-    .await
 }
 
 unsafe fn to_rs_sockaddr(addr: *const libc::sockaddr, port: u16) -> Result<SocketAddr, Error> {
@@ -278,9 +279,136 @@ impl AsyncRead for TcpStream {
     }
 }
 
+///////////////////////////////////////////////////////////////
+// tokio io traits
+///////////////////////////////////////////////////////////////
+
+#[cfg(feature = "tokio")]
+impl tokio::io::AsyncWrite for TcpStream {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        AsyncWrite::poll_write(self, cx, buf)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        AsyncWrite::poll_flush(self, cx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        AsyncWrite::poll_close(self, cx)
+    }
+}
+
+#[cfg(feature = "tokio")]
+impl tokio::io::AsyncRead for TcpStream {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut tokio::io::ReadBuf,
+    ) -> Poll<io::Result<()>> {
+        AsyncRead::poll_read(self, cx, buf.initialize_unfilled()).map_ok(|n| buf.advance(n))
+    }
+}
+
+///////////////////////////////////////////////////////////////
+// hyper traits
+///////////////////////////////////////////////////////////////
+
+#[cfg(feature = "hyper")]
+impl hyper::client::connect::Connection for TcpStream {
+    fn connected(&self) -> hyper::client::connect::Connected {
+        hyper::client::connect::Connected::new()
+    }
+}
+
 impl Drop for TcpStream {
     fn drop(&mut self) {
         let _ = self.close_token().close();
+    }
+}
+
+#[cfg(all(feature = "internal_test", feature = "tokio"))]
+mod tests_tokio {
+    use super::TcpStream;
+
+    use crate::fiber;
+    use crate::fiber::r#async::timeout::{self, IntoTimeout};
+    use crate::test::util::always_pending;
+    use crate::test::util::TARANTOOL_LISTEN;
+
+    use std::collections::HashSet;
+    use std::net::{TcpListener, ToSocketAddrs};
+    use std::thread;
+    use std::time::Duration;
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    const _10_SEC: Duration = Duration::from_secs(10);
+    const _0_SEC: Duration = Duration::from_secs(0);
+
+    #[crate::test(tarantool = "crate")]
+    async fn read() {
+        let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
+            .timeout(_10_SEC)
+            .await
+            .unwrap();
+        // Read greeting
+        let mut buf = vec![0; 128];
+        stream.read_exact(&mut buf).timeout(_10_SEC).await.unwrap();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    async fn read_timeout() {
+        let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
+            .timeout(_10_SEC)
+            .await
+            .unwrap();
+        // Read greeting
+        let mut buf = vec![0; 128];
+        assert_eq!(
+            stream
+                .read_exact(&mut buf)
+                .timeout(_0_SEC)
+                .await
+                .unwrap_err()
+                .to_string(),
+            "deadline expired"
+        );
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn write_tokio() {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let listener = TcpListener::bind("127.0.0.1:3313").unwrap();
+        // Spawn listener
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                let mut buf = vec![];
+                <std::net::TcpStream as std::io::Read>::read_to_end(&mut stream, &mut buf).unwrap();
+                sender.send(buf).unwrap();
+            }
+        });
+        // Send data
+        {
+            fiber::block_on(async {
+                let mut stream = TcpStream::connect("localhost", 3313)
+                    .timeout(_10_SEC)
+                    .await
+                    .unwrap();
+                timeout::timeout(_10_SEC, stream.write_all(&[1, 2, 3]))
+                    .await
+                    .unwrap();
+                timeout::timeout(_10_SEC, stream.write_all(&[4, 5]))
+                    .await
+                    .unwrap();
+            });
+        }
+        let buf = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(buf, vec![1, 2, 3, 4, 5])
     }
 }
 
