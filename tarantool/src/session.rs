@@ -11,6 +11,7 @@ use tlua::AsLua as _;
 use crate::error::{Error, TarantoolError};
 use crate::ffi::lua as ffi_lua;
 use crate::ffi::tarantool::luaT_call;
+use crate::ffi::tarantool::box_session_push;
 
 /// Get the user ID of the current user.
 pub fn uid() -> Result<isize, Error> {
@@ -62,4 +63,15 @@ pub fn euid() -> Result<isize, Error> {
 
         // No need to clean euid_state. It will be gc'ed.
     }
+}
+
+/// Push the raw `data` into the current session.
+pub fn push_raw(data: &[u8]) -> Result<(), Error> {
+    let std::ops::Range { start, end } = data.as_ptr_range();
+    // SAFETY: always safe
+    let rc = unsafe { box_session_push(start as _, end as _) };
+    if rc != 0 {
+        return Err(crate::error::TarantoolError::last().into());
+    }
+    Ok(())
 }

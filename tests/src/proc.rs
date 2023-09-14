@@ -325,3 +325,18 @@ fn module_path() {
         Some(Path::new("tarantool run_tests.lua <running>"))
     );
 }
+
+#[::tarantool::test]
+fn session_push() {
+    #[tarantool::proc]
+    fn proc_with_session_push() {
+        unsafe {
+            dbg!(tarantool::ffi::tarantool::box_session_id());
+            tarantool::session::push_raw(b"\x91\x10").unwrap();
+            tarantool::session::push_raw(b"\x91\x20").unwrap();
+            tarantool::session::push_raw(b"\x91\x30").unwrap();
+        }
+    }
+
+    let () = call_proc("proc_with_session_push", ()).unwrap();
+}

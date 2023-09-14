@@ -656,6 +656,10 @@ extern "C" {
     pub fn box_session_push(data: *const c_char, data_end: *const c_char) -> c_int;
 }
 
+crate::define_dlsym_reloc! {
+    pub fn box_session_id() -> u64;
+}
+
 // Sequence.
 extern "C" {
     pub fn box_sequence_next(seq_id: u32, result: *mut i64) -> c_int;
