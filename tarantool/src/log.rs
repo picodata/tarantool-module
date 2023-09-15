@@ -229,7 +229,7 @@ pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message:
     };
     let message = CString::new(message).unwrap();
 
-    unsafe { ffi::SAY_FN.unwrap()(level, file.as_ptr(), line, error_ptr, message.as_ptr()) }
+    unsafe { ffi::SAY_FN.unwrap()(level, file.as_ptr(), line, error_ptr, crate::c_ptr!("%s"), message.as_ptr()) }
 }
 
 #[cfg(feature = "internal_test")]
