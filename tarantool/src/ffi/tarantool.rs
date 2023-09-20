@@ -9,11 +9,13 @@
 /// 6. Box - errors, sessions, sequences, transactions, indexes, spaces, tuples.
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 
+#[cfg(feature = "picodata")]
+use libc::c_double;
+
 use bitflags::bitflags;
 
 #[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
 use ::va_list::VaList;
-use libc::c_double;
 
 #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 use crate::va_list::VaList;
@@ -68,7 +70,10 @@ pub struct CAResAddrInfo {
     pub name: *mut c_char,
 }
 
+#[cfg(feature = "picodata")]
+// CoIO and c-ares functions, mostly required for async.
 extern "C" {
+
     /// Initiate a host query by name and service and allocate context
     /// to allow working with libev async io waiting.
     ///
@@ -111,6 +116,14 @@ extern "C" {
     /// longer needed.
     pub fn coio_wait_event_register(fd: c_int, events: c_int) -> *mut c_void;
 
+    /// Update the given event to wait until it will be ready to
+    /// allow read or(and) write operations by applying bitwise
+    /// OR mask to existent expectations.
+    /// Not yields.
+    /// - `io_watcher` - pointer to the initialized io event
+    /// memory allocated by coio_wait_event_register().
+    /// - `events` - requested events to wait combination of
+    /// TNT_IO_READ | TNT_IO_WRITE bit flags.
     pub fn coio_wait_event_update(io_watcher: *mut c_void, events: c_int);
 
     /// Free memory previously allocated by coio_wait_event_alloc()
@@ -119,14 +132,30 @@ extern "C" {
     /// Set and start a generic timeout which will wake the corresponding
     /// fiber after expiration.
     pub fn coio_wake_up_timer_set(timer: *mut c_void, delay: c_double);
+
+    /// Check if timer still not expired.
+    /// - `timer` - pointer to the allocated and initialized ev_timer memory.
+    ///
+    /// Returns:
+    /// - `true` - when wake up still was not triggered
+    /// - `false` - otherwise
     pub fn coio_wake_up_timer_active(timer: *mut c_void) -> bool;
 
+    /// Allocate enough zeroed memory for the requested wake up timer.
+    ///
+    /// Returns:
+    /// - `timer` - pointer to the initialized ev_timer memory.
     pub fn coio_wake_up_timer_alloc() -> *mut c_void;
+
+    /// Free memory previously allocated by coio_wake_up_timer_alloc
+    /// - `timer` - pointer to the allocated ev_timer memory.
     pub fn coio_wake_up_timer_free(timer: *mut c_void);
 
     /// Stop and reset a generic timeout installed by coio_wake_up_timer_set().
     pub fn coio_wake_up_timer_reset(timer: *mut c_void);
+}
 
+extern "C" {
     /// Wait until **READ** or **WRITE** event on socket (`fd`). Yields.
     /// - `fd` - non-blocking socket file description
     /// - `events` - requested events to wait.
