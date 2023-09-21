@@ -27,7 +27,7 @@ use num_traits::FromPrimitive;
 use rmp::decode::{MarkerReadError, NumValueReadError, ValueReadError};
 use rmp::encode::ValueWriteError;
 
-use crate::ffi::tarantool as ffi;
+use crate::ffi::bindings as ffi;
 use crate::tlua::LuaError;
 
 /// A specialized [`Result`] type for the crate
@@ -133,7 +133,7 @@ impl From<MarkerReadError> for Error {
 pub struct TarantoolError {
     code: u32,
     message: String,
-    error_ptr: Box<ffi::BoxError>,
+    error_ptr: Box<ffi::box_error_t>,
 }
 
 impl std::fmt::Debug for TarantoolError {
@@ -485,7 +485,7 @@ macro_rules! set_error {
         unsafe {
             let file = std::concat!(file!(), "\0").as_ptr().cast();
             let msg_ptr = std::concat!($msg, "\0").as_ptr().cast();
-            $crate::ffi::tarantool::box_error_set(file, line!(), $code as u32, msg_ptr)
+            $crate::ffi::bindings::box_error_set(file, line!(), $code as u32, msg_ptr)
         }
     };
     ($code:expr, $($msg_args:expr),+) => {
@@ -495,7 +495,7 @@ macro_rules! set_error {
             let msg: std::ffi::CString = std::ffi::CString::new(msg).unwrap();
             // `msg` must outlive `msg_ptr`
             let msg_ptr = msg.as_ptr().cast();
-            $crate::ffi::tarantool::box_error_set(file, line!(), $code as u32, msg_ptr)
+            $crate::ffi::bindings::box_error_set(file, line!(), $code as u32, msg_ptr)
         }
     };
 }
@@ -510,7 +510,7 @@ macro_rules! set_and_get_error {
         // `msg` must outlive `msg_ptr`
         let msg_ptr = msg.as_ptr().cast();
         unsafe {
-            $crate::ffi::tarantool::box_error_set(file, line!(), $code as u32, msg_ptr);
+            $crate::ffi::bindings::box_error_set(file, line!(), $code as u32, msg_ptr);
             $crate::error::TarantoolError::last()
         }
     }};

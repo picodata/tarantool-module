@@ -25,7 +25,7 @@ use log::{Level, Log, Metadata, Record};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 
-use crate::ffi::tarantool as ffi;
+use crate::ffi;
 
 /// [Log](https://docs.rs/log/latest/log/trait.Log.html) trait implementation. Wraps [say()](fn.say.html).
 pub struct TarantoolLogger(fn(Level) -> SayLevel);
@@ -53,7 +53,7 @@ impl Log for TarantoolLogger {
     #[inline(always)]
     fn enabled(&self, metadata: &Metadata) -> bool {
         let level = self.convert_level(metadata.level());
-        level <= SayLevel::from_i32(unsafe { ffi::LOG_LEVEL }).unwrap()
+        level <= SayLevel::from_i32(unsafe { ffi::bindings::log_level }).unwrap()
     }
 
     #[inline]

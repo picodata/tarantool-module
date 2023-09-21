@@ -137,7 +137,7 @@ pub(crate) mod context {
     use std::task::Context;
     use std::task::Waker;
 
-    use crate::ffi::tarantool as ffi;
+    use crate::ffi::bindings as ffi;
     use crate::time::Instant;
 
     /// The context is primarily used to pass wakup conditions from a
@@ -290,7 +290,7 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
         if let Some(getaddrinfo) = cx.coio_getaddrinfo {
             let mut res = std::ptr::null_mut();
             let out = unsafe {
-                crate::ffi::tarantool::coio_getaddrinfo(
+                crate::ffi::bindings::coio_getaddrinfo(
                     getaddrinfo.host.as_ptr(),
                     std::ptr::null(),
                     &getaddrinfo.hints as *const _,
@@ -302,7 +302,7 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
             getaddrinfo.res.set(res);
         } else if let Some((fd, event)) = cx.coio_wait {
             unsafe {
-                crate::ffi::tarantool::coio_wait(fd, event.bits(), timeout.as_secs_f64());
+                crate::ffi::bindings::coio_wait(fd, event.bits(), timeout.as_secs_f64());
             }
         } else {
             rcw.cond().wait_timeout(timeout);

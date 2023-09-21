@@ -13,6 +13,9 @@ pub mod tarantool;
 #[doc(hidden)]
 pub mod uuid;
 
+#[doc(hidden)]
+pub mod bindings;
+
 /// Check whether the current tarantool executable supports decimal api.
 /// If this function returns `false` using any of the functions in
 /// [`tarantool::decimal`] will result in a **panic**.
@@ -45,8 +48,8 @@ pub fn has_fiber_channel() -> bool {
 pub fn has_tuple_field_by_path() -> bool {
     let c_str = std::ffi::CStr::from_bytes_with_nul_unchecked;
     unsafe {
-        helper::has_dyn_symbol(c_str(tarantool::TUPLE_FIELD_BY_PATH_NEW_API.as_bytes()))
-            | helper::has_dyn_symbol(c_str(tarantool::TUPLE_FIELD_BY_PATH_OLD_API.as_bytes()))
+        helper::has_dyn_symbol(c_str(bindings::TUPLE_FIELD_BY_PATH_NEW_API.as_bytes()))
+            | helper::has_dyn_symbol(c_str(bindings::TUPLE_FIELD_BY_PATH_OLD_API.as_bytes()))
     }
 }
 

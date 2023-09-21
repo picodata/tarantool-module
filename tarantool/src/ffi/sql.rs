@@ -1,6 +1,6 @@
 #![cfg(any(feature = "picodata", doc))]
 
-use crate::ffi::tarantool::BoxTuple;
+use crate::ffi::bindings::BoxTuple;
 use libc::{iovec, size_t};
 use std::cmp;
 use std::io::Read;

@@ -17,7 +17,7 @@ use std::time::Duration;
 use core::ptr::null_mut;
 
 use crate::error::{Error, TarantoolError};
-use crate::ffi::tarantool as ffi;
+use crate::ffi::bindings as ffi;
 use crate::fiber::{unpack_callback, Cond};
 
 const TIMEOUT_INFINITY: f64 = 365.0 * 86400.0 * 100.0;

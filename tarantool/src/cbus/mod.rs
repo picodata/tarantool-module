@@ -53,7 +53,7 @@ pub mod oneshot;
 pub mod unbounded;
 
 use crate::ffi;
-use crate::ffi::tarantool::{
+use crate::ffi::bindings::{
     cbus_endpoint_delete, cbus_endpoint_new, cbus_loop, lcpipe_delete, lcpipe_new, lcpipe_push_now,
 };
 use std::ffi::CString;
@@ -172,7 +172,7 @@ impl Drop for Endpoint {
 
 /// A uni-directional FIFO queue from any thread to cord.
 pub struct LCPipe {
-    pipe: *mut ffi::tarantool::LCPipe,
+    pipe: *mut ffi::bindings::LCPipe,
 }
 
 unsafe impl Send for LCPipe {}

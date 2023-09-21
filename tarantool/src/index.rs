@@ -18,7 +18,7 @@ use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, TarantoolError, TarantoolErrorCode};
-use crate::ffi::tarantool as ffi;
+use crate::ffi;
 use crate::msgpack;
 use crate::space::{Space, SpaceId, SystemSpace};
 use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
@@ -557,7 +557,7 @@ impl Index {
         });
         let Range { start, end } = data.as_ptr_range();
         tuple_from_box_api!(
-            ffi::box_index_get[
+            ffi::bindings::box_index_get[
                 self.space_id,
                 self.index_id,
                 start as _,
@@ -583,7 +583,7 @@ impl Index {
         let Range { start, end } = key_buf.as_ref().as_ptr_range();
 
         let ptr = unsafe {
-            ffi::box_index_iterator(
+            ffi::bindings::box_index_iterator(
                 self.space_id,
                 self.index_id,
                 iterator_type.to_i32().unwrap(),
@@ -623,7 +623,7 @@ impl Index {
         });
         let Range { start, end } = data.as_ptr_range();
         tuple_from_box_api!(
-            ffi::box_delete[
+            ffi::bindings::box_delete[
                 self.space_id,
                 self.index_id,
                 start as _,
@@ -688,7 +688,7 @@ impl Index {
         let key = key.as_ptr_range();
         let ops = ops.as_ptr_range();
         tuple_from_box_api!(
-            ffi::box_update[
+            ffi::bindings::box_update[
                 self.space_id,
                 self.index_id,
                 key.start.cast(), key.end.cast(),
@@ -750,7 +750,7 @@ impl Index {
         let value = value.as_ptr_range();
         let ops = ops.as_ptr_range();
         tuple_from_box_api!(
-            ffi::box_upsert[
+            ffi::bindings::box_upsert[
                 self.space_id,
                 self.index_id,
                 value.start.cast(), value.end.cast(),
@@ -769,7 +769,7 @@ impl Index {
     /// Return the number of elements in the index.
     #[inline(always)]
     pub fn len(&self) -> Result<usize, Error> {
-        let result = unsafe { ffi::box_index_len(self.space_id, self.index_id) };
+        let result = unsafe { ffi::bindings::box_index_len(self.space_id, self.index_id) };
 
         if result < 0 {
             Err(TarantoolError::last().into())
@@ -786,7 +786,7 @@ impl Index {
     /// Return the number of bytes used in memory by the index.
     #[inline(always)]
     pub fn bsize(&self) -> Result<usize, Error> {
-        let result = unsafe { ffi::box_index_bsize(self.space_id, self.index_id) };
+        let result = unsafe { ffi::bindings::box_index_bsize(self.space_id, self.index_id) };
 
         if result < 0 {
             Err(TarantoolError::last().into())
@@ -801,7 +801,7 @@ impl Index {
     #[inline(always)]
     pub fn random(&self, seed: u32) -> Result<Option<Tuple>, Error> {
         tuple_from_box_api!(
-            ffi::box_index_random[
+            ffi::bindings::box_index_random[
                 self.space_id,
                 self.index_id,
                 seed,
@@ -828,7 +828,7 @@ impl Index {
         });
         let Range { start, end } = data.as_ptr_range();
         tuple_from_box_api!(
-            ffi::box_index_min[
+            ffi::bindings::box_index_min[
                 self.space_id,
                 self.index_id,
                 start as _,
@@ -856,7 +856,7 @@ impl Index {
         });
         let Range { start, end } = data.as_ptr_range();
         tuple_from_box_api!(
-            ffi::box_index_max[
+            ffi::bindings::box_index_max[
                 self.space_id,
                 self.index_id,
                 start as _,
@@ -883,7 +883,7 @@ impl Index {
         });
         let Range { start, end } = data.as_ptr_range();
         let result = unsafe {
-            ffi::box_index_count(
+            ffi::bindings::box_index_count(
                 self.space_id,
                 self.index_id,
                 iterator_type.to_i32().unwrap(),
@@ -908,7 +908,7 @@ impl Index {
     pub fn extract_key(&self, tuple: Tuple) -> Tuple {
         unsafe {
             let mut result_size = MaybeUninit::uninit();
-            let result_ptr = ffi::box_tuple_extract_key(
+            let result_ptr = ffi::bindings::box_tuple_extract_key(
                 tuple.into_ptr(),
                 self.space_id,
                 self.index_id,
@@ -999,7 +999,7 @@ impl Metadata<'_> {
 
 /// Index iterator. Can be used with `for` statement.
 pub struct IndexIterator {
-    ptr: *mut ffi::BoxIterator,
+    ptr: *mut ffi::bindings::box_iterator_t,
     _key_data: TupleBuffer,
 }
 
@@ -1009,7 +1009,7 @@ impl Iterator for IndexIterator {
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         let mut result_ptr = null_mut();
-        if unsafe { ffi::box_iterator_next(self.ptr, &mut result_ptr) } < 0 {
+        if unsafe { ffi::bindings::box_iterator_next(self.ptr, &mut result_ptr) } < 0 {
             return None;
         }
         Tuple::try_from_ptr(result_ptr)
@@ -1019,7 +1019,7 @@ impl Iterator for IndexIterator {
 impl Drop for IndexIterator {
     #[inline(always)]
     fn drop(&mut self) {
-        unsafe { ffi::box_iterator_free(self.ptr) };
+        unsafe { ffi::bindings::box_iterator_free(self.ptr) };
     }
 }
 

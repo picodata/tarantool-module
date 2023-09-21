@@ -22,7 +22,7 @@ use std::time::Duration;
 
 pub const INFINITY: Duration = Duration::from_secs(100 * 365 * 24 * 60 * 60);
 
-use crate::ffi::tarantool as ffi;
+use crate::ffi::bindings as ffi;
 
 /// The wall clock time in seconds.
 ///
@@ -54,7 +54,7 @@ pub fn time() -> f64 {
 /// ```
 /// See: [time()](fn.time.html)
 #[inline(always)]
-pub fn time64() -> u64 {
+pub fn time64() -> i64 {
     unsafe { ffi::clock_realtime64() }
 }
 
@@ -80,7 +80,7 @@ pub fn monotonic() -> f64 {
 
 /// See: [monotonic()](fn.monotonic.html)
 #[inline(always)]
-pub fn monotonic64() -> u64 {
+pub fn monotonic64() -> i64 {
     unsafe { ffi::clock_monotonic64() }
 }
 
@@ -105,7 +105,7 @@ pub fn process() -> f64 {
 
 /// See: [process()](fn.process.html)
 #[inline(always)]
-pub fn process64() -> u64 {
+pub fn process64() -> i64 {
     unsafe { ffi::clock_process64() }
 }
 
@@ -130,6 +130,6 @@ pub fn thread() -> f64 {
 
 /// See: [thread()](fn.thread.html)
 #[inline(always)]
-pub fn thread64() -> u64 {
+pub fn thread64() -> i64 {
     unsafe { ffi::clock_thread64() }
 }

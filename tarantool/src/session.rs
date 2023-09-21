@@ -91,7 +91,7 @@ mod vanilla {
 mod picodata {
     use crate::{
         error::{Error, TarantoolError},
-        ffi::tarantool::{
+        ffi::bindings::{
             box_effective_user_id, box_session_su, box_session_user_id, box_user_id_by_name,
         },
     };

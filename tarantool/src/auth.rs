@@ -23,7 +23,7 @@ crate::define_str_enum! {
 #[cfg(feature = "picodata")]
 mod picodata {
     use super::AuthMethod;
-    use crate::ffi::tarantool as ffi;
+    use crate::ffi::bindings as ffi;
     use std::mem::MaybeUninit;
     use std::ops::Range;
 

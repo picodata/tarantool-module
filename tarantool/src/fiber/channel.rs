@@ -1,6 +1,6 @@
 use std::{marker::PhantomData, mem::MaybeUninit, ptr::NonNull, rc::Rc, time::Duration};
 
-use crate::{error::TarantoolErrorCode, ffi::tarantool as ffi};
+use crate::{error::TarantoolErrorCode, ffi};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Channel
@@ -36,7 +36,7 @@ impl<T> std::fmt::Debug for Channel<T> {
 
 impl<T> Channel<T> {
     pub fn new(size: u32) -> Self {
-        let inner_raw = unsafe { ffi::fiber_channel_new(size) };
+        let inner_raw = unsafe { ffi::bindings::fiber_channel_new(size) };
         let inner = NonNull::new(inner_raw)
             .expect("Memory allocation failure when creating fiber::Channel");
         Self(Rc::new(ChannelBox {
@@ -45,36 +45,36 @@ impl<T> Channel<T> {
         }))
     }
 
-    fn as_ptr(&self) -> *mut ffi::fiber_channel {
+    fn as_ptr(&self) -> *mut ffi::bindings::fiber_channel {
         self.0.inner.as_ptr()
     }
 
     pub fn close(self) {
-        unsafe { ffi::fiber_channel_close(self.as_ptr()) }
+        unsafe { ffi::bindings::fiber_channel_close(self.as_ptr()) }
     }
 
     pub fn is_closed(&self) -> bool {
-        unsafe { ffi::fiber_channel_is_closed(self.as_ptr()) }
+        unsafe { ffi::bindings::fiber_channel_is_closed(self.as_ptr()) }
     }
 
     pub fn is_empty(&self) -> bool {
-        unsafe { ffi::fiber_channel_is_empty(self.as_ptr()) }
+        unsafe { ffi::bindings::fiber_channel_is_empty(self.as_ptr()) }
     }
 
     pub fn size(&self) -> u32 {
-        unsafe { ffi::fiber_channel_size(self.as_ptr()) }
+        unsafe { ffi::bindings::fiber_channel_size(self.as_ptr()) }
     }
 
     pub fn count(&self) -> u32 {
-        unsafe { ffi::fiber_channel_count(self.as_ptr()) }
+        unsafe { ffi::bindings::fiber_channel_count(self.as_ptr()) }
     }
 
     pub fn has_readers(&self) -> bool {
-        unsafe { ffi::fiber_channel_has_readers(self.as_ptr()) }
+        unsafe { ffi::bindings::fiber_channel_has_readers(self.as_ptr()) }
     }
 
     pub fn has_writers(&self) -> bool {
-        unsafe { ffi::fiber_channel_has_writers(self.as_ptr()) }
+        unsafe { ffi::bindings::fiber_channel_has_writers(self.as_ptr()) }
     }
 }
 
@@ -84,24 +84,24 @@ impl<T> SendTimeout<T> for Channel<T> {
         T: 'static,
     {
         unsafe {
-            let ipc_value_ptr = ffi::ipc_value_new();
+            let ipc_value_ptr = ffi::bindings::ipc_value_new();
             let ipc_value = &mut *ipc_value_ptr;
             let t_box_ptr = Box::into_raw(Box::new(t));
             ipc_value.data_union.data = t_box_ptr.cast();
             ipc_value.base.destroy = Some(Self::destroy_msg);
 
-            let ret_code = ffi::fiber_channel_put_msg_timeout(
+            let ret_code = ffi::bindings::fiber_channel_put_msg_timeout(
                 self.as_ptr(),
                 ipc_value_ptr.cast(),
                 timeout
                     .map(|t| t.as_secs_f64())
-                    .unwrap_or(ffi::TIMEOUT_INFINITY),
+                    .unwrap_or(ffi::bindings::TIMEOUT_INFINITY),
             );
 
             if ret_code < 0 {
                 // No need to call ipc_value.base.destroy, because the actual
                 // value is returned back to the sender
-                ffi::ipc_value_delete(ipc_value_ptr.cast());
+                ffi::bindings::ipc_value_delete(ipc_value_ptr.cast());
                 let t = *Box::from_raw(t_box_ptr);
                 // XXX: this is the cheapest way to check if the timeout
                 // happened, because of how errors are implemented inside
@@ -124,12 +124,12 @@ impl<T> RecvTimeout<T> for Channel<T> {
     fn recv_maybe_timeout(&self, timeout: Option<Duration>) -> Result<T, RecvError> {
         unsafe {
             let mut ipc_msg_ptr_uninit = MaybeUninit::uninit();
-            let ret_code = ffi::fiber_channel_get_msg_timeout(
+            let ret_code = ffi::bindings::fiber_channel_get_msg_timeout(
                 self.as_ptr(),
                 ipc_msg_ptr_uninit.as_mut_ptr(),
                 timeout
                     .map(|t| t.as_secs_f64())
-                    .unwrap_or(ffi::TIMEOUT_INFINITY),
+                    .unwrap_or(ffi::bindings::TIMEOUT_INFINITY),
             );
 
             if ret_code < 0 {
@@ -145,9 +145,9 @@ impl<T> RecvTimeout<T> for Channel<T> {
                 }
             } else {
                 let ipc_msg_ptr = ipc_msg_ptr_uninit.assume_init();
-                let ipc_value = &mut *ipc_msg_ptr.cast::<ffi::ipc_value>();
+                let ipc_value = &mut *ipc_msg_ptr.cast::<ffi::bindings::ipc_value>();
                 let t_box = Box::from_raw(ipc_value.data_union.data.cast());
-                ffi::ipc_value_delete(ipc_msg_ptr);
+                ffi::bindings::ipc_value_delete(ipc_msg_ptr);
                 Ok(*t_box)
             }
         }
@@ -157,11 +157,11 @@ impl<T> RecvTimeout<T> for Channel<T> {
 impl<T> Channel<T> {
     /// # Safety
     /// `msg` must have been created with `ffi::ipc_value_new`
-    pub unsafe extern "C" fn destroy_msg(msg: *mut ffi::ipc_msg) {
-        let ipc_value = msg.cast::<ffi::ipc_value>();
+    pub unsafe extern "C" fn destroy_msg(msg: *mut ffi::bindings::ipc_msg) {
+        let ipc_value = msg.cast::<ffi::bindings::ipc_value>();
         let value_ptr = (*ipc_value).data_union.data.cast::<T>();
         drop(Box::from_raw(value_ptr));
-        ffi::ipc_value_delete(msg)
+        ffi::bindings::ipc_value_delete(msg)
     }
 }
 
@@ -371,13 +371,13 @@ impl<T> IntoIterator for Channel<T> {
 }
 
 struct ChannelBox<T> {
-    inner: NonNull<ffi::fiber_channel>,
+    inner: NonNull<ffi::bindings::fiber_channel>,
     marker: PhantomData<T>,
 }
 
 impl<T> Drop for ChannelBox<T> {
     fn drop(&mut self) {
-        unsafe { ffi::fiber_channel_delete(self.inner.as_ptr()) }
+        unsafe { ffi::bindings::fiber_channel_delete(self.inner.as_ptr()) }
     }
 }
 

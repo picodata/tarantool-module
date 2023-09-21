@@ -363,7 +363,7 @@ pub use tarantool_proc::test;
 /// code that will be executed in multiple fibers. Consider using [`lua_state`]
 /// instead. Use with caution if necessary.
 fn global_lua() -> tlua::StaticLua {
-    unsafe { tlua::Lua::from_static(ffi::tarantool::luaT_state()) }
+    unsafe { tlua::Lua::from_static(ffi::bindings::luaT_state()) }
 }
 
 /// Create a new lua state with an isolated stack. The new state has access to

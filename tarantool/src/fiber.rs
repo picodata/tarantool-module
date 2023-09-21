@@ -29,7 +29,7 @@ use tlua::unwrap_or;
 use crate::va_list::{VaList, VaPrimitive};
 
 use crate::error::{TarantoolError, TarantoolErrorCode};
-use crate::ffi::{lua, tarantool as ffi};
+use crate::ffi::{bindings as ffi, lua};
 use crate::Result;
 use crate::{c_ptr, set_error};
 
@@ -41,7 +41,7 @@ pub use channel::{
 };
 
 pub mod mutex;
-use crate::ffi::tarantool::fiber_sleep;
+use crate::ffi::bindings::fiber_sleep;
 pub use mutex::Mutex;
 pub use r#async::block_on;
 
@@ -123,7 +123,7 @@ macro_rules! impl_eq_hash {
 /// Fiber started
 /// ```
 pub struct Fiber<'a, T: 'a> {
-    inner: *mut ffi::Fiber,
+    inner: *mut ffi::fiber,
     callback: *mut c_void,
     phantom: PhantomData<&'a T>,
 }
@@ -814,7 +814,7 @@ pub type LuaUnitJoinHandle<'f> = JoinHandle<'f, ()>;
 #[derive(Debug)]
 enum JoinHandleImpl<T> {
     Ffi {
-        fiber: NonNull<ffi::Fiber>,
+        fiber: NonNull<ffi::fiber>,
         result_cell: Option<FiberResultCell<T>>,
     },
     Lua {
@@ -829,7 +829,7 @@ impl_eq_hash! {JoinHandle<'f, T>}
 
 impl<'f, T> JoinHandle<'f, T> {
     #[inline(always)]
-    fn ffi(fiber: NonNull<ffi::Fiber>, result_cell: Option<FiberResultCell<T>>) -> Self {
+    fn ffi(fiber: NonNull<ffi::fiber>, result_cell: Option<FiberResultCell<T>>) -> Self {
         Self {
             inner: Some(JoinHandleImpl::Ffi { fiber, result_cell }),
             marker: PhantomData,
@@ -1176,7 +1176,7 @@ pub fn reschedule() {
 /// Fiber attributes container
 #[derive(Debug)]
 pub struct FiberAttr {
-    inner: *mut ffi::FiberAttr,
+    inner: *mut ffi::fiber_attr,
 }
 
 impl FiberAttr {
@@ -1257,7 +1257,7 @@ impl Drop for FiberAttr {
 /// Unlike `pthread_cond`, [Cond]() doesn't require mutex/latch wrapping.
 #[derive(Debug)]
 pub struct Cond {
-    inner: *mut ffi::FiberCond,
+    inner: *mut ffi::fiber_cond,
 }
 
 /// - call [Cond::new()](#method.new) to create a named condition variable, which will be called `cond` for examples in this section.
@@ -1328,7 +1328,7 @@ impl Drop for Cond {
 /// A lock for cooperative multitasking environment
 #[derive(Debug)]
 pub struct Latch {
-    inner: *mut ffi::Latch,
+    inner: *mut ffi::box_latch,
 }
 
 impl Latch {
@@ -1384,7 +1384,7 @@ impl Drop for Latch {
 /// the lock will be unlocked.
 #[derive(Debug)]
 pub struct LatchGuard {
-    latch_inner: *mut ffi::Latch,
+    latch_inner: *mut ffi::box_latch_t,
 }
 
 impl Drop for LatchGuard {
