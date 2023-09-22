@@ -341,10 +341,55 @@ extern "C" {
     pub fn lua_tonumberx(l: *mut lua_State, index: c_int, isnum: *mut c_int) -> lua_Number;
     pub fn lua_tointegerx(l: *mut lua_State, index: c_int, isnum: *mut c_int) -> lua_Integer;
 
+    /// Calls a function.
+    /// *[-(nargs + 1), +nresults, e]*
+    ///
+    /// To call a function you must use the following protocol: first, the
+    /// function to be called is pushed onto the stack; then, the arguments to
+    /// the function are pushed in direct order; that is, the first argument is
+    /// pushed first. Finally you call lua_call; nargs is the number of
+    /// arguments that you pushed onto the stack. All arguments and the function
+    /// value are popped from the stack when the function is called. The
+    /// function results are pushed onto the stack when the function returns.
+    /// The number of results is adjusted to nresults, unless nresults is
+    /// LUA_MULTRET. In this case, all results from the function are pushed. Lua
+    /// takes care that the returned values fit into the stack space. The
+    /// function results are pushed onto the stack in direct order (the first
+    /// result is pushed first), so that after the call the last result is on
+    /// the top of the stack.
+    ///
+    /// Any error inside the called function is propagated upwards (with a longjmp).
+    ///
+    /// The following example shows how the host program can do the equivalent
+    /// to this Lua code:
+    /// ```ignore
+    /// a = f("how", t.x, 14)
+    /// ```
+    /// Here it is in Rust:
+    /// ```no_run
+    /// use tlua::c_ptr;
+    /// use tlua::ffi::*;
+    /// # let l: *mut lua_State = std::ptr::null_mut();
+    /// unsafe {
+    ///     lua_getfield(l, LUA_GLOBALSINDEX, c_ptr!("f")); /* function to be called */
+    ///     lua_pushstring(l, c_ptr!("how"));                        /* 1st argument */
+    ///     lua_getfield(l, LUA_GLOBALSINDEX, c_ptr!("t"));   /* table to be indexed */
+    ///     lua_getfield(l, -1, c_ptr!("x"));        /* push result of t.x (2nd arg) */
+    ///     lua_remove(l, -2);                          /* remove 't' from the stack */
+    ///     lua_pushinteger(l, 14);                                  /* 3rd argument */
+    ///     lua_call(l, 3, 1);             /* call 'f' with 3 arguments and 1 result */
+    ///     lua_setfield(l, LUA_GLOBALSINDEX, c_ptr!("a"));        /* set global 'a' */
+    /// }
+    /// ```
+    /// Note that the code above is "balanced": at its end, the stack is back to
+    /// its original configuration. This is considered good programming
+    /// practice.
+    pub fn lua_call(l: *mut lua_State, nargs: c_int, nresults: c_int);
+
     /// Calls a function in protected mode.
     /// *[-(nargs + 1), +(nresults|1), -]*
     ///
-    /// Both `nargs` and `nresults` have the same meaning as in `lua_call`. If
+    /// Both `nargs` and `nresults` have the same meaning as in [`lua_call`]. If
     /// there are no errors during the call, `lua_pcall` behaves exactly like
     /// `lua_call`.  However, if there is any error, `lua_pcall` catches it,
     /// pushes a single value on the stack (the error message), and returns an
