@@ -67,7 +67,8 @@ pub enum Error {
     #[error("value write error: {0}")]
     ValueWrite(#[from] ValueWriteError),
 
-    #[cfg(feature = "net_box")]
+    /// *Only available with `net_box` feature.*
+    #[cfg(any(doc, feature = "net_box"))]
     #[error("server responded with error: {0}")]
     Remote(#[from] crate::net_box::ResponseError),
 
@@ -81,8 +82,10 @@ pub enum Error {
     /// The error is wrapped in a [`Arc`], because some libraries require
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
     ///
+    /// *Only available with `network_client` feature.*
+    ///
     /// [`Rc`]: std::rc::Rc
-    #[cfg(feature = "network_client")]
+    #[cfg(any(doc, feature = "network_client"))]
     #[error("tcp error: {0}")]
     Tcp(Arc<crate::network::client::tcp::Error>),
 
@@ -110,7 +113,7 @@ impl From<rmp_serde::encode::Error> for Error {
     }
 }
 
-#[cfg(feature = "network_client")]
+#[cfg(any(doc, feature = "network_client"))]
 impl From<crate::network::client::tcp::Error> for Error {
     fn from(err: crate::network::client::tcp::Error) -> Self {
         Error::Tcp(Arc::new(err))

@@ -1,3 +1,5 @@
+//! *Only available with `network_client` feature.*
+//!
 //! Tarantool based async [`Client`].
 //!
 //! Can be used only from inside Tarantool as it makes heavy use of fibers and coio.

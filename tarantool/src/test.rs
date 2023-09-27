@@ -1,3 +1,5 @@
+//! *Only available with `test` feature.*
+//!
 //! Internals used by custom test runtime to run tests that require tarantool environment
 use tester::{ShouldPanic, TestDesc, TestDescAndFn, TestFn, TestName, TestType};
 

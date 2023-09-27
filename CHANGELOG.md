@@ -5,6 +5,10 @@
 ### Added (picodata)
 - struct `read_view::ReadView` for opening read views on selected spaces.
 
+### Changed
+- Items hidden behind features are no longer excluded from documentation
+  (not indcluding picodata-related features).
+
 
 # [3.0.0] Sep 26 2023
 

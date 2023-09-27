@@ -63,7 +63,6 @@ pub mod ffi;
 pub mod fiber;
 pub mod index;
 pub mod log;
-#[doc(hidden)]
 pub mod msgpack;
 pub mod net_box;
 pub mod network;
@@ -75,7 +74,7 @@ pub mod sequence;
 pub mod session;
 pub mod space;
 pub mod sql;
-#[cfg(feature = "test")]
+#[cfg(any(doc, feature = "test"))]
 pub mod test;
 pub mod time;
 pub mod transaction;
@@ -322,6 +321,8 @@ pub use tlua;
 /// and #[`[tarantool::proc]`] macro attributes.
 pub use linkme;
 
+/// *Only available with `test` feature.*
+///
 /// Mark a function as a test. This will add the function to the list of tests
 /// in a special global section. The tests can be accessed using
 /// [`test::test_cases`] or [`test::collect_tester`].
@@ -360,7 +361,7 @@ pub use linkme;
 /// }
 /// ```
 ///
-#[cfg(feature = "test")]
+#[cfg(any(doc, feature = "test"))]
 pub use tarantool_proc::test;
 
 /// Return a global tarantool lua state.
