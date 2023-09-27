@@ -1,5 +1,11 @@
 # Change Log
 
+# [3.1.0] Unreleased
+
+### Added (picodata)
+- struct `read_view::ReadView` for opening read views on selected spaces.
+
+
 # [3.0.0] Sep 26 2023
 
 ### Added
