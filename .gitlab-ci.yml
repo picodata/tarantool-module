@@ -53,7 +53,7 @@ variables:
 
   - &else {}
 
-build-base-image:
+.build-base-image:
   stage: build-base-image
   tags:
     - tmodule-shell
@@ -61,43 +61,48 @@ build-base-image:
     - <<: *if-build-base-changes-on-master-branch
       variables:
         BASE_IMAGE_TAG: latest
+        PUSH_DOCKER: "true"
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+        PUSH_DOCKER: "false"
     - <<: *else
       when: never
   script:
-    - docker pull ${BASE_IMAGE_VANILLA} || true
-    - docker pull ${BASE_IMAGE_FORK} || true
+    - docker pull ${BASE_IMAGE_NAME} || true
     - >
       docker build
       --build-arg RUST_VERSION=1.67.1
-      -t ${BASE_IMAGE_VANILLA}:${BASE_IMAGE_TAG}
-      -f ./docker/vanilla.Dockerfile
+      ${EXTRA_BUILD_ARGS}
+      -t ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
+      -f ${DOCKERFILE}
       --label GIT_COMMIT=${CI_COMMIT_SHA}
-      --cache-from ${BASE_IMAGE_VANILLA}
-      ./docker
-    - >
-      docker build
-      --build-arg RUST_VERSION=1.67.1
-      --build-arg TARANTOOL_TAG=latest
-      -t ${BASE_IMAGE_FORK}:${BASE_IMAGE_TAG}
-      -f ./docker/picodata.Dockerfile
-      --label GIT_COMMIT=${CI_COMMIT_SHA}
-      --cache-from ${BASE_IMAGE_FORK}
+      --cache-from ${BASE_IMAGE_NAME}
       ./docker
     - |
       # Push image to registry
-      if [ "${CI_COMMIT_BRANCH}" == "${CI_DEFAULT_BRANCH}" ]; then
+      if [ "${PUSH_DOCKER}" == "true" ]; then
         mkdir -p $CI_PROJECT_DIR/.docker
         echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
-        echo "Pushing ${BASE_IMAGE_VANILLA}:${BASE_IMAGE_TAG}"
-        docker --config $CI_PROJECT_DIR/.docker/ push ${BASE_IMAGE_VANILLA}:${BASE_IMAGE_TAG}
-        echo "Pushing ${BASE_IMAGE_FORK}:${BASE_IMAGE_TAG}"
-        docker --config $CI_PROJECT_DIR/.docker/ push ${BASE_IMAGE_FORK}:${BASE_IMAGE_TAG}
+        echo "Pushing ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}"
+        docker --config $CI_PROJECT_DIR/.docker/ push ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
       else
-        echo "Skip pushing image on a non-master branch"
+        echo "Skip pushing ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}"
       fi
+
+build-base-image-vanilla:
+  extends: .build-base-image
+  variables:
+    BASE_IMAGE_NAME: ${BASE_IMAGE_VANILLA}
+    DOCKERFILE: ./docker/vanilla.Dockerfile
+
+build-base-image-fork:
+  extends: .build-base-image
+  variables:
+    BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
+    EXTRA_BUILD_ARGS: >
+      --build-arg TARANTOOL_TAG=latest
+    DOCKERFILE: ./docker/picodata.Dockerfile
 
 .test:
   stage: test
