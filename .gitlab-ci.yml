@@ -18,8 +18,8 @@ variables:
   CACHE_PATHS: target
   CARGO_INCREMENTAL: 0
   CARGO_HOME: /shared-storage/tarantool-module/.cargo
-  VANILLA_DOCKER_IMAGE: docker-public.binary.picodata.io/tarantool-module-build-base-vanilla
-  PICODATA_DOCKER_IMAGE: docker-public.binary.picodata.io/tarantool-module-build-base-picodata
+  BASE_IMAGE_VANILLA: docker-public.binary.picodata.io/tarantool-module-build-base-vanilla
+  BASE_IMAGE_FORK: docker-public.binary.picodata.io/tarantool-module-build-base-fork
 
 # job:rules explained:
 #
@@ -67,34 +67,34 @@ build-base-image:
     - <<: *else
       when: never
   script:
-    - docker pull ${VANILLA_DOCKER_IMAGE} || true
-    - docker pull ${PICODATA_DOCKER_IMAGE} || true
+    - docker pull ${BASE_IMAGE_VANILLA} || true
+    - docker pull ${BASE_IMAGE_FORK} || true
     - >
       docker build
       --build-arg RUST_VERSION=1.67.1
-      -t ${VANILLA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}
+      -t ${BASE_IMAGE_VANILLA}:${BASE_IMAGE_TAG}
       -f ./docker/vanilla.Dockerfile
       --label GIT_COMMIT=${CI_COMMIT_SHA}
-      --cache-from ${VANILLA_DOCKER_IMAGE}
+      --cache-from ${BASE_IMAGE_VANILLA}
       ./docker
     - >
       docker build
       --build-arg RUST_VERSION=1.67.1
       --build-arg TARANTOOL_TAG=latest
-      -t ${PICODATA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}
+      -t ${BASE_IMAGE_FORK}:${BASE_IMAGE_TAG}
       -f ./docker/picodata.Dockerfile
       --label GIT_COMMIT=${CI_COMMIT_SHA}
-      --cache-from ${PICODATA_DOCKER_IMAGE}
+      --cache-from ${BASE_IMAGE_FORK}
       ./docker
     - |
       # Push image to registry
       if [ "${CI_COMMIT_BRANCH}" == "${CI_DEFAULT_BRANCH}" ]; then
         mkdir -p $CI_PROJECT_DIR/.docker
         echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
-        echo "Pushing ${VANILLA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}"
-        docker --config $CI_PROJECT_DIR/.docker/ push ${VANILLA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}
-        echo "Pushing ${PICODATA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}"
-        docker --config $CI_PROJECT_DIR/.docker/ push ${PICODATA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}
+        echo "Pushing ${BASE_IMAGE_VANILLA}:${BASE_IMAGE_TAG}"
+        docker --config $CI_PROJECT_DIR/.docker/ push ${BASE_IMAGE_VANILLA}:${BASE_IMAGE_TAG}
+        echo "Pushing ${BASE_IMAGE_FORK}:${BASE_IMAGE_TAG}"
+        docker --config $CI_PROJECT_DIR/.docker/ push ${BASE_IMAGE_FORK}:${BASE_IMAGE_TAG}
       else
         echo "Skip pushing image on a non-master branch"
       fi
@@ -114,7 +114,7 @@ build-base-image:
   tags:
     - tmodule-docker
   image:
-    name: ${DOCKER_IMAGE}:${BASE_IMAGE_TAG}
+    name: ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
     pull_policy: if-not-present
   before_script:
     - |
@@ -158,27 +158,27 @@ test-vanilla:
   extends: .test
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/vanilla-cache.tar
-    DOCKER_IMAGE: ${VANILLA_DOCKER_IMAGE}
+    BASE_IMAGE_NAME: ${BASE_IMAGE_VANILLA}
     CARGO_FEATURES: default
 
 bench-vanilla:
   extends: .test
   variables:
-    DOCKER_IMAGE: ${VANILLA_DOCKER_IMAGE}
+    BASE_IMAGE_NAME: ${BASE_IMAGE_VANILLA}
   script:
     - make bench
 
-test-picodata:
+test-fork:
   extends: .test
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-cache.tar
-    DOCKER_IMAGE: ${PICODATA_DOCKER_IMAGE}
+    BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
     CARGO_FEATURES: picodata
 
 pages:
   extends: .test
   variables:
-    DOCKER_IMAGE: ${PICODATA_DOCKER_IMAGE}
+    BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
     RUSTDOCFLAGS: "-Dwarnings"
   script:
     - cargo doc --workspace --no-deps --features "picodata"
