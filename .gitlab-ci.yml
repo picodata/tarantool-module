@@ -11,6 +11,7 @@ workflow:
       when: never
     - if: $CI_PIPELINE_SOURCE == "push"
     - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_PIPELINE_SOURCE == "trigger"
 
 variables:
   GIT_DEPTH: 1
@@ -24,14 +25,18 @@ variables:
 # job:rules explained:
 #
 # - if build-base changes on master branch (compared to HEAD~1)
-#     * build-base-image (with tag latest) and push
-#     * test (on base-image:latest)
+#     * build-base-image-vanilla/fork (with tag latest) and push
+#     * test (on corresponding base-image:latest)
 # - if build-base changes on development branch (compared to master)
-#     * build-base-image (with tag sha)
-#     * test (on base-image:sha)
+#     * build-base-image-vanilla/fork (with tag <SHA>)
+#     * test (on on corresponding base-image:<SHA>)
 # - else (if build-base doesn't change)
 #     * skip build-base-image
-#     * just test (on base-image:latest)
+#     * just test (on existing base-image:latest)
+#
+# A different workflow applies on trigger (when tarantool is tagged):
+#   * build-base-image-fork from specified TARANTOOL_TAG (with tag <SHA>-triggered)
+#   * test (on base-image-fork:<SHA>-triggered)
 #
 # Anchor syntax explained here:
 # https://docs.gitlab.com/ee/ci/yaml/yaml_optimization.html
@@ -50,6 +55,9 @@ variables:
     changes:
       compare_to: master
       paths: *build-base-changes-paths
+
+  - &if-triggered
+    if: $CI_PIPELINE_SOURCE == "trigger"
 
   - &else {}
 
@@ -102,6 +110,17 @@ build-base-image-fork:
     BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
     EXTRA_BUILD_ARGS: >
       --build-arg TARANTOOL_TAG=latest
+    DOCKERFILE: ./docker/picodata.Dockerfile
+
+build-base-image-fork-on-trigger:
+  extends: .build-base-image
+  rules: # overrides whole section from .build-base-image
+    - <<: *if-triggered
+  variables:
+    BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
+    BASE_IMAGE_TAG: ${CI_COMMIT_SHA}-triggered
+    EXTRA_BUILD_ARGS: >
+      --build-arg TARANTOOL_TAG=${TARANTOOL_TAG}
     DOCKERFILE: ./docker/picodata.Dockerfile
 
 .test:
@@ -178,6 +197,16 @@ test-fork:
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-cache.tar
     BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
+    CARGO_FEATURES: picodata
+
+test-fork-on-trigger:
+  extends: .test
+  rules: # overrides whole section from .test
+    - <<: *if-triggered
+  variables:
+    CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-cache.tar
+    BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
+    BASE_IMAGE_TAG: ${CI_COMMIT_SHA}-triggered
     CARGO_FEATURES: picodata
 
 pages:
