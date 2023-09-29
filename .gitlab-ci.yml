@@ -11,7 +11,6 @@ workflow:
       when: never
     - if: $CI_PIPELINE_SOURCE == "push"
     - if: $CI_PIPELINE_SOURCE == "web"
-    - if: $CI_PIPELINE_SOURCE == "trigger"
 
 variables:
   GIT_DEPTH: 1
@@ -52,9 +51,6 @@ variables:
       compare_to: master
       paths: *build-base-changes-paths
 
-  - &if-build-base-on-trigger
-    if: $CI_PIPELINE_SOURCE == "trigger"
-
   - &else {}
 
 build-base-image:
@@ -66,9 +62,6 @@ build-base-image:
       variables:
         BASE_IMAGE_TAG: latest
     - <<: *if-build-base-changes-on-dev-branch
-      variables:
-        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-    - <<: *if-build-base-on-trigger
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
     - <<: *else
@@ -113,9 +106,6 @@ build-base-image:
       variables:
         BASE_IMAGE_TAG: latest
     - <<: *if-build-base-changes-on-dev-branch
-      variables:
-        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-    - <<: *if-build-base-on-trigger
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
     - <<: *else
