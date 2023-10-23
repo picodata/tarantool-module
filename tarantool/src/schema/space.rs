@@ -176,12 +176,6 @@ fn generate_space_id(is_temporary: bool) -> Result<SpaceId, Error> {
         }
     }
 
-    // Update max_id for backwards compatibility.
-    if !is_temporary {
-        let sys_schema = SystemSpace::Schema.as_space();
-        sys_schema.replace(&("max_id", space_id))?;
-    }
-
     Ok(space_id)
 }
 
