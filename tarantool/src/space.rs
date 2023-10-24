@@ -1360,4 +1360,35 @@ mod test {
             let _meta: Metadata = tuple.decode().unwrap();
         }
     }
+
+    #[crate::test(tarantool = "crate")]
+    fn concurrent_create_space() {
+        use crate::fiber;
+
+        const N_FIBERS: usize = 10;
+        const N_SPACES: usize = 100;
+
+        let mut jhs = Vec::with_capacity(N_FIBERS);
+        for f in 0..N_FIBERS {
+            let jh = fiber::defer(move || {
+                for s in 0..N_SPACES {
+                    Space::builder(&format!("space_{f}_{s}")).create().unwrap();
+                }
+            });
+            jhs.push(jh);
+        }
+
+        for jh in jhs {
+            jh.join();
+        }
+
+        eprintln!();
+        for f in 0..N_FIBERS {
+            for s in 0..N_SPACES {
+                let name = format!("space_{f}_{s}");
+                let space = Space::find(&name).unwrap();
+                eprintln!("{} {}", name, space.id());
+            }
+        }
+    }
 }
