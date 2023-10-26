@@ -8,6 +8,8 @@
   `transaction::rollback` shallow wrappers around corresponding ffi functions.
   These are useful for specific non-trivial cases, but for most users
   `transaction::transcation` is suitable.
+- `space::space_id_temporary_min` function for getting minimum space id in the
+  fully temporary space id range.
 
 ### Changed
 
@@ -34,6 +36,8 @@
 - Removed deprecated `FunctionArgs` method `as_struct`
 - enums `TarantoolErrorCode`, `IteratorType`, `SayLevel` & `SystemSpace` no
   longer implement trait `ToPrimitive`, just use `as i32` instead.
+- `ffi::has_fully_temporary_spaces` is now `unsafe`, because it's only safe to
+  be called from tx thread.
 
 ### Added (picodata)
 - struct `read_view::ReadView` for opening read views on selected spaces.
