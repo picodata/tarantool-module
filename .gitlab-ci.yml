@@ -2,6 +2,8 @@ default:
   image:
     name: docker-picodata.binary.picodata.io/kaniko-project/executor:v1.14.0-debug
     entrypoint: ['']
+  tags:
+    - tmodule-docker
 
 stages:
   - build-base-image
@@ -72,8 +74,6 @@ variables:
 
 .build-base-image:
   stage: build-base-image
-  tags:
-    - tmodule-shell
   rules:
     - <<: *if-build-base-changes-on-master-branch
       variables:
@@ -129,8 +129,6 @@ build-base-image-fork-on-trigger:
     - <<: *else
       variables:
         BASE_IMAGE_TAG: latest
-  tags:
-    - tmodule-docker
   image:
     name: ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
     pull_policy: if-not-present
