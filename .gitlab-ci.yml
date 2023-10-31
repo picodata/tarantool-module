@@ -14,6 +14,7 @@ workflow:
     # leaving only pushes and manual triggering.
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: never
+    - if: $CI_PIPELINE_SOURCE == "push"
 
 variables:
   GIT_DEPTH: 1
