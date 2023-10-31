@@ -17,6 +17,7 @@ workflow:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: never
     - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
 
 variables:
   GIT_DEPTH: 1
@@ -78,18 +79,18 @@ variables:
     - <<: *if-build-base-changes-on-master-branch
       variables:
         BASE_IMAGE_TAG: latest
-        PUSH_DOCKER: "true"
+        PUSH_DOCKER: ""
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-        PUSH_DOCKER: "false"
+        PUSH_DOCKER: "--no-push"
     - <<: *else
       when: never
   <<: *docker-login
   script:
     - |
       /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE} \
-        --build-arg "RUST_VERSION=${RUST_VERSION}" ${EXTRA_BUILD_ARGS} \
+        --build-arg "RUST_VERSION=${RUST_VERSION}" ${EXTRA_BUILD_ARGS} ${PUSH_DOCKER} \
         --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup \
         --destination ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
 
