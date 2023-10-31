@@ -89,6 +89,7 @@ variables:
       when: never
   <<: *docker-login
   script:
+    - echo $TARANTOOL_VERSION
     - |
       /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE} \
         --build-arg "RUST_VERSION=${RUST_VERSION}" ${EXTRA_BUILD_ARGS} ${PUSH_DOCKER} \
