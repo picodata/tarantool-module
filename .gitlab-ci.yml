@@ -1,37 +1,29 @@
+default:
+  image:
+    name: docker-picodata.binary.picodata.io/kaniko-project/executor:v1.14.0-debug
+    entrypoint: ['']
+
 stages:
-  - downstream
   - build-base-image
   - test
 
-#workflow:
-#  # See https://docs.gitlab.com/ee/ci/jobs/job_control.html#avoid-duplicate-pipelines
-#  rules:
-#    # To avoid duplicate pipelines we disable merge request events,
-#    # leaving only pushes and manual triggering.
-#    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-#      when: never
-#    - if: $CI_PIPELINE_SOURCE == "trigger"
-#    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
+workflow:
+  # See https://docs.gitlab.com/ee/ci/jobs/job_control.html#avoid-duplicate-pipelines
+  rules:
+    # To avoid duplicate pipelines we disable merge request events,
+    # leaving only pushes and manual triggering.
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
 
 variables:
   GIT_DEPTH: 1
   GIT_STRATEGY: fetch
   CACHE_PATHS: target
   CARGO_INCREMENTAL: 0
+  RUST_VERSION: 1.67.1
   CARGO_HOME: /shared-storage/tarantool-module/.cargo
   BASE_IMAGE_VANILLA: docker-public.binary.picodata.io/tarantool-module-build-base-vanilla
   BASE_IMAGE_FORK: docker-public.binary.picodata.io/tarantool-module-build-base-fork
-
-downstream:
-  stage: downstream
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
-      when: always
-  variables:
-    BASE_IMAGE_NAME: ${BASE_IMAGE_VANILLA}
-  script:
-    - echo $TARANTOOL_VERSION
-    - exit 0
 
 # job:rules explained:
 #
@@ -68,9 +60,14 @@ downstream:
       paths: *build-base-changes-paths
 
   - &if-triggered
-    if: $CI_PIPELINE_SOURCE == "trigger"
+    if: $CI_PIPELINE_SOURCE == "parent_pipeline"
 
   - &else {}
+
+.docker-login: &docker-login
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - echo "$DOCKER_AUTH_RW" > /kaniko/.docker/config.json
 
 .build-base-image:
   stage: build-base-image
@@ -87,27 +84,12 @@ downstream:
         PUSH_DOCKER: "false"
     - <<: *else
       when: never
+  <<: *docker-login
   script:
-    - docker pull ${BASE_IMAGE_NAME} || true
-    - >
-      docker build
-      --build-arg RUST_VERSION=1.67.1
-      ${EXTRA_BUILD_ARGS}
-      -t ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
-      -f ${DOCKERFILE}
-      --label GIT_COMMIT=${CI_COMMIT_SHA}
-      --cache-from ${BASE_IMAGE_NAME}
-      ./docker
     - |
-      # Push image to registry
-      if [ "${PUSH_DOCKER}" == "true" ]; then
-        mkdir -p $CI_PROJECT_DIR/.docker
-        echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
-        echo "Pushing ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}"
-        docker --config $CI_PROJECT_DIR/.docker/ push ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
-      else
-        echo "Skip pushing ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}"
-      fi
+      /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE} \
+        --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup \
+        --destination ${BASE_IMAGE_NAME}:kube-${BASE_IMAGE_TAG}
 
 build-base-image-vanilla:
   extends: .build-base-image
