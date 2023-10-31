@@ -1,4 +1,5 @@
 stages:
+  - downstream
   - build-base-image
   - test
 
@@ -21,6 +22,14 @@ variables:
   CARGO_HOME: /shared-storage/tarantool-module/.cargo
   BASE_IMAGE_VANILLA: docker-public.binary.picodata.io/tarantool-module-build-base-vanilla
   BASE_IMAGE_FORK: docker-public.binary.picodata.io/tarantool-module-build-base-fork
+
+downstream:
+  stage: downstream
+  variables:
+    BASE_IMAGE_NAME: ${BASE_IMAGE_VANILLA}
+  script:
+    - echo $TARANTOOL_VERSION
+    - exit 0
 
 # job:rules explained:
 #
