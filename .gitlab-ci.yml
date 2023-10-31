@@ -89,7 +89,7 @@ variables:
   script:
     - |
       /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE} \
-        --build-arg "RUST_VERSION=${RUST_VERSION}" \
+        --build-arg "RUST_VERSION=${RUST_VERSION}" ${EXTRA_BUILD_ARGS} \
         --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup \
         --destination ${BASE_IMAGE_NAME}:kube-${BASE_IMAGE_TAG}
 
