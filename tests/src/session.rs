@@ -15,32 +15,45 @@ pub fn euid() {
     assert_eq!(euid, ADMIN_UID);
 }
 
-fn cur() -> u32 {
+#[inline]
+fn cur_uid() -> u32 {
     session::uid().unwrap()
+}
+
+#[inline]
+fn cur_euid() -> u32 {
+    session::euid().unwrap()
 }
 
 #[tarantool::test]
 pub fn su() {
-    assert_eq!(cur(), ADMIN_UID);
+    assert_eq!(cur_euid(), ADMIN_UID);
+    assert_eq!(cur_uid(), ADMIN_UID);
 
     let su = session::su(GUEST_UID).unwrap();
-    assert_eq!(cur(), GUEST_UID);
+    assert_eq!(cur_euid(), GUEST_UID);
+    assert_eq!(cur_uid(), GUEST_UID);
 
     drop(su);
 
-    assert_eq!(cur(), ADMIN_UID);
+    assert_eq!(cur_euid(), ADMIN_UID);
+    assert_eq!(cur_uid(), ADMIN_UID);
 }
 
+#[cfg(feature = "picodata")]
 #[tarantool::test]
 pub fn with_su() {
-    assert_eq!(cur(), ADMIN_UID);
+    assert_eq!(cur_euid(), ADMIN_UID);
+    assert_eq!(cur_uid(), ADMIN_UID);
 
     session::with_su(GUEST_UID, || {
-        assert_eq!(cur(), GUEST_UID);
+        assert_eq!(cur_euid(), GUEST_UID);
+        assert_eq!(cur_uid(), ADMIN_UID);
     })
     .unwrap();
 
-    assert_eq!(cur(), ADMIN_UID);
+    assert_eq!(cur_euid(), ADMIN_UID);
+    assert_eq!(cur_uid(), ADMIN_UID);
 }
 
 #[cfg(feature = "picodata")]

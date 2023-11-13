@@ -63,6 +63,7 @@
 - `fiber::csw` now returns `u64` instead of `i32`.
 - Removed `datetime::Error::ErrorEpochTypeConvert` as it's never used.
 - `TarantoolErrorCode` & `SayLevel` no longer implement `num_traits::FromPrimitive`.
+- Made `session::with_su()` a picodata specific method (removed from vanilla).
 
 ### Added (picodata)
 - struct `read_view::ReadView` for opening read views on selected spaces.

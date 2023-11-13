@@ -92,8 +92,10 @@ mod picodata {
     use crate::{
         error::{Error, TarantoolError},
         ffi::tarantool::{
-            box_effective_user_id, box_session_su, box_session_user_id, box_user_id_by_name,
+            box_effective_su, box_effective_user_id, box_session_su, box_session_user_id,
+            box_user_id_by_name,
         },
+        session::SuGuard,
     };
 
     use super::UserId;
@@ -138,6 +140,20 @@ mod picodata {
         }
         Ok(uid)
     }
+
+    /// Change the effective user while executing a function.
+    #[inline]
+    pub fn with_su<T>(uid: UserId, f: impl FnOnce() -> T) -> Result<T, Error> {
+        let original_user_id = euid().expect("infailable with c api");
+        let _guard = SuGuard { original_user_id };
+
+        let err = unsafe { box_effective_su(uid) };
+        if err < 0 {
+            return Err(Error::Tarantool(TarantoolError::last()));
+        }
+
+        Ok(f())
+    }
 }
 
 use crate::error::Error;
@@ -158,16 +174,11 @@ impl Drop for SuGuard {
     }
 }
 
+/// Change effective and session users.
 #[inline]
 pub fn su(target_uid: UserId) -> Result<SuGuard, Error> {
-    let original_user_id = uid().expect("infallible with c api");
+    let original_user_id = uid()?;
     su_impl(target_uid)?;
 
     Ok(SuGuard { original_user_id })
-}
-
-#[inline]
-pub fn with_su<T>(uid: UserId, f: impl FnOnce() -> T) -> Result<T, Error> {
-    let _su = su(uid)?;
-    Ok(f())
 }
