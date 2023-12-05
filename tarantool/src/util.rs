@@ -1,6 +1,7 @@
 use crate::error::Error;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
+use std::rc::Rc;
 
 pub trait IntoClones<Tuple>: Clone {
     fn into_clones(self) -> Tuple;
@@ -204,5 +205,51 @@ pub const fn str_eq(lhs: &str, rhs: &str) -> bool {
             return false;
         }
         i += 1;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// AnyT
+////////////////////////////////////////////////////////////////////////////////
+
+/// An extension for [`std::any::Any`] that includes a `type_name` method for
+/// getting the type name from a `dyn AnyT`.
+pub trait AnyT: std::any::Any {
+    fn type_name(&self) -> &'static str;
+
+    #[inline(always)]
+    fn into_box_dyn(self) -> Box<dyn AnyT>
+    where
+        Self: Sized,
+    {
+        Box::new(self)
+    }
+
+    #[inline(always)]
+    fn into_rc_dyn(self) -> Rc<dyn AnyT>
+    where
+        Self: Sized,
+    {
+        Rc::new(self)
+    }
+}
+
+impl<T: std::any::Any> AnyT for T {
+    #[inline(always)]
+    fn type_name(&self) -> &'static str {
+        std::any::type_name::<T>()
+    }
+}
+
+#[inline]
+pub fn downcast_rc<T: 'static>(any: Rc<dyn AnyT>) -> Result<Rc<T>, Rc<dyn AnyT>> {
+    if std::any::TypeId::of::<T>() != (*any).type_id() {
+        return Err(any);
+    }
+
+    // SAFETY: safe because we the trait object contains a value of correct type
+    unsafe {
+        let raw: *const dyn AnyT = Rc::into_raw(any);
+        Ok(Rc::from_raw(raw as *mut T))
     }
 }
