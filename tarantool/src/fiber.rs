@@ -14,6 +14,7 @@ use crate::error::{TarantoolError, TarantoolErrorCode};
 use crate::ffi::has_fiber_id;
 use crate::ffi::tarantool::fiber_sleep;
 use crate::ffi::{lua, tarantool as ffi};
+use crate::size_of;
 use crate::static_assert;
 use crate::time::Instant;
 use crate::tlua::{self as tlua, AsLua};
@@ -810,6 +811,11 @@ where
         let mut ctx = Box::from_raw(ctx);
         ctx.fiber_id = id();
 
+        // Don't set fiber id if nobody will be able to get it.
+        if crate::ffi::has_fiber_set_ctx() {
+            ctx.fiber_id = id();
+        }
+
         // Remove the closure pointer from the context,
         // so that nobody can mess it up somehow.
         let f = std::mem::replace(&mut ctx.fiber_rust_closure, std::ptr::null_mut());
@@ -899,6 +905,10 @@ where
             .unwrap_or_else(||
                 // userdata originally contained None
                 tlua::error!(l, "rust FnOnce callback was called more than once"));
+
+        // We don't set the context here, because lua implementation was only
+        // needed until context support was added. So if we can set the context,
+        // we won't be calling into the lua implementation.
 
         // call f and drop it afterwards
         let res = f();
@@ -1239,6 +1249,51 @@ impl<'f, T> JoinHandle<'f, T> {
                     found,
                     "non-joinable fiber has been recycled before being joined"
                 );
+            }
+        }
+    }
+
+    /// Returns a mutable refernce to the fiber's context.
+    ///
+    /// Returns `None` if fiber context is not supported in current tarantool
+    /// version ([`ffi::has_fiber_set_ctx`] returns `false`).
+    ///
+    /// Returns `None` if the fiber was spawned using the legacy lua implementation.
+    ///
+    /// Returns `None` if the context is not set, or if we were able to detect that
+    /// it is set to something other than `fiber::Context`.
+    ///
+    /// # Safety
+    /// It's unsafe to call this function if [`ffi::fiber_set_ctx`] was called for
+    /// the current fiber with a pointer to something else rather than a `fiber::Context`.
+    /// Although this function will make a best effort attempt to guard against it
+    /// and return `None`, there's is still a chance that this will crash or cause
+    /// undefined behaviour.
+    ///
+    /// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
+    pub unsafe fn try_context_mut(&self) -> Option<&mut Context> {
+        // SAFETY: always safe
+        if unsafe { !crate::ffi::has_fiber_set_ctx() } {
+            return None;
+        }
+
+        match self.inner {
+            None => {
+                unreachable!("it has either been moved into JoinHandle::join, or been dropped")
+            }
+            Some(JoinHandleImpl::Ffi { fiber, .. }) => {
+                // SAFETY: Safe, because at this point fiber is joinable and
+                // fiber_join wasn't called yet, therefore tarantool will not
+                // recycle the fiber, hence the pointer is valid.
+                unsafe {
+                    let ctx = ffi::fiber_get_ctx(fiber.as_ptr()).cast::<Context>();
+                    #[rustfmt::skip]
+                    debug_assert!(context_is_valid(ctx), "we always set fiber context if it's possible");
+                    Some(&mut *ctx)
+                }
+            }
+            Some(JoinHandleImpl::Lua { .. }) => {
+                return None;
             }
         }
     }
@@ -2061,6 +2116,84 @@ impl Drop for LatchGuard {
 // Context
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Returns a reference to the current fiber's context.
+///
+/// Returns `None` if the your tarantool executable doesn't support the
+/// necessary api, i.e. [`ffi::has_fiber_set_ctx`] returns `false`.
+///
+/// Returns `None` if the context is not set, or if we were able to detect that
+/// it is set to something other than `fiber::Context`.
+///
+/// # Safety
+/// It's unsafe to call this function if [`ffi::fiber_set_ctx`] was called for
+/// the current fiber with a pointer to something else rather than a `fiber::Context`.
+/// Although this function will make a best effort attempt to guard against it
+/// and return `None`, there's is still a chance that this will crash or cause
+/// undefined behaviour.
+///
+/// Also the pointer to the context is actually only valid for the lifetime of
+/// the current fiber. It's perfectly safe to use it inside the fiber itself,
+/// but don't send it to other fibers, because the context will be freed once
+/// the fiber finishes execution.
+///
+/// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
+pub unsafe fn try_context_mut() -> Option<&'static mut Context> {
+    if !crate::ffi::has_fiber_set_ctx() {
+        return None;
+    }
+
+    let ptr = ffi::fiber_get_ctx(ffi::fiber_self()).cast::<Context>();
+
+    if !context_is_valid(ptr) {
+        return None;
+    }
+
+    Some(&mut *ptr)
+}
+
+/// Returns a reference to the context of the fiber with given `id`.
+///
+/// Returns `None` if the fiber with given `id` doesn't exit (see also [`fiber::exists`]).
+///
+/// Returns `None` if the your tarantool executable doesn't support the
+/// necessary api, i.e. [`ffi::has_fiber_set_ctx`] returns `false`.
+///
+/// Returns `None` if the context is not set, or if we were able to detect that
+/// it is set to something other than `fiber::Context`.
+///
+/// # Safety
+/// It's unsafe to call this function if [`ffi::fiber_set_ctx`] was called for
+/// the current fiber with a pointer to something else rather than a `fiber::Context`.
+/// Although this function will make a best effort attempt to guard against it
+/// and return `None`, there's is still a chance that this will crash or cause
+/// undefined behaviour.
+///
+/// Also the pointer to the context is actually only valid for the lifetime of
+/// the current fiber. It's perfectly safe to use it inside the fiber itself,
+/// but don't send it to other fibers, because the context will be freed once
+/// the fiber finishes execution.
+///
+/// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
+/// [`fiber::exists`]: exists
+pub unsafe fn try_context_mut_by_id(id: FiberId) -> Option<&'static mut Context> {
+    if !crate::ffi::has_fiber_set_ctx() {
+        return None;
+    }
+
+    let fiber = ffi::fiber_find(id);
+    if fiber.is_null() {
+        return None;
+    }
+
+    let ptr = ffi::fiber_get_ctx(fiber).cast::<Context>();
+
+    if !context_is_valid(ptr) {
+        return None;
+    }
+
+    Some(&mut *ptr)
+}
+
 /// Makes a best effort attempt to check if the given pointer actually points at
 /// a valid instance of `Context` struct.
 ///
@@ -2162,12 +2295,39 @@ pub struct Context {
     fiber_result_ptr: *mut (),
 }
 
+static_assert!(size_of::<Context>() == 128);
+static_assert!(size_of!(Context, user_on_fiber_exit) == 16);
+static_assert!(size_of!(Context, user_fields) == 48);
+
+impl Context {
+    #[inline(always)]
+    pub const fn magic(&self) -> u64 {
+        self.magic
+    }
+
+    #[inline(always)]
+    pub const fn size(&self) -> u64 {
+        self.size
+    }
+
+    #[inline(always)]
+    pub const fn version(&self) -> u64 {
+        self.version
+    }
+
+    #[inline(always)]
+    pub const fn fiber_id(&self) -> FiberId {
+        self.fiber_id
+    }
+}
+
 impl std::fmt::Debug for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("Context")
             .field("magic", &self.magic)
             .field("size", &self.size)
             .field("version", &self.version)
+            .field("fiber_id", &self.fiber_id)
             .finish_non_exhaustive()
     }
 }

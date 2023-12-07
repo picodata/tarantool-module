@@ -7,6 +7,9 @@
   also works with tuples.
 - `tarantool::size_of` macro for getting size in bytes of a struct field, also
   works with tuples. Can also be used as a replacement for `std::mem::size_of`.
+- `fiber::JoinHandle::try_context_mut`, `fiber::try_context_mut` &
+  `fiber::try_context_mut_by_id` functions for getting a reference to the
+  fiber's context.
 
 ### Changed
 
