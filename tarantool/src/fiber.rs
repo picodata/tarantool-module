@@ -19,6 +19,7 @@ use crate::static_assert;
 use crate::time::Instant;
 use crate::tlua::{self as tlua, AsLua};
 use crate::unwrap_ok_or;
+use crate::util::AnyT;
 use crate::{c_ptr, set_error};
 use ::va_list::VaList;
 pub use channel::Channel;
@@ -33,12 +34,14 @@ pub use csw::YieldResult;
 pub use mutex::Mutex;
 pub use r#async::block_on;
 use std::cell::UnsafeCell;
+use std::collections::HashMap;
 use std::ffi::CString;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::mem::{align_of, size_of};
 use std::os::raw::c_void;
 use std::ptr::NonNull;
+use std::rc::Rc;
 use std::time::Duration;
 
 pub mod r#async;
@@ -310,6 +313,7 @@ pub struct Builder<F> {
     name: Option<String>,
     attr: Option<FiberAttr>,
     f: F,
+    context_fields: HashMap<String, Rc<dyn AnyT>>,
 }
 
 impl<T> ::std::fmt::Debug for Builder<T> {
@@ -327,6 +331,7 @@ impl Builder<NoFunc> {
             name: None,
             attr: None,
             f: NoFunc,
+            context_fields: HashMap::default(),
         }
     }
 
@@ -341,6 +346,7 @@ impl Builder<NoFunc> {
             name: self.name,
             attr: self.attr,
             f,
+            context_fields: self.context_fields,
         }
     }
 
@@ -407,6 +413,16 @@ impl<F> Builder<F> {
         self.attr = Some(attr);
         Ok(self)
     }
+
+    /// TODO: docs
+    #[inline(always)]
+    pub fn with_context_field<T>(mut self, name: String, value: Rc<T>) -> Self
+    where
+        T: AnyT,
+    {
+        self.context_fields.insert(name, value);
+        self
+    }
 }
 
 impl<'f, F, T> Builder<F>
@@ -428,9 +444,9 @@ where
     /// happen when the join handle is dropped.
     #[inline(always)]
     pub fn start(self) -> crate::Result<JoinHandle<'f, T>> {
-        let (name, f, attr) = self.into_fiber_args();
+        let (name, f, attr, context) = self.into_fiber_args();
 
-        let res = Fyber::spawn_and_yield(name, f, true, attr.as_ref())?;
+        let res = Fyber::spawn_and_yield(name, f, true, attr.as_ref(), context)?;
         let Ok(jh) = res else {
             unreachable!("spawn_and_yield returns the join handle when is_joinable = true");
         };
@@ -455,14 +471,19 @@ where
     /// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
     #[inline(always)]
     pub fn defer(self) -> crate::Result<JoinHandle<'f, T>> {
-        let (name, f, attr) = self.into_fiber_args();
+        let (name, f, attr, context) = self.into_fiber_args();
 
         // SAFETY this is safe as long as we only call this from the tx thread.
         if !unsafe { crate::ffi::has_fiber_set_ctx() } {
+            if context.is_some() {
+                #[rustfmt::skip]
+                set_error!(TarantoolErrorCode::Unsupported, "on_exit callbacks aren't supported on your tarantool version");
+                return Err(TarantoolError::last().into());
+            }
             return Fyber::spawn_lua(name, f, attr.as_ref());
         }
 
-        let res = Fyber::spawn_deferred(name, f, true, attr.as_ref())?;
+        let res = Fyber::spawn_deferred(name, f, true, attr.as_ref(), context)?;
         let Ok(jh) = res else {
             unreachable!("spawn_deferred returns the join handle when is_joinable = true");
         };
@@ -485,9 +506,9 @@ where
     /// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
     #[inline(always)]
     pub fn defer_ffi(self) -> crate::Result<JoinHandle<'f, T>> {
-        let (name, f, attr) = self.into_fiber_args();
+        let (name, f, attr, context) = self.into_fiber_args();
 
-        let res = Fyber::spawn_deferred(name, f, true, attr.as_ref())?;
+        let res = Fyber::spawn_deferred(name, f, true, attr.as_ref(), context)?;
         let Ok(jh) = res else {
             unreachable!("spawn_deferred returns the join handle when is_joinable = true");
         };
@@ -503,18 +524,32 @@ where
     /// Consider using [`Self::defer`] instead.
     #[inline(always)]
     pub fn defer_lua(self) -> crate::Result<JoinHandle<'f, T>> {
-        let (name, f, attr) = self.into_fiber_args();
+        let (name, f, attr, context) = self.into_fiber_args();
+
+        if let Some(ctx) = context {
+            if ctx.user_on_fiber_exit.is_some() {
+                #[rustfmt::skip]
+                set_error!(TarantoolErrorCode::Unsupported, "lua implementation of deferred fibers doesn't support on_exit callbacks");
+                return Err(TarantoolError::last().into());
+            }
+        }
 
         Fyber::spawn_lua(name, f, attr.as_ref())
     }
 
-    fn into_fiber_args(self) -> (String, F, Option<FiberAttr>) {
+    fn into_fiber_args(self) -> (String, F, Option<FiberAttr>, Option<Box<Context>>) {
         #[rustfmt::skip]
-        let Self { name, attr, f } = self;
+        let Self { name, attr, f, context_fields } = self;
 
         let name = name.unwrap_or_else(|| "<rust>".into());
 
-        (name, f, attr)
+        let mut context: Option<Box<Context>> = None;
+        if !context_fields.is_empty() {
+            let ctx = context.get_or_insert_with(Default::default);
+            ctx.user_fields = context_fields;
+        }
+
+        (name, f, attr, context)
     }
 }
 
@@ -539,9 +574,9 @@ where
     /// to the new fiber immediately.
     #[inline(always)]
     pub fn start_non_joinable(self) -> crate::Result<FiberId> {
-        let (name, f, attr) = self.into_fiber_args();
+        let (name, f, attr, context) = self.into_fiber_args();
 
-        let res = Fyber::spawn_and_yield(name, f, false, attr.as_ref())?;
+        let res = Fyber::spawn_and_yield(name, f, false, attr.as_ref(), context)?;
         let Err(id) = res else {
             unreachable!("spawn_and_yield returns the fiber id when is_joinable = false");
         };
@@ -567,7 +602,7 @@ where
     /// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
     #[inline(always)]
     pub fn defer_non_joinable(self) -> crate::Result<Option<FiberId>> {
-        let (name, f, attr) = self.into_fiber_args();
+        let (name, f, attr, context) = self.into_fiber_args();
 
         // SAFETY this is safe as long as we only call this from the tx thread.
         if !unsafe { crate::ffi::has_fiber_set_ctx() } {
@@ -576,7 +611,7 @@ where
             return Err(TarantoolError::last().into());
         }
 
-        let res = Fyber::spawn_deferred(name, f, false, attr.as_ref())?;
+        let res = Fyber::spawn_deferred(name, f, false, attr.as_ref(), context)?;
         let Err(id) = res else {
             unreachable!("spawn_deferred returns the fiber id when is_joinable = false");
         };
@@ -634,11 +669,15 @@ where
     ///
     /// Returns an error if `is_joinable` is `false` and `F` returns a non
     /// zero-sized value.
+    ///
+    /// If `context` is not `None` it will be set as the new fiber's context.
+    #[inline(always)]
     pub fn spawn_and_yield(
         name: String,
         f: F,
         is_joinable: bool,
         attr: Option<&FiberAttr>,
+        mut context: Option<Box<Context>>,
     ) -> crate::Result<Result<JoinHandle<'f, T>, FiberId>> {
         if !is_joinable && needs_returning::<T>() {
             #[rustfmt::skip]
@@ -653,6 +692,18 @@ where
                 return Err(TarantoolError::last().into());
             }
         );
+
+        // Setup fiber context
+        // SAFETY: as safe as any other tarantool ffi call
+        if unsafe { crate::ffi::has_fiber_set_ctx() } {
+            if context.is_none() {
+                context = Some(Box::new(Context::default()));
+            }
+        } else if context.is_some() {
+            #[rustfmt::skip]
+            set_error!(TarantoolErrorCode::Unsupported, "fiber_set_ctx isn't supported on your tarantool version");
+            return Err(TarantoolError::last().into());
+        }
 
         let inner_raw = unsafe {
             if let Some(attr) = attr {
@@ -676,8 +727,9 @@ where
             // Prepare the storage for rust closure & result value.
             let result_cell = needs_returning::<T>().then(FiberResultCell::default);
 
-            // Prepare fiber context for passing fiber arguments.
-            let mut ctx = Box::<Context>::default();
+            // Prepare fiber context. If has_fiber_set_ctx returns false
+            // this will only be used to passed fiber arguments.
+            let mut ctx = context.unwrap_or_default();
             if let Some(result_cell) = &result_cell {
                 ctx.fiber_result_ptr = result_cell.get() as _;
             }
@@ -714,6 +766,8 @@ where
     /// Returns an error if `is_joinable` is `false` and `F` returns a non
     /// zero-sized value.
     ///
+    /// If `context` is not `None` it will be set as the new fiber's context.
+    ///
     /// # Panicking
     /// May panic if the current tarantool executable doesn't support the
     /// `fiber_set_ctx` api.
@@ -722,7 +776,11 @@ where
         f: F,
         is_joinable: bool,
         attr: Option<&FiberAttr>,
+        context: Option<Box<Context>>,
     ) -> crate::Result<Result<JoinHandle<'f, T>, Option<FiberId>>> {
+        #[rustfmt::skip]
+        debug_assert!(unsafe { crate::ffi::has_fiber_set_ctx() }, "deferred fibers don't work otherwise");
+
         if !is_joinable && needs_returning::<T>() {
             #[rustfmt::skip]
             set_error!(TarantoolErrorCode::Unsupported, "non-joinable fibers which return a value are not supported");
@@ -760,7 +818,7 @@ where
             let result_cell = needs_returning::<T>().then(FiberResultCell::default);
 
             // Prepare fiber context.
-            let mut ctx = Box::<Context>::default();
+            let mut ctx = context.unwrap_or_default();
             if let Some(result_cell) = &result_cell {
                 ctx.fiber_result_ptr = result_cell.get() as _;
             }
@@ -2293,6 +2351,9 @@ pub struct Context {
 
     /// Special field used internally for implementation of deferred fibers.
     fiber_result_ptr: *mut (),
+
+    /// A map of user defined fields.
+    user_fields: HashMap<String, Rc<dyn AnyT>>,
 }
 
 static_assert!(size_of::<Context>() == 128);
@@ -2319,6 +2380,54 @@ impl Context {
     pub const fn fiber_id(&self) -> FiberId {
         self.fiber_id
     }
+
+    /// TODO: docs
+    #[inline]
+    pub fn user_field<T>(&self, name: &str) -> Option<Result<Rc<T>, &'static str>>
+    where
+        T: AnyT,
+    {
+        let field = self.user_fields.get(name)?;
+        match crate::util::downcast_rc(field.clone()) {
+            Ok(res) => Some(Ok(res)),
+            // Must derefence *orig here, otherwise type name will be "Rc<dyn AnyT>"
+            Err(orig) => Some(Err((*orig).type_name())),
+        }
+    }
+
+    /// TODO: docs
+    #[inline]
+    pub fn remove_user_field<T>(&mut self, name: &str) -> Option<Result<Rc<T>, &'static str>>
+    where
+        T: AnyT,
+    {
+        let (name, field) = self.user_fields.remove_entry(name)?;
+        match crate::util::downcast_rc(field.clone()) {
+            Ok(res) => Some(Ok(res)),
+            Err(orig) => {
+                // Must derefence *orig here, otherwise type name will be "Rc<dyn AnyT>"
+                let res = (*orig).type_name();
+                self.user_fields.insert(name, orig);
+                Some(Err(res))
+            }
+        }
+    }
+
+    /// TODO: docs
+    #[inline]
+    pub fn set_user_field<T, S>(&mut self, name: S, value: Rc<T>) -> Option<Rc<dyn AnyT>>
+    where
+        T: AnyT,
+        S: Into<String> + AsRef<str>,
+    {
+        if let Some((name, old_value)) = self.user_fields.remove_entry(name.as_ref()) {
+            self.user_fields.insert(name, value);
+            Some(old_value)
+        } else {
+            self.user_fields.insert(name.into(), value);
+            None
+        }
+    }
 }
 
 impl std::fmt::Debug for Context {
@@ -2342,6 +2451,7 @@ impl Default for Context {
             fiber_id: FIBER_ID_INVALID,
             fiber_rust_closure: std::ptr::null_mut(),
             fiber_result_ptr: std::ptr::null_mut(),
+            user_fields: HashMap::new(),
         }
     }
 }
