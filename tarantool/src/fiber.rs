@@ -2354,6 +2354,15 @@ pub struct Context {
 
     /// A map of user defined fields.
     user_fields: HashMap<String, Rc<dyn AnyT>>,
+
+    /// Field for use by users of the library.
+    user_data_raw: *mut (),
+
+    /// Field for use by users of the library. You could just put all your
+    /// custom fields on the heap and make `user_data` point to it, but this
+    /// little field gives you access to a bit of user data without paying for
+    /// a cache miss.
+    user_field_raw: u64,
 }
 
 static_assert!(size_of::<Context>() == 128);
@@ -2437,6 +2446,8 @@ impl std::fmt::Debug for Context {
             .field("size", &self.size)
             .field("version", &self.version)
             .field("fiber_id", &self.fiber_id)
+            .field("user_data_raw", &self.user_data_raw)
+            .field("user_field_raw", &self.user_field_raw)
             .finish_non_exhaustive()
     }
 }
@@ -2452,6 +2463,8 @@ impl Default for Context {
             fiber_rust_closure: std::ptr::null_mut(),
             fiber_result_ptr: std::ptr::null_mut(),
             user_fields: HashMap::new(),
+            user_data_raw: std::ptr::null_mut(),
+            user_field_raw: 0,
         }
     }
 }
