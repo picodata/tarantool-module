@@ -313,6 +313,7 @@ pub struct Builder<F> {
     name: Option<String>,
     attr: Option<FiberAttr>,
     f: F,
+    on_exit: Option<Box<dyn FnOnce(&mut Context)>>,
     context_fields: HashMap<String, Rc<dyn AnyT>>,
 }
 
@@ -331,6 +332,7 @@ impl Builder<NoFunc> {
             name: None,
             attr: None,
             f: NoFunc,
+            on_exit: None,
             context_fields: HashMap::default(),
         }
     }
@@ -346,6 +348,7 @@ impl Builder<NoFunc> {
             name: self.name,
             attr: self.attr,
             f,
+            on_exit: self.on_exit,
             context_fields: self.context_fields,
         }
     }
@@ -412,6 +415,25 @@ impl<F> Builder<F> {
         attr.set_stack_size(stack_size)?;
         self.attr = Some(attr);
         Ok(self)
+    }
+
+    /// Sets the callback which will be invoked when the fiber finishes
+    /// execution.
+    ///
+    /// TODO: more docs
+    #[inline(always)]
+    pub fn on_exit<E>(mut self, on_exit: E) -> Self
+    where
+        E: FnOnce(&mut Context) + 'static,
+    {
+        let old_on_exit = self.on_exit.take();
+        self.on_exit = Some(Box::new(|context| {
+            on_exit(context);
+            if let Some(on_exit) = old_on_exit {
+                on_exit(context);
+            }
+        }));
+        self
     }
 
     /// TODO: docs
@@ -539,11 +561,16 @@ where
 
     fn into_fiber_args(self) -> (String, F, Option<FiberAttr>, Option<Box<Context>>) {
         #[rustfmt::skip]
-        let Self { name, attr, f, context_fields } = self;
+        let Self { name, attr, f, on_exit, context_fields } = self;
 
         let name = name.unwrap_or_else(|| "<rust>".into());
 
         let mut context: Option<Box<Context>> = None;
+        if let Some(on_exit) = on_exit {
+            let ctx = context.get_or_insert_with(Default::default);
+            ctx.user_on_fiber_exit = Some(on_exit);
+        }
+
         if !context_fields.is_empty() {
             let ctx = context.get_or_insert_with(Default::default);
             ctx.user_fields = context_fields;
@@ -888,6 +915,11 @@ where
             std::ptr::write(ctx.fiber_result_ptr.cast(), Some(t));
         } else {
             debug_assert!(ctx.fiber_result_ptr.is_null());
+        }
+
+        // Call on_fiber_exit callbacks.
+        if let Some(callback) = ctx.user_on_fiber_exit.take() {
+            callback(&mut ctx)
         }
 
         // The only thing this return value controls is wether the last error
@@ -2352,6 +2384,10 @@ pub struct Context {
     /// Special field used internally for implementation of deferred fibers.
     fiber_result_ptr: *mut (),
 
+    /// A callback which will be invoked when the fiber function finishes
+    /// execution.
+    user_on_fiber_exit: Option<Box<dyn FnOnce(&mut Context)>>,
+
     /// A map of user defined fields.
     user_fields: HashMap<String, Rc<dyn AnyT>>,
 
@@ -2437,6 +2473,21 @@ impl Context {
             None
         }
     }
+
+    /// TODO: docs
+    #[inline(always)]
+    pub fn on_fiber_exit<E>(&mut self, on_exit: E)
+    where
+        E: FnOnce(&mut Context) + 'static,
+    {
+        let old_on_exit = self.user_on_fiber_exit.take();
+        self.user_on_fiber_exit = Some(Box::new(|context| {
+            on_exit(context);
+            if let Some(on_exit) = old_on_exit {
+                on_exit(context);
+            }
+        }));
+    }
 }
 
 impl std::fmt::Debug for Context {
@@ -2462,6 +2513,7 @@ impl Default for Context {
             fiber_id: FIBER_ID_INVALID,
             fiber_rust_closure: std::ptr::null_mut(),
             fiber_result_ptr: std::ptr::null_mut(),
+            user_on_fiber_exit: None,
             user_fields: HashMap::new(),
             user_data_raw: std::ptr::null_mut(),
             user_field_raw: 0,
@@ -2934,5 +2986,37 @@ mod tests {
         assert_eq!(ch.recv().unwrap(), false);
 
         jh.join();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn on_exit_callbacks() {
+        type FieldType = Cell<usize>;
+        let counter: Rc<FieldType> = Rc::new(Cell::new(0));
+
+        let jh = Builder::new()
+            .func(|| {
+                let ctx = unsafe { try_context_mut().unwrap() };
+                let counter = ctx.user_field::<FieldType>("my_field").unwrap().unwrap();
+                counter.set(counter.get() + 1);
+            })
+            .with_context_field("my_field".into(), counter.clone())
+            .on_exit(|ctx| {
+                let counter = ctx.user_field::<FieldType>("my_field").unwrap().unwrap();
+                counter.set(counter.get() + 1);
+            })
+            .on_exit(|ctx| {
+                let counter = ctx.user_field::<FieldType>("my_field").unwrap().unwrap();
+                counter.set(counter.get() + 1);
+            })
+            .on_exit(|ctx| {
+                let counter = ctx.user_field::<FieldType>("my_field").unwrap().unwrap();
+                counter.set(counter.get() + 1);
+            })
+            .defer()
+            .unwrap();
+
+        assert_eq!(counter.get(), 0);
+        jh.join();
+        assert_eq!(counter.get(), 4);
     }
 }
