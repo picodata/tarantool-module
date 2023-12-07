@@ -3,6 +3,10 @@
 # [?.?.?] Unreleased
 
 ### Added
+- `tarantool::offset_of` macro for getting an offset in bytes of a struct field,
+  also works with tuples.
+- `tarantool::size_of` macro for getting size in bytes of a struct field, also
+  works with tuples. Can also be used as a replacement for `std::mem::size_of`.
 
 ### Changed
 
