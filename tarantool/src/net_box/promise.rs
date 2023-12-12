@@ -1,13 +1,15 @@
-use std::{
-    cell::{Cell, UnsafeCell},
-    io,
-    rc::{Rc, Weak},
-    time::Duration,
-};
-
-use crate::{clock::INFINITY, error::Error, fiber::Cond, time::Instant, tuple::Decode, Result};
-
-use super::{inner::ConnInner, protocol::Consumer};
+use crate::clock::INFINITY;
+use crate::error::Error;
+use crate::fiber::Cond;
+use crate::net_box::inner::ConnInner;
+use crate::net_box::protocol::Consumer;
+use crate::time::Instant;
+use crate::tuple::Decode;
+use crate::Result;
+use std::cell::{Cell, UnsafeCell};
+use std::io;
+use std::rc::{Rc, Weak};
+use std::time::Duration;
 
 type StdResult<T, E> = std::result::Result<T, E>;
 

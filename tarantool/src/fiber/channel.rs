@@ -1,6 +1,11 @@
-use std::{marker::PhantomData, mem::MaybeUninit, ptr::NonNull, rc::Rc, time::Duration};
-
-use crate::{error::TarantoolErrorCode, ffi::tarantool as ffi};
+use crate::error::TarantoolErrorCode;
+use crate::ffi::tarantool as ffi;
+use std::cell::Cell;
+use std::marker::PhantomData;
+use std::mem::MaybeUninit;
+use std::ptr::NonNull;
+use std::rc::Rc;
+use std::time::Duration;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Channel
