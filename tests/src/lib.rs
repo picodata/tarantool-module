@@ -437,6 +437,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 r#box::select,
                 r#box::select_composite_key,
                 r#box::len,
+                r#box::select_iterator_methods,
                 r#box::random,
                 r#box::min_max,
                 r#box::count,

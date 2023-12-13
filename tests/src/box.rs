@@ -215,6 +215,27 @@ pub fn len() {
     assert_eq!(space.len().unwrap(), 20_usize);
 }
 
+pub fn select_iterator_methods() {
+    let space = Space::find("test_s2").unwrap();
+    let skip = 5;
+    let take = 4;
+    let all = space
+        .select(IteratorType::All, &())
+        .unwrap()
+        .map(|x| x.decode::<S1Record>().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(all.len(), 20);
+    let paginated = space
+        .select(IteratorType::All, &())
+        .unwrap()
+        .map(|x| x.decode::<S1Record>().unwrap())
+        .take(take)
+        .skip(skip)
+        .collect::<Vec<_>>();
+    assert_eq!(paginated.len(), take);
+    assert_eq!(paginated, all[skip..skip + take]);
+}
+
 pub fn random() {
     let space = Space::find("test_s2").unwrap();
     let idx = space.primary_key();
