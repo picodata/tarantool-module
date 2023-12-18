@@ -2297,6 +2297,11 @@ pub unsafe fn try_context_mut_by_id(id: FiberId) -> Option<&'static mut Context>
 /// So currently this is the best thing we can do.
 #[inline]
 pub unsafe fn context_is_valid(context: *mut Context) -> bool {
+    #[cfg(unix)]
+    if !crate::ffi::helper::pointer_is_in_mapped_pages(context) {
+        return false;
+    }
+
     if context as usize == 0 {
         return false;
     }
@@ -3018,5 +3023,64 @@ mod tests {
         assert_eq!(counter.get(), 0);
         jh.join();
         assert_eq!(counter.get(), 4);
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn get_context_of_non_rust_fibers() {
+        if unsafe { !crate::ffi::has_fiber_set_ctx() } {
+            return;
+        }
+
+        // Spawn a rust fiber
+        let rust_fiber_id = fiber::Builder::new()
+            .func(|| {
+                while !fiber::is_cancelled() {
+                    fiber::sleep(Duration::from_millis(100));
+                }
+            })
+            .defer_non_joinable()
+            .unwrap()
+            .unwrap();
+
+        let lua = crate::lua_state();
+        // Spawn a lua fiber in addition to the already existing system fibers
+        let lua_fiber_id: FiberId = lua
+            .eval(
+                "local fiber = require 'fiber'
+                local f = fiber.new(function()
+                    -- lua automatically checks if the fiber was cancelled
+                    while true do
+                        fiber.sleep(.1)
+                    end
+                end)
+                return f:id()",
+            )
+            .unwrap();
+
+        let all_fiber_ids: Vec<FiberId> = lua
+            .eval(
+                "local fiber = require 'fiber'
+                local res = {}
+                for id, _ in pairs(fiber.info()) do
+                    table.insert(res, id)
+                end
+                return res",
+            )
+            .unwrap();
+
+        //u
+        assert!(all_fiber_ids.len() > 2, "");
+
+        for id in all_fiber_ids {
+            let ctx = unsafe { fiber::try_context_mut_by_id(id) };
+            if id == rust_fiber_id {
+                assert!(ctx.is_some(), "rust fiber's context should be accessible");
+            } else {
+                assert!(ctx.is_none(), "id: {id}, name: {:?}", fiber::name_of(id));
+            }
+        }
+
+        assert!(fiber::cancel(rust_fiber_id));
+        assert!(fiber::cancel(lua_fiber_id));
     }
 }

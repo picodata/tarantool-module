@@ -269,3 +269,106 @@ pub unsafe fn get_any_symbol<T: Copy>(name: &CStr) -> Result<T, dlopen::Error> {
     let sym = lib.symbol_cstr(name)?;
     Ok(*sym)
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// pointer stuff
+////////////////////////////////////////////////////////////////////////////////
+
+/// Returns `true` if `p` points into a mapped memory page.
+#[inline(always)]
+#[cfg(unix)]
+pub unsafe fn pointer_is_in_mapped_pages<T>(p: *const T) -> bool {
+    const NUM_PAGES: usize = 1;
+
+    let page_size = get_page_size();
+    let page_start = align_to(p, page_size);
+    let mut v = [0_u8; NUM_PAGES];
+
+    let rc = libc::mincore(
+        page_start as _,
+        (NUM_PAGES * page_size as usize) as _,
+        v.as_mut_ptr() as _,
+    );
+    if rc != 0 {
+        let e = std::io::Error::last_os_error().raw_os_error().unwrap();
+        // FIXME: this could also be a EAGAIN
+        debug_assert_eq!(e, libc::ENOMEM);
+        return false;
+    }
+
+    return true;
+}
+
+/// Returns the memory page size on the current system.
+#[inline(always)]
+pub fn get_page_size() -> u64 {
+    use std::sync::OnceLock;
+    static mut ONCE: OnceLock<u64> = OnceLock::new();
+    // Safety: docs say OnceLock::get_or_init is safe to be called from
+    // different threads.
+    unsafe {
+        *ONCE.get_or_init(|| {
+            #[cfg(unix)]
+            let page_size = libc::sysconf(libc::_SC_PAGESIZE) as _;
+
+            #[cfg(not(unix))]
+            let page_size = 4096;
+
+            page_size
+        })
+    }
+}
+
+/// Returns the memory address aligned to the given `alignment`.
+///
+/// You can use this to for example to compute the start address of the page `p`
+/// points into:
+/// ```rust
+/// use tarantool::ffi::helper::{align_to, get_page_size};
+///
+/// let arr: [u8; 2] = [1, 2];
+/// let p0 = &arr[0] as *const u8;
+/// let p1 = &arr[1] as *const u8;
+///
+/// let p0_page = align_to(p0, get_page_size()).cast::<u8>();
+/// let p1_page = align_to(p1, get_page_size()).cast::<u8>();
+/// assert_eq!(p0_page, p1_page);
+/// assert!(p0_page <= p0);
+/// assert!(p1_page < p1);
+/// ```
+#[inline(always)]
+pub fn align_to<T>(p: *const T, alignment: u64) -> *const () {
+    debug_assert!(alignment.is_power_of_two(), "doesn't make sense otherwise");
+    return ((p as u64) & !(alignment - 1)) as _;
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn align_to_page() {
+        #[repr(align(8))]
+        struct S {
+            bytes: [u8; 8],
+        }
+        let s = S { bytes: [0; 8] };
+
+        let p = &s.bytes[0] as *const u8 as *const ();
+        let q = &s.bytes[7] as *const u8 as *const ();
+
+        let page_size = get_page_size();
+
+        let p_page = align_to(p, page_size);
+        assert!(p_page <= p);
+
+        let q_page = align_to(q, page_size);
+        assert!(q_page < q);
+
+        assert_eq!(p_page, q_page);
+
+        // pointer inside a struct aligned to the struct's alignment is the
+        // start of the struct (not always, but you get me...)
+        assert_eq!(p, align_to(q, std::mem::align_of::<S>() as _));
+    }
+}

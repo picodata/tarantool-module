@@ -10,6 +10,8 @@
 - `fiber::JoinHandle::try_context_mut`, `fiber::try_context_mut` &
   `fiber::try_context_mut_by_id` functions for getting a reference to the
   fiber's context.
+- `ffi::helper::{pointer_is_in_mapped_pages, get_page_size, align_to}` helper
+  functions for working with ffi.
 
 ### Changed
 
