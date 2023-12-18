@@ -1,5 +1,31 @@
 //! Сooperative multitasking module with optional async runtime.
 //!
+//! # Disclamer
+//! Most (if not all) of the functions in this module are *unsafe* in the
+//! official sense of the rust programming language, because of an assumption
+//! that a special fiber runtime is initialized in the current thread. This is
+//! going to be true if your code is invoked by tarantool as a stored procedure
+//! or from lua code, because this means it runs in the tarantool's *tx* thread.
+//! However if you spawn a new thread the required runtime is probably not
+//! initialized in which case calling any function in this module would be
+//! undefined behaviour.
+//!
+//! However it would not be practical to mark all the functions in this module
+//! as `unsafe`, because ~rust programmers would not use them~ in 99.99% percent
+//! of all cases you only call them in the context of the *tx* thread so there's
+//! practically no chance of invoking undefined behaviour most of the time. For
+//! these reasons `unsafe` in this module is used for more specific case, e.g.
+//! when missuse of an API may lead to undefined behaviour even within *tx* thread.
+//!
+//! Also it's not worth it to actually try and prevent the undefined behviour in
+//! that 0.001% of cases, because firstly tarantool doesn't give us a good way
+//! of doing that and secondly we would make everybody pay with inefficiency
+//! and/or bad ergonomics just to safeguard against something which basically
+//! never happens.
+//!
+//! So if you encounter some weird segmentation faults or core dumps,
+//! just make sure you're in the *tx* thread.
+//!
 //! With the fiber module, you can:
 //! - create, run and manage [fibers](Builder),
 //! - use a synchronization mechanism for fibers, similar to “condition variables” and similar to operating-system
