@@ -454,6 +454,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 r#box::space_drop,
                 r#box::index_create_drop,
                 r#box::index_parts,
+                r#box::space_put_nulls,
                 tuple::tuple_new_from_struct,
                 tuple::new_tuple_from_flatten_struct,
                 tuple::tuple_field_count,

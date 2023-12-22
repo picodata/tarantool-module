@@ -1,13 +1,14 @@
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
-use tarantool::index::{self, IndexOptions, IteratorType};
+use tarantool::index::{self, IndexOptions, IndexType, IteratorType, Part};
 use tarantool::sequence::Sequence;
 use tarantool::space::UpdateOps;
 use tarantool::space::{self, Field, Space, SystemSpace};
 use tarantool::space::{SpaceCreateOptions, SpaceEngineType, SpaceType};
-use tarantool::tuple::Tuple;
+use tarantool::tuple::{Encode, Tuple};
 use tarantool::util::Value;
 use tarantool::{update, upsert};
 
@@ -1092,4 +1093,43 @@ pub fn fully_temporary_space() {
     space_4.drop().unwrap();
     space_5.drop().unwrap();
     space_6.drop().unwrap();
+}
+
+pub fn space_put_nulls() {
+    #[derive(Serialize, Deserialize, Debug, PartialEq)]
+    struct Record {
+        a: u64,
+        b: Option<u64>,
+    }
+
+    impl Encode for Record {}
+
+    // we don't include optional "b" field into space format.
+    let opts = SpaceCreateOptions {
+        format: Some(vec![Field::unsigned("a")]),
+        ..Default::default()
+    };
+
+    let result = Space::create("test_nulls_space", &opts).unwrap();
+    let pk_idx = IndexOptions {
+        r#type: Some(IndexType::Tree),
+        parts: Some(vec![Part::new("a", index::FieldType::Unsigned)]),
+        if_not_exists: Some(true),
+        ..Default::default()
+    };
+    let index = result.create_index("new_index", &pk_idx).unwrap();
+
+    // put None and try to read.
+    let data = Record { a: 1, b: None };
+    result.put(&data).unwrap();
+    let tuple = index.get(&(1,)).unwrap().unwrap();
+    assert_eq!(tuple.decode::<Record>().unwrap(), data);
+
+    // put Some and try to read.
+    let data = Record { a: 2, b: Some(2) };
+    result.put(&data).unwrap();
+    let tuple = index.get(&(2,)).unwrap().unwrap();
+    assert_eq!(tuple.decode::<Record>().unwrap(), data);
+
+    drop_space("test_nulls_space");
 }
