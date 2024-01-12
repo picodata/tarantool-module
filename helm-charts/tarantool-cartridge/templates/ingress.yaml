@@ -1,0 +1,23 @@
+{{- if $.Values.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: "{{ $.Release.Name }}"
+spec:
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- tpl (toYaml .) $ | nindent 4 }}
+  {{- end }}
+  ingressClassName: "nginx"
+  rules:
+    - host: kirovets.test.picodata.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: "{{ $.Release.Name }}-routers"
+                port:
+                  number: {{ $.Values.service.port }}
+{{- end }}

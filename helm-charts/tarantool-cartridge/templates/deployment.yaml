@@ -8,7 +8,7 @@ spec:
       tarantool.io/cluster-id: {{ .Values.ClusterName }}
 ---
 {{- range .Values.RoleConfig }}
-{{- $r := .RolesToAssign | toJson | quote }}
+  {{- $r := .RolesToAssign | toJson | quote }}
 apiVersion: tarantool.io/v1alpha1
 kind: Role
 metadata:
@@ -51,9 +51,9 @@ spec:
         name: {{ $.Release.Name }}
       spec:
         accessModes: ["ReadWriteOnce"]
-        {{ if  $.Values.StorageClassName }}
-        storageClassName: {{ $.Values.StorageClassName }}
-        {{ end }}
+        {{- if  $.Values.persistence.storageClassName }}
+        storageClassName: {{ $.Values.persistence.storageClassName }}
+        {{- end }}
         resources:
           requests:
             storage: {{ .DiskSize }}
@@ -82,65 +82,69 @@ spec:
             value: "1"
       securityContext:
         fsGroup: {{ $.Values.securityContext.fsGroup }}
+    {{- if $.Values.affinity }}
+      affinity:
+        {{ toYaml $.Values.affinity | indent 8 }}
+    {{- end }}
       containers:
-        - name: "{{ $.Release.Name }}-container"
-          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"
-          volumeMounts:
-            - name: {{ $.Release.Name }}
-              mountPath: "{{ $.Values.TarantoolWorkDir }}"
-          resources:
-            requests:
-              cpu: "{{ .CPUallocation }}"
-              memory: "{{ add .MemtxMemoryMB $.Values.LuaMemoryReserveMB }}M"
-            limits:
-              cpu: "{{ .CPUallocation }}"
-              memory: "{{ add .MemtxMemoryMB $.Values.LuaMemoryReserveMB }}M"
-          ports:
-            - containerPort: 3301
-              protocol: TCP
-              name: app
-            - containerPort: 3301
-              protocol: UDP
-              name: app-udp
-            - containerPort: 8081
-              protocol: TCP
-              name: http
-          env:
-            - name: ENVIRONMENT
-              value: "{{ $.Values.ClusterEnv }}"
-            - name: TARANTOOL_INSTANCE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: TARANTOOL_ALIAS
-              value: "$(TARANTOOL_INSTANCE_NAME)"
-            - name: TARANTOOL_MEMTX_MEMORY
-              value: "{{ mul .MemtxMemoryMB 1048576 }}"
-            - name: TARANTOOL_BUCKET_COUNT
-              value: {{ $.Values.VshardBucketCount | default "30000" | quote }}
-            - name: TARANTOOL_WORKDIR
-              value: "{{ $.Values.TarantoolWorkDir }}"
-            - name: TARANTOOL_ADVERTISE_TMP
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: TARANTOOL_ADVERTISE_HOST
-              value: "$(TARANTOOL_ADVERTISE_TMP).{{ $.Values.ClusterName }}.{{ $.Release.Namespace }}.svc.{{ $.Values.ClusterDomainName }}"
-            - name: TARANTOOL_ADVERTISE_URI
-              value: "$(TARANTOOL_ADVERTISE_HOST):3301"
-            - name: TARANTOOL_PROBE_URI_TIMEOUT
-              value: "60"
-            - name: TARANTOOL_HTTP_PORT
-              value: "8081"
-            {{- range $param, $value := .BoxParameters }}
-            - name: "TARANTOOL_{{ $param | upper }}"
-              value: "{{ $value }}"
-            {{- end }}
-          readinessProbe:
-            tcpSocket:
-              port: http
-            initialDelaySeconds: 15
-            periodSeconds: 10
+      - name: "{{ $.Release.Name }}-container"
+        image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"
+        volumeMounts:
+          - name: {{ $.Release.Name }}
+            mountPath: "{{ $.Values.TarantoolWorkDir }}"
+        resources:
+          requests:
+            cpu: "{{ .CPUallocation }}"
+            memory: "{{ add .MemtxMemoryMB $.Values.LuaMemoryReserveMB }}M"
+          limits:
+            cpu: "{{ .CPUallocation }}"
+            memory: "{{ add .MemtxMemoryMB $.Values.LuaMemoryReserveMB }}M"
+        ports:
+          - containerPort: 3301
+            protocol: TCP
+            name: app
+          - containerPort: 3301
+            protocol: UDP
+            name: app-udp
+          - containerPort: 8081
+            protocol: TCP
+            name: http
+        env:
+          - name: ENVIRONMENT
+            value: "{{ $.Values.ClusterEnv }}"
+          - name: TARANTOOL_INSTANCE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: TARANTOOL_ALIAS
+            value: "$(TARANTOOL_INSTANCE_NAME)"
+          - name: TARANTOOL_MEMTX_MEMORY
+            value: "{{ mul .MemtxMemoryMB 1048576 }}"
+          - name: TARANTOOL_BUCKET_COUNT
+            value: {{ $.Values.VshardBucketCount | default "30000" | quote }}
+          - name: TARANTOOL_WORKDIR
+            value: "{{ $.Values.TarantoolWorkDir }}"
+          - name: TARANTOOL_ADVERTISE_TMP
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: TARANTOOL_ADVERTISE_HOST
+            value: "$(TARANTOOL_ADVERTISE_TMP).{{ $.Values.ClusterName }}.{{ $.Release.Namespace }}.svc.{{ $.Values.ClusterDomainName }}"
+          - name: TARANTOOL_ADVERTISE_URI
+            value: "$(TARANTOOL_ADVERTISE_HOST):3301"
+          - name: TARANTOOL_PROBE_URI_TIMEOUT
+            value: "60"
+          - name: TARANTOOL_HTTP_PORT
+            value: "8081"
+          {{- range $param, $value := .BoxParameters }}
+          - name: "TARANTOOL_{{ $param | upper }}"
+            value: "{{ $value }}"
+          {{- end }}
+        readinessProbe:
+          tcpSocket:
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service

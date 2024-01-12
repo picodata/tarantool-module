@@ -4,7 +4,10 @@ ClusterEnv: dev
 ClusterName: tarantool-cluster
 ClusterDomainName: cluster.local
 TarantoolWorkDir: /var/lib/tarantool
-LuaMemoryReserveMB: 2048
+LuaMemoryReserveMB: 4096
+
+persistence:
+  storageClassName: local-path
 
 image:
   repository: tarantool/tarantool-operator-examples-kv
@@ -40,3 +43,9 @@ RoleConfig:
     MemtxMemoryMB: 256
     RolesToAssign:
       - app.roles.storage
+
+ingress:
+  enabled: true
+  tls: []
+
+affinity: {}
