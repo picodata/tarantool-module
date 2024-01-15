@@ -1282,6 +1282,15 @@ extern "C" {
     pub fn cord_is_main_dont_create() -> bool;
 }
 
+// Xlog.
+#[cfg(feature = "picodata")]
+extern "C" {
+    /** Register your custom xlog_remove implementation */
+    pub fn xlog_remove_init(
+        remove_cb: extern "C" fn(filename: *const c_char, existed: bool),
+    ) -> c_int;
+}
+
 #[cfg(feature = "picodata")]
 #[cfg(feature = "internal_test")]
 mod tests {
@@ -1334,5 +1343,14 @@ mod tests {
             assert!(!unsafe { cord_is_main() });
         });
         thread.join().unwrap();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    pub fn test_xlog_remove_init() {
+        extern "C" fn some_xlog_remove_cb(filename: *const c_char, existed: bool) {
+            dbg!(filename);
+            dbg!(existed);
+        }
+        assert!(unsafe { xlog_remove_init(some_xlog_remove_cb) } == 0);
     }
 }
