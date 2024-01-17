@@ -1282,24 +1282,6 @@ extern "C" {
     pub fn cord_is_main_dont_create() -> bool;
 }
 
-// Xlog.
-#[cfg(feature = "picodata")]
-extern "C" {
-    /// Replace the low-level function used by xlog_remove_file() to
-    /// removes an xlog file with the given callback.
-    ///
-    /// In default implementation:
-    /// On success, set the 'existed' flag to true if the file existed and was
-    /// actually deleted or to false otherwise and returns 0. On failure, sets
-    /// diag and returns -1.
-    ///
-    /// Note that default function didn't treat ENOENT as error and same behavior
-    /// mostly recommended.
-    pub fn xlog_set_remove_file_impl(
-        remove_cb: extern "C" fn(filename: *const c_char, existed: *mut bool) -> c_int,
-    );
-}
-
 #[cfg(feature = "picodata")]
 #[cfg(feature = "internal_test")]
 mod tests {
