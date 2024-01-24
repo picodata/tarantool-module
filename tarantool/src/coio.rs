@@ -18,6 +18,7 @@ use core::ptr::null_mut;
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
+use crate::fiber;
 use crate::fiber::{unpack_callback, Cond};
 
 const TIMEOUT_INFINITY: f64 = 365.0 * 86400.0 * 100.0;
@@ -167,9 +168,21 @@ impl TryFrom<TcpListener> for CoIOListener {
 /// - `events` - requested events to wait. Combination of [CoIOFlags::READ | CoIOFlags::WRITE](struct.CoIOFlags.html) bit flags.
 /// - `timeoout` - timeout in seconds.
 pub fn coio_wait(fd: RawFd, flags: ffi::CoIOFlags, timeout: f64) -> Result<(), io::Error> {
-    match unsafe { ffi::coio_wait(fd, flags.bits(), timeout) } {
-        0 => Err(io::ErrorKind::TimedOut.into()),
-        _ => Ok(()),
+    let Ok(timeout) = Duration::try_from_secs_f64(timeout) else {
+        return Err(io::ErrorKind::TimedOut.into());
+    };
+
+    let deadline = fiber::clock().saturating_add(timeout);
+    loop {
+        let timeout = deadline.duration_since(fiber::clock());
+        let rc = unsafe { ffi::coio_wait(fd, flags.bits(), timeout.as_secs_f64()) };
+        if rc != 0 {
+            return Ok(());
+        }
+
+        if fiber::clock() >= deadline {
+            return Err(io::ErrorKind::TimedOut.into());
+        }
     }
 }
 

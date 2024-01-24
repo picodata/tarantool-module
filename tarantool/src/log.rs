@@ -223,6 +223,93 @@ pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message:
     }
 }
 
+#[inline(always)]
+#[track_caller]
+pub fn say_format_args(level: SayLevel, args: std::fmt::Arguments) {
+    let loc = std::panic::Location::caller();
+    let file = CString::new(loc.file()).unwrap();
+    let line = loc.line();
+
+    let mut error_str = String::new();
+    let mut error_ptr = std::ptr::null();
+    if matches!(level, SayLevel::System) {
+        error_str = std::io::Error::last_os_error().to_string();
+        // error_str must outlive error_ptr
+        error_ptr = error_str.as_ptr();
+    }
+
+    let message = std::fmt::format(args);
+
+    unsafe {
+        ffi::SAY_FN.expect("_say is always not NULL")(
+            level as _,
+            file.as_ptr(),
+            line as _,
+            error_ptr as _,
+            crate::c_ptr!("%s"),
+            message.as_ptr(),
+        )
+    }
+
+    drop(error_str);
+}
+
+#[macro_export]
+macro_rules! say_fatal {
+    ($($f:tt)*) => {
+        $crate::say_format_args($crate::log::SayLevel::Fatal, ::std::format_args($($f)*))
+    }
+}
+
+#[macro_export]
+macro_rules! say_sys_error {
+    ($($f:tt)*) => {
+        $crate::say_format_args($crate::log::SayLevel::System, ::std::format_args($($f)*))
+    }
+}
+
+#[macro_export]
+macro_rules! say_error {
+    ($($f:tt)*) => {
+        $crate::say_format_args($crate::log::SayLevel::Error, ::std::format_args($($f)*))
+    }
+}
+
+#[macro_export]
+macro_rules! say_crit {
+    ($($f:tt)*) => {
+        $crate::say_format_args($crate::log::SayLevel::Crit, ::std::format_args($($f)*))
+    }
+}
+
+#[macro_export]
+macro_rules! say_warn {
+    ($($f:tt)*) => {
+        $crate::say_format_args($crate::log::SayLevel::Warn, ::std::format_args($($f)*))
+    }
+}
+
+#[macro_export]
+macro_rules! say_verbose {
+    ($($f:tt)*) => {
+        $crate::say_format_args($crate::log::SayLevel::Verbose, ::std::format_args($($f)*))
+    }
+}
+
+#[macro_export]
+macro_rules! say_debug {
+    ($($f:tt)*) => {
+        $crate::say_format_args($crate::log::SayLevel::Debug, ::std::format_args($($f)*))
+    }
+}
+
+#[macro_export]
+macro_rules! say_info {
+    ($($f:tt)*) => {
+        $crate::say_format_args($crate::log::SayLevel::Info, ::std::format_args($($f)*))
+    }
+}
+
 #[cfg(feature = "internal_test")]
 #[cfg(not(test))]
 mod tests {

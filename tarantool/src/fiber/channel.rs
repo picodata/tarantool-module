@@ -1,5 +1,7 @@
 use crate::error::TarantoolErrorCode;
 use crate::ffi::tarantool as ffi;
+use crate::fiber;
+use crate::fiber::FiberId;
 use std::cell::Cell;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
@@ -49,6 +51,7 @@ impl<T> Channel<T> {
         Self(Rc::new(ChannelBox {
             inner,
             marker: PhantomData,
+            receiver_id: Cell::new(fiber::FIBER_ID_INVALID),
         }))
     }
 
@@ -124,13 +127,18 @@ impl<T> SendTimeout<T> for Channel<T> {
                 // error and not something else we could also check that
                 // box_error_message returns "time out"
                 if TarantoolErrorCode::last() == TarantoolErrorCode::System {
-                    Err(SendError::Timeout(t))
+                    return Err(SendError::Timeout(t));
                 } else {
-                    Err(SendError::Disconnected(t))
+                    return Err(SendError::Disconnected(t));
                 }
-            } else {
-                Ok(())
             }
+
+            let receiver_id = self.0.receiver_id.replace(fiber::FIBER_ID_INVALID);
+            if receiver_id != fiber::FIBER_ID_INVALID {
+                fiber::wakeup(receiver_id);
+            }
+
+            Ok(())
         }
     }
 }
@@ -353,6 +361,35 @@ impl<T> Channel<T> {
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         RecvTimeout::try_recv(self)
     }
+
+    /// Registers the current fiber to be awoken when the value is available to
+    /// be read from the channel.
+    ///
+    /// Returns a fiber id which was previously registerred to be awoken,
+    /// because only one fiber id can be stored on a given channel. It doesn't
+    /// make sense for multiple fibers to wait for a message from the same
+    /// channel as the first fiber will just consume the message leaving nothing
+    /// for the second one.
+    #[inline(always)]
+    pub fn register(&self) -> Option<FiberId> {
+        let old_id = self.0.receiver_id.replace(fiber::id());
+        (old_id != fiber::FIBER_ID_INVALID).then_some(old_id)
+    }
+
+    /// Registers the given fiber id to be awoken when the value is available to
+    /// be read from the channel. You will probably always want to use
+    /// [`Self::register`] instead, but why who knows.
+    ///
+    /// Returns a fiber id which was previously registerred to be awoken,
+    /// because only one fiber id can be stored on a given channel. It doesn't
+    /// make sense for multiple fibers to wait for a message from the same
+    /// channel as the first fiber will just consume the message leaving nothing
+    /// for the second one.
+    #[inline(always)]
+    pub fn register_fiber_id(&self, id: FiberId) -> Option<FiberId> {
+        let old_id = self.0.receiver_id.replace(id);
+        (old_id != fiber::FIBER_ID_INVALID).then_some(old_id)
+    }
 }
 
 macro_rules! iter_struct {
@@ -406,6 +443,7 @@ impl<T> IntoIterator for Channel<T> {
 struct ChannelBox<T> {
     inner: NonNull<ffi::fiber_channel>,
     marker: PhantomData<T>,
+    receiver_id: Cell<FiberId>,
 }
 
 impl<T> Drop for ChannelBox<T> {
@@ -495,5 +533,59 @@ mod tests {
         assert_eq!(try_send_res, Err(TrySendError::Disconnected(420)));
 
         jh.join();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn register_receiver() {
+        if !crate::ffi::has_fiber_channel() {
+            return;
+        }
+
+        let ch = Channel::new(1);
+
+        // Lame ass old style for backwards compatibility. Use JoinHandle::id instead.
+        let fiber_id = Cell::new(None);
+
+        let jh = fiber::start(|| {
+            fiber_id.set(Some(fiber::id()));
+
+            let r1 = ch.try_recv();
+            fiber::fiber_yield(); // yield 1
+            let r2 = ch.try_recv();
+            let rx1 = ch.register();
+            fiber::fiber_yield(); // yield 2
+            let r3 = ch.try_recv();
+            let rx2 = ch.register();
+
+            (rx1, r1, r2, r3, rx2)
+        });
+        let fiber_id = fiber_id.get().unwrap();
+
+        // We put a message into the channel, but the fiber doesn't wakeup
+        // because it didn't tell anyone it wants to be awoken
+        let csw0 = fiber::csw_of(fiber_id).unwrap();
+        ch.send(100).unwrap();
+        fiber::reschedule();
+        assert_eq!(csw0, fiber::csw_of(fiber_id).unwrap());
+
+        // Wake it up to progress the test.
+        let csw0 = fiber::csw_of(fiber_id).unwrap();
+        fiber::wakeup(fiber_id); // wakeup 1
+        fiber::reschedule();
+        assert_eq!(csw0 + 1, fiber::csw_of(fiber_id).unwrap());
+
+        // Put another message into the channel, this time fiber is awoken
+        let csw0 = fiber::csw_of(fiber_id).unwrap();
+        ch.send(200).unwrap(); // wakeup 2
+        fiber::reschedule();
+        assert_eq!(csw0 + 1, fiber::csw_of(fiber_id).unwrap());
+
+        let (rx1, r1, r2, r3, rx2) = jh.join();
+        assert_eq!(rx1, None);
+        assert_eq!(r1, Err(TryRecvError::Empty));
+        assert_eq!(r2, Ok(100));
+        assert_eq!(r3, Ok(200));
+        // Receiver is again empty, because it's for one use only
+        assert_eq!(rx2, None);
     }
 }

@@ -1,5 +1,6 @@
 use crate::clock::INFINITY;
 use crate::error::Error;
+use crate::fiber;
 use crate::fiber::Cond;
 use crate::net_box::inner::ConnInner;
 use crate::net_box::protocol::Consumer;
@@ -25,6 +26,7 @@ impl<T> Promise<T> {
             inner: Rc::new(InnerPromise {
                 conn,
                 cond: UnsafeCell::default(),
+                receiver_id: Cell::new(fiber::FIBER_ID_INVALID),
                 data: Cell::new(None),
             }),
         }
@@ -172,8 +174,22 @@ impl<T> Promise<T> {
     ///
     /// [`wait`]: Self::wait
     /// [`wait_timeout`]: Self::wait_timeout
+    #[inline(always)]
     pub fn replace_cond(&mut self, cond: Rc<Cond>) -> Rc<Cond> {
         unsafe { std::ptr::replace(self.inner.cond.get(), cond) }
+    }
+
+    /// Registers the current fiber to be awoken when this promise is kept.
+    ///
+    /// Returns a fiber id which was previously registerred to be awoken,
+    /// because only one fiber id can be stored on a given promise. It doesn't
+    /// make sense for multiple fibers to wait for the same promise to be kept
+    /// as the first fiber will just consume the result leaving nothing for the
+    /// second one.
+    #[inline(always)]
+    pub fn register(&self) -> Option<fiber::FiberId> {
+        let old_id = self.inner.receiver_id.replace(fiber::id());
+        (old_id != fiber::FIBER_ID_INVALID).then_some(old_id)
     }
 }
 
@@ -268,6 +284,7 @@ impl<T> fmt::Debug for Promise<T> {
 pub struct InnerPromise<T> {
     conn: Weak<ConnInner>,
     cond: UnsafeCell<Rc<Cond>>,
+    receiver_id: Cell<fiber::FiberId>,
     data: Cell<Option<Result<T>>>,
 }
 

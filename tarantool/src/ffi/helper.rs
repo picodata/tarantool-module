@@ -181,6 +181,41 @@ const _TEST_OFFSET_AND_SIZE_OF: () = {
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+// rdtsc
+////////////////////////////////////////////////////////////////////////////////
+
+/// Read the CPU's time stamp counter
+#[cfg(target_arch = "x86_64")]
+#[macro_export]
+macro_rules! rdtsc {
+    () => {{
+        let rax: i64;
+
+        #[allow(unused_unsafe)]
+        unsafe {
+            ::std::arch::asm! {
+                "lfence",
+                "rdtscp",
+                "shl edx, 32",
+                "or rax, rdx",
+                out("rax") rax,
+                options(nomem, nostack),
+            }
+        };
+
+        rax
+    }};
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+#[macro_export]
+macro_rules! rdtsc {
+    () => {
+        0_i64
+    };
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // define_dlsym_reloc!
 ////////////////////////////////////////////////////////////////////////////////
 

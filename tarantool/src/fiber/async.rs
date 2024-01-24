@@ -25,6 +25,7 @@
 //!   - [`timeout::IntoTimeout`]
 //!   - [`IntoOnDrop`]
 
+use crate::fiber;
 use std::{future::Future, pin::Pin, rc::Rc, task::Poll, time::Duration};
 
 use futures::pin_mut;
@@ -46,24 +47,25 @@ pub use futures;
 pub struct RecvError;
 
 mod waker {
-    use crate::fiber;
+    use super::*;
     use std::rc::Rc;
     use std::task::RawWaker;
     use std::task::RawWakerVTable;
     use std::task::Waker;
 
-    #[derive(Default)]
     pub struct FiberWaker {
-        cond: fiber::Cond,
+        fiber_id: fiber::FiberId,
     }
 
     impl FiberWaker {
-        pub fn cond(&self) -> &fiber::Cond {
-            &self.cond
+        #[inline(always)]
+        pub fn new(fiber_id: fiber::FiberId) -> Self {
+            Self { fiber_id }
         }
 
+        #[inline(always)]
         pub fn wake(&self) {
-            self.cond.broadcast()
+            fiber::wakeup(self.fiber_id);
         }
     }
 
@@ -271,7 +273,7 @@ impl<T> IntoOnDrop for T where T: Future + Sized {}
 ///
 /// For examples see module level documentation in [`super::async`].
 pub fn block_on<F: Future>(f: F) -> F::Output {
-    let rcw: Rc<waker::FiberWaker> = Default::default();
+    let rcw = Rc::new(waker::FiberWaker::new(fiber::id()));
     let waker = waker::with_rcw(rcw.clone());
 
     pin_mut!(f);
@@ -305,7 +307,7 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
                 crate::ffi::tarantool::coio_wait(fd, event.bits(), timeout.as_secs_f64());
             }
         } else {
-            rcw.cond().wait_timeout(timeout);
+            fiber::fiber_yield()
         }
     }
 }

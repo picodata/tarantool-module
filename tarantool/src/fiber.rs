@@ -749,9 +749,8 @@ where
         // Setup fiber context
         // SAFETY: as safe as any other tarantool ffi call
         if unsafe { crate::ffi::has_fiber_set_ctx() } {
-            if context.is_none() {
-                context = Some(Box::new(Context::default()));
-            }
+            let ctx = context.get_or_insert_with(Default::default);
+            ctx.time_created = crate::time::Instant::now();
         } else if context.is_some() {
             #[rustfmt::skip]
             set_error!(TarantoolErrorCode::Unsupported, "fiber_set_ctx isn't supported on your tarantool version");
@@ -872,6 +871,7 @@ where
 
             // Prepare fiber context.
             let mut ctx = context.unwrap_or_default();
+            ctx.time_created = crate::time::Instant::now();
             if let Some(result_cell) = &result_cell {
                 ctx.fiber_result_ptr = result_cell.get() as _;
             }
@@ -931,6 +931,8 @@ where
         // so that nobody can mess it up somehow.
         let f = std::mem::replace(&mut ctx.fiber_rust_closure, std::ptr::null_mut());
         let f = Box::from_raw(f.cast::<F>());
+
+        ctx.time_started = crate::time::Instant::now();
 
         // Call `f` and drop the closure.
         let t = (f)();
@@ -2415,6 +2417,9 @@ pub struct Context {
     /// Special field used internally for implementation of deferred fibers.
     fiber_result_ptr: *mut (),
 
+    pub time_created: crate::time::Instant,
+    pub time_started: crate::time::Instant,
+
     /// A callback which will be invoked when the fiber function finishes
     /// execution.
     user_on_fiber_exit: Option<Box<dyn FnOnce(&mut Context)>>,
@@ -2432,7 +2437,7 @@ pub struct Context {
     user_field_raw: u64,
 }
 
-static_assert!(size_of::<Context>() == 128);
+static_assert!(size_of::<Context>() == 160);
 static_assert!(size_of!(Context, user_on_fiber_exit) == 16);
 static_assert!(size_of!(Context, user_fields) == 48);
 
@@ -2544,6 +2549,8 @@ impl Default for Context {
             fiber_id: FIBER_ID_INVALID,
             fiber_rust_closure: std::ptr::null_mut(),
             fiber_result_ptr: std::ptr::null_mut(),
+            time_created: crate::time::Instant::now(),
+            time_started: crate::time::Instant(Duration::ZERO),
             user_on_fiber_exit: None,
             user_fields: HashMap::new(),
             user_data_raw: std::ptr::null_mut(),
