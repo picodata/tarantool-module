@@ -5,6 +5,8 @@
 ### Fixed
 - Bug in legacy `net_box` client which resulted in a deadlock when receiving an
   error during authentication.
+- Bug in legacy `net_box` client which resulted in a deadlock when sending
+  requests after receiving a previous error response.
 
 
 # [4.0.0] Jan 12 2024
