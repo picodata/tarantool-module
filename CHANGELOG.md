@@ -1,5 +1,12 @@
 # Change Log
 
+# [4.0.1] Unreleased
+
+### Fixed
+- Bug in legacy `net_box` client which resulted in a deadlock when receiving an
+  error during authentication.
+
+
 # [4.0.0] Jan 12 2024
 
 ### Added
