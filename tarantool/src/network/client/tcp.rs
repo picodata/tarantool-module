@@ -166,14 +166,14 @@ impl TcpStream {
                             io::ErrorKind::Interrupted => {
                                 unsafe { ContextExt::set_deadline(cx, fiber::clock()) };
                                 Poll::Pending
-                            },
+                            }
                             _ => Poll::Ready(Err(Error::IO(err))),
                         }
                     }
                     0 => {
                         unsafe { ContextExt::set_deadline(cx, fiber::clock()) }
                         Poll::Pending
-                    },
+                    }
                     _ => {
                         if pollfd.revents & libc::POLLHUP != 0 {
                             unsafe {
