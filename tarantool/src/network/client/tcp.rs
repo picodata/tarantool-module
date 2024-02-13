@@ -25,8 +25,8 @@ use std::os::unix::io::RawFd;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll};
-use std::{io, ptr};
 use std::time::Duration;
+use std::{io, ptr};
 
 #[cfg(feature = "async-std")]
 use async_std::io::{Read as AsyncRead, Write as AsyncWrite};
@@ -101,11 +101,7 @@ impl TcpStream {
 
     /// Creates a [`TcpStream`] to `url`.
     /// `timeout` - timeout for connecting socket.
-    pub async fn connect_timeout(
-        url: &str,
-        port: u16,
-        timeout: Duration,
-    ) -> Result<Self, Error> {
+    pub async fn connect_timeout(url: &str, port: u16, timeout: Duration) -> Result<Self, Error> {
         Self::conn_impl(url, port, Some(timeout)).await
     }
 
@@ -132,11 +128,7 @@ impl TcpStream {
         Ok(())
     }
 
-    async fn conn_impl(
-        url: &str,
-        port: u16,
-        timeout: Option<Duration>,
-    ) -> Result<Self, Error> {
+    async fn conn_impl(url: &str, port: u16, timeout: Option<Duration>) -> Result<Self, Error> {
         let (v4_addrs, v6_addrs) = unsafe {
             let addr_info = get_address_info(url).await?;
             let addrs = get_libc_addrs_from_info(addr_info, port);
@@ -187,17 +179,30 @@ impl TcpStream {
             fd
         };
 
-        match cvt(unsafe { libc::connect(fd, addr, addr_len) }) {
-            Ok(_) => Ok(Self {
-                fd: Rc::new(Cell::new(Some(fd))),
-            }),
-            Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {
-                TcpConnector::new(fd, timeout).await?;
-                Ok(Self {
+        let result = match cvt(unsafe { libc::connect(fd, addr, addr_len) }) {
+            Ok(_) => {
+                return Ok(Self {
                     fd: Rc::new(Cell::new(Some(fd))),
                 })
             }
+            Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {
+                TcpConnector::new(fd, timeout).await?;
+                return Ok(Self {
+                    fd: Rc::new(Cell::new(Some(fd))),
+                });
+            }
             Err(e) => Err(Error::IO(e)),
+        };
+
+        match result {
+            Ok(v) => Ok(v),
+            Err(e) => match e {
+                Error::IO(i) => Err(Error::Connect {
+                    error: i,
+                    address: format!("{url}:{port}"),
+                }),
+                err => Err(err),
+            },
         }
     }
 }
@@ -503,7 +508,7 @@ mod tests {
     use crate::test::util::always_pending;
     use crate::test::util::listen_port;
 
-    use std::net::{TcpListener};
+    use std::net::TcpListener;
     use std::thread;
     use std::time::Duration;
 
