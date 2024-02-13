@@ -21,13 +21,12 @@ use std::cell::Cell;
 use std::ffi::{CString, NulError};
 use std::future::Future;
 use std::mem::{self, MaybeUninit};
-use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::os::unix::io::RawFd;
-use std::os::unix::prelude::IntoRawFd;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll};
-use std::{cmp, io, ptr};
+use std::{io, ptr};
+use std::time::Duration;
 
 #[cfg(feature = "async-std")]
 use async_std::io::{Read as AsyncRead, Write as AsyncWrite};
@@ -37,6 +36,7 @@ use futures::{AsyncRead, AsyncWrite};
 use crate::ffi::tarantool as ffi;
 use crate::fiber::r#async::context::ContextExt;
 use crate::fiber::{self, r#async};
+use crate::time;
 
 #[derive(thiserror::Error, Debug)]
 #[non_exhaustive]
@@ -96,23 +96,7 @@ impl TcpStream {
     ///
     /// This functions makes the fiber **yield**.
     pub async fn connect(url: &str, port: u16) -> Result<Self, Error> {
-        let addrs = unsafe {
-            let addr_info = get_address_info(url).await?;
-            let addrs = get_rs_addrs_from_info(addr_info, port);
-            libc::freeaddrinfo(addr_info);
-            addrs?
-        };
-        // FIXME: we're blocking the whole tx thread over here
-        let stream = crate::unwrap_ok_or!(std::net::TcpStream::connect(addrs.as_slice()),
-            Err(e) => {
-                return Err(Error::Connect { error: e, address: format!("{url}:{port}") });
-            }
-        );
-        stream.set_nonblocking(true).map_err(Error::IO)?;
-        let fd = stream.into_raw_fd();
-        Ok(Self {
-            fd: Rc::new(Cell::new(Some(fd))),
-        })
+        Self::conn_impl(url, port, None).await
     }
 
     /// Creates a [`TcpStream`] to `url`.
@@ -120,145 +104,9 @@ impl TcpStream {
     pub async fn connect_timeout(
         url: &str,
         port: u16,
-        timeout: std::time::Duration,
+        timeout: Duration,
     ) -> Result<Self, Error> {
-        let (v4_addrs, v6_addrs) = unsafe {
-            let addr_info = get_address_info(url).await?;
-            let addrs = get_libc_addrs_from_info(addr_info, port);
-            libc::freeaddrinfo(addr_info);
-            addrs?
-        };
-
-        struct Connector {
-            fd: RawFd,
-            timeout: std::time::Duration,
-            created: std::time::Instant,
-        }
-        impl Future for Connector {
-            type Output = Result<(), Error>;
-
-            fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-                let elapsed = self.created.elapsed();
-                if elapsed >= self.timeout {
-                    return Poll::Ready(Err(Error::Timeout));
-                }
-
-                let timeout = self.timeout - elapsed;
-                let mut timeout = timeout
-                    .as_secs()
-                    .saturating_mul(1_000)
-                    .saturating_add(timeout.subsec_nanos() as u64 / 1_000_000);
-                if timeout == 0 {
-                    timeout = 1;
-                }
-                let timeout = cmp::min(timeout, libc::c_int::MAX as u64) as libc::c_int;
-
-                let mut pollfd = libc::pollfd {
-                    fd: self.fd,
-                    revents: 0,
-                    events: libc::POLLOUT,
-                };
-
-                match unsafe { libc::poll(&mut pollfd, 1, timeout) } {
-                    -1 => {
-                        let err = io::Error::last_os_error();
-                        match err.kind() {
-                            io::ErrorKind::Interrupted => {
-                                unsafe { ContextExt::set_deadline(cx, fiber::clock()) };
-                                Poll::Pending
-                            }
-                            _ => Poll::Ready(Err(Error::IO(err))),
-                        }
-                    }
-                    0 => {
-                        unsafe { ContextExt::set_deadline(cx, fiber::clock()) }
-                        Poll::Pending
-                    }
-                    _ => {
-                        if pollfd.revents & libc::POLLHUP != 0 {
-                            unsafe {
-                                let mut option_value: libc::c_int = mem::zeroed();
-                                let mut option_len =
-                                    mem::size_of::<libc::c_int>() as libc::socklen_t;
-                                cvt(libc::getsockopt(
-                                    self.fd,
-                                    libc::SOL_SOCKET,
-                                    libc::SO_ERROR,
-                                    &mut option_value as *mut libc::c_int as *mut _,
-                                    &mut option_len,
-                                ))?;
-                                if option_value != 0 {
-                                    return Poll::Ready(Err(Error::IO(
-                                        io::Error::from_raw_os_error(option_value as i32),
-                                    )));
-                                }
-                            };
-                        }
-                        Poll::Ready(Ok(()))
-                    }
-                }
-            }
-        }
-        // Take the first address, prefer ipv4
-        let (addr, addr_len) = match (v4_addrs.is_empty(), v6_addrs.is_empty()) {
-            (true, true) => {
-                return Err(Error::ResolveAddress(String::from(
-                    "Both V4 and V6 addresses are empty after resolution.",
-                )))
-            }
-            (false, _) => (
-                v4_addrs.first().unwrap() as *const _ as *const libc::sockaddr,
-                mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
-            ),
-            (_, false) => (
-                v6_addrs.first().unwrap() as *const _ as *const libc::sockaddr,
-                mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
-            ),
-        };
-
-        #[cfg(target_os = "linux")]
-        let fd: RawFd =
-            cvt(unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0) })?;
-
-        #[cfg(target_os = "macos")]
-        let fd: RawFd = {
-            let fd = cvt(unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) })?;
-            cvt(unsafe { libc::ioctl(fd, libc::FIOCLEX) })?;
-            cvt(unsafe {
-                libc::setsockopt(
-                    fd,
-                    libc::SOL_SOCKET,
-                    libc::SO_NOSIGPIPE,
-                    &1 as *const libc::c_int as *const _,
-                    mem::size_of::<libc::c_int>() as libc::socklen_t,
-                )
-            })?;
-            fd
-        };
-
-        // Set socket to non blocking mode
-        cvt(unsafe { libc::ioctl(fd, libc::FIONBIO, &mut 1) })?;
-
-        if unsafe { libc::connect(fd, addr, addr_len) } == -1 {
-            let err = io::Error::last_os_error();
-            if err.raw_os_error() == Some(libc::EINPROGRESS) {
-                Connector {
-                    fd,
-                    timeout,
-                    created: std::time::Instant::now(),
-                }
-                .await?;
-                Ok(Self {
-                    fd: Rc::new(Cell::new(Some(fd))),
-                })
-            } else {
-                Err(Error::IO(err))
-            }
-        } else {
-            Ok(Self {
-                fd: Rc::new(Cell::new(Some(fd))),
-            })
-        }
+        Self::conn_impl(url, port, Some(timeout)).await
     }
 
     #[inline(always)]
@@ -283,45 +131,134 @@ impl TcpStream {
         }
         Ok(())
     }
-}
 
-unsafe fn get_rs_addrs_from_info(
-    addrs: *const libc::addrinfo,
-    port: u16,
-) -> Result<Vec<SocketAddr>, Error> {
-    let mut addr = addrs;
-    let (mut v4_addrs, mut v6_addrs) = (Vec::with_capacity(1), Vec::with_capacity(1));
-    while !addr.is_null() {
-        let sockaddr = (*addr).ai_addr;
-        match (*sockaddr).sa_family as libc::c_int {
-            libc::AF_INET => {
-                let v4_addr: *mut libc::sockaddr_in = mem::transmute(sockaddr);
-                (*v4_addr).sin_port = port;
-                let octets: [u8; 4] = (*v4_addr).sin_addr.s_addr.to_ne_bytes();
-                v4_addrs.push(SocketAddr::V4(SocketAddrV4::new(octets.into(), port)))
-            }
-            libc::AF_INET6 => {
-                let v6_addr: *mut libc::sockaddr_in6 = mem::transmute(sockaddr);
-                (*v6_addr).sin6_port = port;
-                let octets = (*v6_addr).sin6_addr.s6_addr;
-                let flow_info = (*v6_addr).sin6_flowinfo;
-                let scope_id = (*v6_addr).sin6_scope_id;
-                v6_addrs.push(SocketAddr::V6(SocketAddrV6::new(
-                    octets.into(),
-                    port,
-                    flow_info,
-                    scope_id,
+    async fn conn_impl(
+        url: &str,
+        port: u16,
+        timeout: Option<Duration>,
+    ) -> Result<Self, Error> {
+        let (v4_addrs, v6_addrs) = unsafe {
+            let addr_info = get_address_info(url).await?;
+            let addrs = get_libc_addrs_from_info(addr_info, port);
+            libc::freeaddrinfo(addr_info);
+            addrs?
+        };
+
+        // Take the first address, prefer ipv4
+        let (addr, addr_len) = match (v4_addrs.is_empty(), v6_addrs.is_empty()) {
+            (true, true) => {
+                return Err(Error::ResolveAddress(String::from(
+                    "Both V4 and V6 addresses are empty after resolution.",
                 )))
             }
-            af => return Err(Error::UnknownAddressFamily(af as u16)),
+            (false, _) => (
+                v4_addrs.first().unwrap() as *const _ as *const libc::sockaddr,
+                mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+            ),
+            (_, false) => (
+                v6_addrs.first().unwrap() as *const _ as *const libc::sockaddr,
+                mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
+            ),
+        };
+
+        #[cfg(target_os = "linux")]
+        let fd: RawFd = cvt(unsafe {
+            libc::socket(
+                libc::AF_INET,
+                libc::SOCK_STREAM | libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK,
+                0,
+            )
+        })?;
+
+        #[cfg(target_os = "macos")]
+        let fd: RawFd = {
+            let fd = cvt(unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) })?;
+            cvt(unsafe { libc::ioctl(fd, libc::FIOCLEX) })?;
+            cvt(unsafe {
+                libc::setsockopt(
+                    fd,
+                    libc::SOL_SOCKET,
+                    libc::SO_NOSIGPIPE,
+                    &1 as *const libc::c_int as *const _,
+                    mem::size_of::<libc::c_int>() as libc::socklen_t,
+                )
+            })?;
+            cvt(unsafe { libc::ioctl(fd, libc::FIONBIO, &mut 1) })?;
+            fd
+        };
+
+        match cvt(unsafe { libc::connect(fd, addr, addr_len) }) {
+            Ok(_) => Ok(Self {
+                fd: Rc::new(Cell::new(Some(fd))),
+            }),
+            Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {
+                TcpConnector::new(fd, timeout).await?;
+                Ok(Self {
+                    fd: Rc::new(Cell::new(Some(fd))),
+                })
+            }
+            Err(e) => Err(Error::IO(e)),
         }
-        addr = (*addr).ai_next;
     }
-    Ok(v4_addrs
-        .iter()
-        .chain(v6_addrs.iter())
-        .map(Clone::clone)
-        .collect())
+}
+
+struct TcpConnector {
+    fd: RawFd,
+    is_waiting: bool,
+    timeout: Option<Duration>,
+    created: time::Instant,
+}
+
+impl TcpConnector {
+    fn new(fd: RawFd, timeout: Option<Duration>) -> Self {
+        Self {
+            fd,
+            timeout,
+            is_waiting: false,
+            created: fiber::clock(),
+        }
+    }
+}
+
+impl Future for TcpConnector {
+    type Output = Result<(), Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if let Some(v) = self.timeout {
+            let elapsed = self.created.elapsed();
+            if elapsed >= v {
+                return Poll::Ready(Err(Error::Timeout));
+            }
+        }
+
+        // We cannot set wait before so we check thats the first poll and set coio params
+        if !self.is_waiting {
+            unsafe { ContextExt::set_coio_wait(cx, self.fd, ffi::CoIOFlags::WRITE) }
+            if let Some(v) = self.timeout {
+                unsafe { ContextExt::set_deadline(cx, fiber::clock().saturating_add(v)) }
+            }
+            self.is_waiting = true;
+            return Poll::Pending;
+        }
+
+        let code = cvt(unsafe { get_socket_rror(self.fd) })?;
+        if code != 0 {
+            return Poll::Ready(Err(Error::IO(io::Error::from_raw_os_error(code as i32))));
+        };
+        Poll::Ready(Ok(()))
+    }
+}
+
+unsafe fn get_socket_rror(fd: RawFd) -> libc::c_int {
+    let mut error: libc::c_int = mem::zeroed();
+    let mut error_len = mem::size_of::<libc::c_int>() as libc::socklen_t;
+    libc::getsockopt(
+        fd,
+        libc::SOL_SOCKET,
+        libc::SO_ERROR,
+        &mut error as *mut libc::c_int as *mut _,
+        &mut error_len,
+    )
 }
 
 unsafe fn get_libc_addrs_from_info(
@@ -566,8 +503,7 @@ mod tests {
     use crate::test::util::always_pending;
     use crate::test::util::listen_port;
 
-    use std::collections::HashSet;
-    use std::net::{TcpListener, ToSocketAddrs};
+    use std::net::{TcpListener};
     use std::thread;
     use std::time::Duration;
 
@@ -581,26 +517,6 @@ mod tests {
         unsafe {
             let _ = fiber::block_on(get_address_info("localhost").timeout(_10_SEC)).unwrap();
         }
-    }
-
-    #[crate::test(tarantool = "crate")]
-    async fn resolve_same_as_std() {
-        let addrs_1: HashSet<_> = unsafe {
-            get_rs_addrs_from_info(
-                get_address_info("example.org")
-                    .timeout(_10_SEC)
-                    .await
-                    .unwrap(),
-                80,
-            )
-            .unwrap()
-            .into_iter()
-            .collect()
-        };
-        let addrs_2: HashSet<_> = ToSocketAddrs::to_socket_addrs("example.org:80")
-            .unwrap()
-            .collect();
-        assert_eq!(addrs_1, addrs_2);
     }
 
     #[crate::test(tarantool = "crate")]
