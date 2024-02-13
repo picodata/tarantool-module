@@ -251,24 +251,23 @@ impl Future for TcpConnector {
             return Poll::Pending;
         }
 
-        let code = cvt(unsafe { get_socket_rror(self.fd) })?;
+        let code = unsafe {
+            let mut error: libc::c_int = mem::zeroed();
+            let mut error_len = mem::size_of::<libc::c_int>() as libc::socklen_t;
+            cvt(libc::getsockopt(
+                self.fd,
+                libc::SOL_SOCKET,
+                libc::SO_ERROR,
+                &mut error as *mut libc::c_int as *mut _,
+                &mut error_len,
+            ))?;
+            error
+        };
         if code != 0 {
             return Poll::Ready(Err(Error::IO(io::Error::from_raw_os_error(code as i32))));
         };
         Poll::Ready(Ok(()))
     }
-}
-
-unsafe fn get_socket_rror(fd: RawFd) -> libc::c_int {
-    let mut error: libc::c_int = mem::zeroed();
-    let mut error_len = mem::size_of::<libc::c_int>() as libc::socklen_t;
-    libc::getsockopt(
-        fd,
-        libc::SOL_SOCKET,
-        libc::SO_ERROR,
-        &mut error as *mut libc::c_int as *mut _,
-        &mut error_len,
-    )
 }
 
 unsafe fn get_libc_addrs_from_info(
