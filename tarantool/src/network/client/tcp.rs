@@ -18,12 +18,10 @@
 //! ```
 
 use std::cell::Cell;
-use std::convert::TryFrom;
 use std::ffi::{CString, NulError};
 use std::future::Future;
 use std::mem::{self, MaybeUninit};
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
-use std::os::fd::AsRawFd;
 use std::os::unix::io::RawFd;
 use std::os::unix::prelude::IntoRawFd;
 use std::pin::Pin;
@@ -282,7 +280,6 @@ impl TcpStream {
     }
 }
 
-
 unsafe fn get_rs_addrs_from_info(
     addrs: *const libc::addrinfo,
     port: u16,
@@ -387,7 +384,6 @@ async unsafe fn get_address_info(url: &str) -> Result<*mut libc::addrinfo, Error
     .await
     .map_err(|()| Error::ResolveAddress(url.into()))
 }
-
 
 impl AsyncWrite for TcpStream {
     fn poll_write(
@@ -584,22 +580,22 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     async fn resolve_same_as_std() {
-        // let addrs_1: HashSet<_> = unsafe {
-        //     get_libc_addrs_from_info(
-        //         get_address_info("example.org")
-        //             .timeout(_10_SEC)
-        //             .await
-        //             .unwrap(),
-        //         80,
-        //     )
-        //     .unwrap()
-        //     .into_iter()
-        //     .collect()
-        // };
-        // let addrs_2: HashSet<_> = ToSocketAddrs::to_socket_addrs("example.org:80")
-        //     .unwrap()
-        //     .collect();
-        // assert_eq!(addrs_1, addrs_2);
+        let addrs_1: HashSet<_> = unsafe {
+            get_rs_addrs_from_info(
+                get_address_info("example.org")
+                    .timeout(_10_SEC)
+                    .await
+                    .unwrap(),
+                80,
+            )
+            .unwrap()
+            .into_iter()
+            .collect()
+        };
+        let addrs_2: HashSet<_> = ToSocketAddrs::to_socket_addrs("example.org:80")
+            .unwrap()
+            .collect();
+        assert_eq!(addrs_1, addrs_2);
     }
 
     #[crate::test(tarantool = "crate")]
