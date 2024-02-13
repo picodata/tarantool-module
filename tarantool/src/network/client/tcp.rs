@@ -96,13 +96,31 @@ impl TcpStream {
     ///
     /// This functions makes the fiber **yield**.
     pub async fn connect(url: &str, port: u16) -> Result<Self, Error> {
-        Self::conn_impl(url, port, None).await
+        match Self::conn_impl(url, port, None).await {
+            Ok(v) => Ok(v),
+            Err(e) => match e {
+                Error::IO(i) => Err(Error::Connect {
+                    error: i,
+                    address: format!("{url}:{port}"),
+                }),
+                err => Err(err),
+            },
+        }
     }
 
     /// Creates a [`TcpStream`] to `url`.
     /// `timeout` - timeout for connecting socket.
     pub async fn connect_timeout(url: &str, port: u16, timeout: Duration) -> Result<Self, Error> {
-        Self::conn_impl(url, port, Some(timeout)).await
+        match Self::conn_impl(url, port, Some(timeout)).await {
+            Ok(v) => Ok(v),
+            Err(e) => match e {
+                Error::IO(i) => Err(Error::Connect {
+                    error: i,
+                    address: format!("{url}:{port}"),
+                }),
+                err => Err(err),
+            },
+        }
     }
 
     #[inline(always)]
@@ -179,30 +197,17 @@ impl TcpStream {
             fd
         };
 
-        let result = match cvt(unsafe { libc::connect(fd, addr, addr_len) }) {
-            Ok(_) => {
-                return Ok(Self {
+        match cvt(unsafe { libc::connect(fd, addr, addr_len) }) {
+            Ok(_) => Ok(Self {
+                fd: Rc::new(Cell::new(Some(fd))),
+            }),
+            Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {
+                TcpConnector::new(fd, timeout).await?;
+                Ok(Self {
                     fd: Rc::new(Cell::new(Some(fd))),
                 })
             }
-            Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {
-                TcpConnector::new(fd, timeout).await?;
-                return Ok(Self {
-                    fd: Rc::new(Cell::new(Some(fd))),
-                });
-            }
             Err(e) => Err(Error::IO(e)),
-        };
-
-        match result {
-            Ok(v) => Ok(v),
-            Err(e) => match e {
-                Error::IO(i) => Err(Error::Connect {
-                    error: i,
-                    address: format!("{url}:{port}"),
-                }),
-                err => Err(err),
-            },
         }
     }
 }
