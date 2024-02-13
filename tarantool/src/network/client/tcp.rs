@@ -102,7 +102,6 @@ impl TcpStream {
             libc::freeaddrinfo(addr_info);
             addrs?
         };
-        println!("{:?}", addrs);
         // FIXME: we're blocking the whole tx thread over here
         let stream = crate::unwrap_ok_or!(std::net::TcpStream::connect(addrs.as_slice()),
             Err(e) => {
@@ -138,7 +137,7 @@ impl TcpStream {
         impl Future for Connector {
             type Output = Result<(), Error>;
 
-            fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
+            fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
                 let elapsed = self.created.elapsed();
                 if elapsed >= self.timeout {
                     return Poll::Ready(Err(Error::Timeout));
@@ -164,11 +163,17 @@ impl TcpStream {
                     -1 => {
                         let err = io::Error::last_os_error();
                         match err.kind() {
-                            io::ErrorKind::Interrupted => Poll::Pending,
+                            io::ErrorKind::Interrupted => {
+                                unsafe { ContextExt::set_deadline(cx, fiber::clock()) };
+                                Poll::Pending
+                            },
                             _ => Poll::Ready(Err(Error::IO(err))),
                         }
                     }
-                    0 => Poll::Pending,
+                    0 => {
+                        unsafe { ContextExt::set_deadline(cx, fiber::clock()) }
+                        Poll::Pending
+                    },
                     _ => {
                         if pollfd.revents & libc::POLLHUP != 0 {
                             unsafe {
