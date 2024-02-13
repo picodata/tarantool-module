@@ -92,6 +92,14 @@ spec:
         volumeMounts:
           - name: {{ $.Release.Name }}
             mountPath: "{{ $.Values.TarantoolWorkDir }}"
+          # - name: share
+          #   mountPath: /opt/share
+        {{-  if .Volumes }}
+          {{- range $name, $volume := .Volumes }}
+          - name: "{{ $name }}"
+            mountPath: "{{ $volume.mountpoint }}"
+          {{- end }}
+        {{- end }}
         resources:
           requests:
             cpu: "{{ .CPUallocation }}"
@@ -145,6 +153,17 @@ spec:
             port: http
           initialDelaySeconds: 15
           periodSeconds: 10
+      # volumes:
+      #   - name: share
+      #     hostPath:
+      #       path: /mnt/share
+      #       type: Directory
+      {{- if .Volumes }}
+      volumes:
+      {{- range $name, $volume := .Volumes }}
+        - name: "{{ $name }}"{{ $volume.type | toYaml | nindent 10 }}
+      {{- end }}
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service

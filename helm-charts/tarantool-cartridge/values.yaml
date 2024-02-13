@@ -41,6 +41,13 @@ RoleConfig:
     DiskSize: 1Gi
     CPUallocation: 0.25
     MemtxMemoryMB: 256
+    Volumes:
+      testVolume:
+        mountpoint: /foo
+        type:
+          hostPath:
+            path: /mnt
+            type: Directory
     RolesToAssign:
       - app.roles.storage
 
