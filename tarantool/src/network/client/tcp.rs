@@ -283,12 +283,6 @@ impl TcpStream {
 }
 
 
-fn ipv4_first(addrs: impl IntoIterator<Item = SocketAddr>) -> Vec<SocketAddr> {
-    let (mut ipv4, mut ipv6): (Vec<_>, Vec<_>) = addrs.into_iter().partition(|addr| addr.is_ipv4());
-    ipv4.append(&mut ipv6);
-    ipv4
-}
-
 unsafe fn get_rs_addrs_from_info(
     addrs: *const libc::addrinfo,
     port: u16,
