@@ -612,7 +612,7 @@ mod tests {
             }
         });
         assert!(fiber::block_on(TcpStream::connect_timeout(
-            "localhost",
+            "127.0.0.1",
             port,
             _10_SEC
         ))
