@@ -563,7 +563,7 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     fn connect_timeout() {
-        let port = 3302;
+        let port = 3310;
         thread::spawn(move || {
             unsafe {
                 let listen_fd = libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0);
