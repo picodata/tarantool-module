@@ -258,7 +258,6 @@ impl Future for TcpConnector {
             return Poll::Pending;
         }
 
-
         // SAFETY: Safe as long as we use this calls in single thread
         // and passed pointers are are well aligned and not null
         let code = unsafe {
