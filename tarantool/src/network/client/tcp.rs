@@ -572,7 +572,8 @@ mod tests {
                 }
 
                 let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
-                let mut sockaddr_in = libc::sockaddr_in {
+                let sockaddr_in = libc::sockaddr_in {
+                    #[cfg(target_os = "macos")]
                     sin_len: mem::size_of::<libc::sockaddr_in>() as u8,
                     sin_family: libc::AF_INET as libc::sa_family_t,
                     sin_port: addr.port().to_be(),
@@ -594,7 +595,7 @@ mod tests {
                 let bind_result = libc::bind(
                     listen_fd,
                     &sockaddr_in as *const _ as *const libc::sockaddr,
-                    mem::size_of::<sockaddr_in>() as libc::socklen_t,
+                    mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
                 );
                 if bind_result < 0 {
                     panic!("Failed to bind.");
