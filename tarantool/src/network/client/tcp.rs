@@ -607,6 +607,7 @@ mod tests {
             loop { thread::sleep(Duration::from_secs(15));}
         });
         receiver.recv().unwrap();
+        thread::sleep(time::Duration::from_secs(2));
         println!("{:?}", fiber::block_on(TcpStream::connect_timeout(
             "127.0.0.1",
             port,
