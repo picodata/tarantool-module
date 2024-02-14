@@ -600,11 +600,6 @@ mod tests {
                 if bind_result < 0 {
                     panic!("Failed to bind.");
                 }
-
-                let listen_result = libc::listen(listen_fd, 5); // backlog of 5
-                if listen_result < 0 {
-                    panic!("Failed to listen.");
-                }
             }
 
             loop {
