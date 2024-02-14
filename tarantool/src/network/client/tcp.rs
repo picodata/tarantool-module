@@ -563,13 +563,26 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     fn connect_timeout() {
-        assert!(matches!(fiber::block_on(TcpStream::connect_timeout("localhost", listen_port(), _0_SEC)).err().unwrap(), Error::Timeout));
+        let _ = fiber::block_on(TcpStream::connect_timeout(
+            "localhost",
+            listen_port(),
+            _10_SEC,
+        ))
+        .unwrap();
     }
 
     #[crate::test(tarantool = "crate")]
     fn connect_zero_timeout() {
-        let _ = fiber::block_on(TcpStream::connect("localhost", listen_port()).timeout(_0_SEC))
-            .unwrap();
+        assert!(matches!(
+            fiber::block_on(TcpStream::connect_timeout(
+                "localhost",
+                listen_port(),
+                _0_SEC
+            ))
+            .err()
+            .unwrap(),
+            Error::Timeout
+        ));
     }
 
     #[crate::test(tarantool = "crate")]

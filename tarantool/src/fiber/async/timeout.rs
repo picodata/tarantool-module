@@ -32,7 +32,7 @@ pub struct Timeout<F> {
     /// This flag allows to make one more poll
     /// to inner future after actual timeout, true by default
     extra_check: bool,
-    deadline: Instant,
+    deadline: Option<Instant>,
 }
 
 /// Requires a `Future` to complete before the specified duration has elapsed.
@@ -61,7 +61,7 @@ pub fn timeout<F: Future>(timeout: Duration, f: F) -> Timeout<F> {
     Timeout {
         future: f,
         extra_check: true,
-        deadline: fiber::clock().checked_add(timeout).unwrap(),
+        deadline: fiber::clock().checked_add(timeout),
     }
 }
 
@@ -71,7 +71,7 @@ pub fn deadline<F: Future>(deadline: Instant, f: F) -> Timeout<F> {
     Timeout {
         future: f,
         extra_check: true,
-        deadline,
+        deadline: Some(deadline),
     }
 }
 
@@ -96,13 +96,18 @@ where
 {
     type Output = Result<T, E>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let deadline = self.deadline;
+        let deadline = match self.deadline {
+            Some(v) => v,
+            // Wait forever
+            None => return Poll::Pending,
+        };
+
         let extra_check = self.extra_check;
 
         if fiber::clock() >= deadline {
             // Even though we have already timed out
             // By default we poll inner future one more time
-            if extra_check{
+            if extra_check {
                 if let Poll::Ready(v) = self.pin_get_future().poll(cx) {
                     return Poll::Ready(v.map_err(Error::Failed));
                 }
