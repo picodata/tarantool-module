@@ -512,7 +512,7 @@ mod tests {
     use crate::test::util::always_pending;
     use crate::test::util::listen_port;
 
-    use std::net::TcpListener;
+    use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, ToSocketAddrs};
     use std::thread;
     use std::time::Duration;
 
@@ -528,22 +528,39 @@ mod tests {
         }
     }
 
-    // #[crate::test(tarantool = "crate")]
-    // async fn get_libc_addrs() {
-    //     let (addrs_v4, addrs_v6) = unsafe {
-    //         get_libc_addrs_from_info(
-    //             get_address_info("example.org")
-    //                 .timeout(_10_SEC)
-    //                 .await
-    //                 .unwrap(),
-    //             80,
-    //         )
-    //         .unwrap()
-    //     };
-    //
-    //     assert!(!addrs_v4.is_empty());
-    //     assert!(!addrs_v6.is_empty());
-    // }
+    #[crate::test(tarantool = "crate")]
+    async fn get_libc_addrs() {
+        let (addrs_v4, addrs_v6) = unsafe {
+            get_libc_addrs_from_info(
+                get_address_info("example.org")
+                    .timeout(_10_SEC)
+                    .await
+                    .unwrap(),
+                80,
+            )
+            .unwrap()
+        };
+
+        assert_eq!(addrs_v4.len(), 1);
+        assert_eq!(addrs_v6.len(), 1);
+
+        let expected_addr = match ToSocketAddrs::to_socket_addrs("example.org:80")
+            .unwrap()
+            .collect::<Vec<_>>()
+            .first()
+            .unwrap()
+            .to_owned()
+        {
+            SocketAddr::V4(v) => v,
+            _ => panic!("Expected v4 addr"),
+        };
+        let received_addr = SocketAddrV4::new(
+            Ipv4Addr::from(u32::from_be(addrs_v4[0].sin_addr.s_addr)),
+            u16::from_be(addrs_v4[0].sin_port),
+        );
+
+        assert_eq!(expected_addr, received_addr);
+    }
 
     #[crate::test(tarantool = "crate")]
     fn resolve_address_error() {

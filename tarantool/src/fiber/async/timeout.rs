@@ -116,17 +116,14 @@ where
         if is_timeout {
             return Poll::Ready(Err(Error::Expired));
         };
-        // If timeout received too large Duration value - future will never be finished
-        if deadline.is_none() {
-            return Poll::Pending;
+        // If there is None value in deadline - future will never be finished
+        if let Some(v) = deadline {
+            // SAFETY: This is safe as long as the `Context` really
+            // is the `ContextExt`. It's always true within provided
+            // `block_on` async runtime.
+            unsafe { ContextExt::set_deadline(cx, v) };
         }
 
-        // Finally we can wait until deadline
-
-        // SAFETY: This is safe as long as the `Context` really
-        // is the `ContextExt`. It's always true within provided
-        // `block_on` async runtime.
-        unsafe { ContextExt::set_deadline(cx, deadline.unwrap()) };
         Poll::Pending
     }
 }
