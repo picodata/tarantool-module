@@ -530,10 +530,11 @@ mod tests {
     use crate::test::util::listen_port;
 
     use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
-    use std::thread;
+    use std::{thread, sync::mpsc};
     use std::time::Duration;
 
     use futures::{AsyncReadExt, AsyncWriteExt, FutureExt};
+    use crate::network::client::receiver;
 
     const _10_SEC: Duration = Duration::from_secs(10);
     const _0_SEC: Duration = Duration::from_secs(0);
@@ -564,6 +565,7 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     fn connect_timeout() {
         let port = 3310;
+        let (sender, receiver) = mpsc::channel();
         let handle = thread::spawn(move || {
             unsafe {
                 let listen_fd = libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0);
@@ -601,11 +603,13 @@ mod tests {
                     panic!("Failed to bind.");
                 }
             }
+            sender.send(());
 
             loop {
                 thread::sleep(Duration::from_secs(15))
             }
         });
+        receiver.recv().unwrap();
         assert!(matches!(fiber::block_on(TcpStream::connect_timeout(
             "localhost",
             port,
