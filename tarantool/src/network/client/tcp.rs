@@ -171,6 +171,7 @@ impl TcpStream {
             ),
         };
 
+        // SAFETY: Safe cause it is simple sys call
         #[cfg(target_os = "linux")]
         let fd: RawFd = cvt(unsafe {
             libc::socket(
@@ -180,6 +181,8 @@ impl TcpStream {
             )
         })?;
 
+        // SAFETY: Safe cause it is single threaded sequential sys calls
+        // and all passed pointers are not null and well aligned
         #[cfg(target_os = "macos")]
         let fd: RawFd = {
             let fd = cvt(unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) })?;
@@ -243,14 +246,21 @@ impl Future for TcpConnector {
 
         // We cannot set wait before so we check thats the first poll and set coio params
         if !self.is_waiting {
+            // SAFETY: Safe as long as this future is executed by
+            // `fiber::block_on` async executor.
             unsafe { ContextExt::set_coio_wait(cx, self.fd, ffi::CoIOFlags::WRITE) }
             if let Some(v) = self.timeout {
+                // SAFETY: Safe as long as this future is executed by
+                // `fiber::block_on` async executor.
                 unsafe { ContextExt::set_deadline(cx, fiber::clock().saturating_add(v)) }
             }
             self.is_waiting = true;
             return Poll::Pending;
         }
 
+
+        // SAFETY: Safe as long as we use this calls in single thread
+        // and passed pointers are are well aligned and not null
         let code = unsafe {
             let mut error: libc::c_int = mem::zeroed();
             let mut error_len = mem::size_of::<libc::c_int>() as libc::socklen_t;
@@ -264,6 +274,17 @@ impl Future for TcpConnector {
             error
         };
         if code != 0 {
+            let err = io::Error::from_raw_os_error(code as i32);
+            match err.kind() {
+                io::ErrorKind::Interrupted => {
+                    // SAFETY: Safe as long as this future is executed by
+                    // `fiber::block_on` async executor.
+                    unsafe { ContextExt::set_deadline(cx, fiber::clock()) }
+                    return Poll::Pending;
+                }
+                _ => {}
+            }
+
             return Poll::Ready(Err(Error::IO(io::Error::from_raw_os_error(code as i32))));
         };
         Poll::Ready(Ok(()))
