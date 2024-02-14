@@ -274,17 +274,14 @@ impl Future for TcpConnector {
         };
         if code != 0 {
             let err = io::Error::from_raw_os_error(code as i32);
-            match err.kind() {
-                io::ErrorKind::Interrupted => {
-                    // SAFETY: Safe as long as this future is executed by
-                    // `fiber::block_on` async executor.
-                    unsafe { ContextExt::set_deadline(cx, fiber::clock()) }
-                    return Poll::Pending;
-                }
-                _ => {}
+            if err.kind() == io::ErrorKind::Interrupted {
+                // SAFETY: Safe as long as this future is executed by
+                // `fiber::block_on` async executor.
+                unsafe { ContextExt::set_deadline(cx, fiber::clock()) }
+                return Poll::Pending;
             }
 
-            return Poll::Ready(Err(Error::IO(io::Error::from_raw_os_error(code as i32))));
+            return Poll::Ready(Err(Error::IO(err)));
         };
         Poll::Ready(Ok(()))
     }
