@@ -563,7 +563,7 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     fn connect_timeout() {
-        let port = 3310;
+        let port = 8080;
         let (sender, receiver) = mpsc::channel();
         let handle = thread::spawn(move || {
             unsafe {
@@ -604,9 +604,7 @@ mod tests {
             }
             sender.send(()).unwrap();
 
-            loop {
-                thread::sleep(Duration::from_secs(15))
-            }
+            loop { thread::sleep(Duration::from_secs(15));}
         });
         receiver.recv().unwrap();
         println!("{:?}", fiber::block_on(TcpStream::connect_timeout(
