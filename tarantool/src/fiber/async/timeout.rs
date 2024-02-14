@@ -96,34 +96,37 @@ where
 {
     type Output = Result<T, E>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let deadline = match self.deadline {
-            Some(v) => v,
-            // Wait forever
-            None => return Poll::Pending,
+        let extra_check = self.extra_check;
+        let deadline = self.deadline;
+        let is_timeout = if let Some(v) = deadline {
+            fiber::clock() >= v
+        } else {
+            false
         };
 
-        let extra_check = self.extra_check;
-
-        if fiber::clock() >= deadline {
-            // Even though we have already timed out
-            // By default we poll inner future one more time
-            if extra_check {
-                if let Poll::Ready(v) = self.pin_get_future().poll(cx) {
-                    return Poll::Ready(v.map_err(Error::Failed));
-                }
+        // First, try polling the future in two cases
+        // - extra check flag (which is set by default)
+        // - still not timed out
+        if extra_check || !is_timeout {
+            if let Poll::Ready(v) = self.pin_get_future().poll(cx) {
+                return Poll::Ready(v.map_err(Error::Failed));
             }
+        }
+        // If operation is timed out
+        if is_timeout {
             return Poll::Ready(Err(Error::Expired));
+        };
+        // If timeout received too large Duration value - future will never be finished
+        if deadline.is_none() {
+            return Poll::Pending;
         }
 
-        // First, try polling the future
-        if let Poll::Ready(v) = self.pin_get_future().poll(cx) {
-            return Poll::Ready(v.map_err(Error::Failed));
-        }
+        // Finally we can wait until deadline
 
         // SAFETY: This is safe as long as the `Context` really
         // is the `ContextExt`. It's always true within provided
         // `block_on` async runtime.
-        unsafe { ContextExt::set_deadline(cx, deadline) };
+        unsafe { ContextExt::set_deadline(cx, deadline.unwrap()) };
         Poll::Pending
     }
 }
