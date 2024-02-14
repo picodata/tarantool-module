@@ -29,7 +29,10 @@ pub type Result<T, E> = std::result::Result<T, Error<E>>;
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Timeout<F> {
     future: F,
-    deadline: Option<Instant>,
+    /// This flag allows to make one more poll
+    /// to inner future after actual timeout, true by default
+    extra_check: bool,
+    deadline: Instant,
 }
 
 /// Requires a `Future` to complete before the specified duration has elapsed.
@@ -57,7 +60,8 @@ pub struct Timeout<F> {
 pub fn timeout<F: Future>(timeout: Duration, f: F) -> Timeout<F> {
     Timeout {
         future: f,
-        deadline: fiber::clock().checked_add(timeout),
+        extra_check: true,
+        deadline: fiber::clock().checked_add(timeout).unwrap(),
     }
 }
 
@@ -66,11 +70,19 @@ pub fn timeout<F: Future>(timeout: Duration, f: F) -> Timeout<F> {
 pub fn deadline<F: Future>(deadline: Instant, f: F) -> Timeout<F> {
     Timeout {
         future: f,
-        deadline: Some(deadline),
+        extra_check: true,
+        deadline,
     }
 }
 
 impl<F: Future> Timeout<F> {
+    /// Disable extra check after timeout
+    pub fn no_extra_check(self) -> Self {
+        let mut timeout = self;
+        timeout.extra_check = false;
+        timeout
+    }
+
     #[inline]
     fn pin_get_future(self: Pin<&mut Self>) -> Pin<&mut F> {
         // This is okay because `future` is pinned when `self` is.
@@ -85,30 +97,29 @@ where
     type Output = Result<T, E>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let deadline = self.deadline;
+        let extra_check = self.extra_check;
+
+        if fiber::clock() >= deadline {
+            // Even though we have already timed out
+            // By default we poll inner future one more time
+            if extra_check{
+                if let Poll::Ready(v) = self.pin_get_future().poll(cx) {
+                    return Poll::Ready(v.map_err(Error::Failed));
+                }
+            }
+            return Poll::Ready(Err(Error::Expired));
+        }
 
         // First, try polling the future
         if let Poll::Ready(v) = self.pin_get_future().poll(cx) {
             return Poll::Ready(v.map_err(Error::Failed));
         }
 
-        // Then check deadline and, if necessary, update wakup condition
-        // in the context.
-        match deadline {
-            Some(deadline) if fiber::clock() >= deadline => {
-                Poll::Ready(Err(Error::Expired)) // expired
-            }
-            Some(deadline) => {
-                // SAFETY: This is safe as long as the `Context` really
-                // is the `ContextExt`. It's always true within provided
-                // `block_on` async runtime.
-                unsafe { ContextExt::set_deadline(cx, deadline) };
-                Poll::Pending
-            }
-            None => {
-                // No deadline, wait forever
-                Poll::Pending
-            }
-        }
+        // SAFETY: This is safe as long as the `Context` really
+        // is the `ContextExt`. It's always true within provided
+        // `block_on` async runtime.
+        unsafe { ContextExt::set_deadline(cx, deadline) };
+        Poll::Pending
     }
 }
 
