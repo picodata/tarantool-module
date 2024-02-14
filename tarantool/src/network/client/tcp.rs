@@ -529,7 +529,7 @@ mod tests {
     use crate::test::util::always_pending;
     use crate::test::util::listen_port;
 
-    use std::net::TcpListener;
+    use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
     use std::thread;
     use std::time::Duration;
 
@@ -559,6 +559,63 @@ mod tests {
     fn connect() {
         let _ = fiber::block_on(TcpStream::connect("localhost", listen_port()).timeout(_10_SEC))
             .unwrap();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn connect_timeout() {
+        let port = 3302;
+        thread::spawn(move || {
+            unsafe {
+                let listen_fd = libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0);
+                if listen_fd < 0 {
+                    panic!("Failed to create socket");
+                }
+
+                let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
+                let mut sockaddr_in = libc::sockaddr_in {
+                    sin_len: mem::size_of::<libc::sockaddr_in>() as u8,
+                    sin_family: libc::AF_INET as libc::sa_family_t,
+                    sin_port: addr.port().to_be(),
+                    sin_addr: libc::in_addr {
+                        s_addr: u32::from(*addr.ip()).to_be(),
+                    },
+                    sin_zero: [0; 8],
+                };
+
+                let optval: i32 = 1;
+                libc::setsockopt(
+                    listen_fd,
+                    libc::SOL_SOCKET,
+                    libc::SO_REUSEADDR,
+                    &optval as *const _ as *const libc::c_void,
+                    mem::size_of_val(&optval) as libc::socklen_t,
+                );
+
+                let bind_result = libc::bind(
+                    listen_fd,
+                    &sockaddr_in as *const _ as *const libc::sockaddr,
+                    mem::size_of::<sockaddr_in>() as libc::socklen_t,
+                );
+                if bind_result < 0 {
+                    panic!("Failed to bind.");
+                }
+
+                let listen_result = libc::listen(listen_fd, 5); // backlog of 5
+                if listen_result < 0 {
+                    panic!("Failed to listen.");
+                }
+            }
+
+            loop {
+                thread::sleep(Duration::from_secs(15))
+            }
+        });
+        assert!(fiber::block_on(TcpStream::connect_timeout(
+            "localhost",
+            port,
+            _10_SEC
+        ))
+        .is_err());
     }
 
     #[crate::test(tarantool = "crate")]
