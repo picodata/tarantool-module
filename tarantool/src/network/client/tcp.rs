@@ -607,7 +607,7 @@ mod tests {
             }
         });
         assert!(matches!(fiber::block_on(TcpStream::connect_timeout(
-            "127.0.0.1",
+            "localhost",
             port,
             _10_SEC
         )).err().unwrap(), Error::Timeout));
