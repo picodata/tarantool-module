@@ -606,11 +606,11 @@ mod tests {
                 thread::sleep(Duration::from_secs(15))
             }
         });
-        println!("{:?}", fiber::block_on(TcpStream::connect_timeout(
+        assert!(matches!(fiber::block_on(TcpStream::connect_timeout(
             "127.0.0.1",
             port,
             _10_SEC
-        )));
+        )).err().unwrap(), Error::Timeout));
         handle.join().unwrap();
     }
 
