@@ -7,6 +7,8 @@
   error during authentication.
 - Bug in legacy `net_box` client which resulted in a deadlock when sending
   requests after receiving a previous error response.
+- Bug in `define_str_enum` in `Decode` implementation - the slice reference was not modified
+  after decoding.
 
 
 # [4.0.0] Jan 12 2024
