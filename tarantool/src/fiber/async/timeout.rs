@@ -306,6 +306,8 @@ mod tests {
 
         assert_eq!(counter.get(), 1);
 
+        let counter = std::rc::Rc::new(std::cell::Cell::new(0));
+
         let m = Mock { counter: std::rc::Rc::clone(&counter) };
 
         match fiber::block_on(timeout(_1_SEC, m)) {
