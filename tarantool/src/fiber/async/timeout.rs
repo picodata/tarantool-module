@@ -295,7 +295,9 @@ mod tests {
 
         let counter = std::rc::Rc::new(std::cell::Cell::new(0));
 
-        let m = Mock { counter: std::rc::Rc::clone(&counter) };
+        let m = Mock {
+            counter: std::rc::Rc::clone(&counter),
+        };
 
         match fiber::block_on(timeout(_1_SEC, m).no_extra_check()) {
             Ok(_) => unreachable!("Cannot be ok cause future always pending"),
@@ -308,7 +310,9 @@ mod tests {
 
         let counter = std::rc::Rc::new(std::cell::Cell::new(0));
 
-        let m = Mock { counter: std::rc::Rc::clone(&counter) };
+        let m = Mock {
+            counter: std::rc::Rc::clone(&counter),
+        };
 
         match fiber::block_on(timeout(_1_SEC, m)) {
             Ok(_) => unreachable!("Cannot be ok cause future always pending"),
