@@ -277,4 +277,44 @@ mod tests {
             Yielded(Err(Error::Expired))
         );
     }
+
+    #[crate::test(tarantool = "crate")]
+    fn extra_check_works() {
+        struct Mock {
+            counter: std::rc::Rc<std::cell::Cell<usize>>,
+        }
+
+        impl Future for Mock {
+            type Output = Result<(), String>;
+            fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
+                let value = self.counter.get();
+                self.counter.set(value + 1);
+                Poll::Pending
+            }
+        }
+
+        let counter = std::rc::Rc::new(std::cell::Cell::new(0));
+
+        let m = Mock { counter: std::rc::Rc::clone(&counter) };
+
+        match fiber::block_on(timeout(_1_SEC, m).no_extra_check()) {
+            Ok(_) => unreachable!("Cannot be ok cause future always pending"),
+            Err(e) => {
+                assert!(matches!(e, Error::Expired))
+            }
+        };
+
+        assert_eq!(counter.get(), 1);
+
+        let m = Mock { counter: std::rc::Rc::clone(&counter) };
+
+        match fiber::block_on(timeout(_1_SEC, m)) {
+            Ok(_) => unreachable!("Cannot be ok cause future always pending"),
+            Err(e) => {
+                assert!(matches!(e, Error::Expired))
+            }
+        };
+
+        assert_eq!(counter.get(), 2);
+    }
 }
