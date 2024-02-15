@@ -102,54 +102,24 @@ impl TcpStream {
         };
 
         // Take the first address, prefer ipv4
-        let (addr, addr_len) = match (v4_addrs.is_empty(), v6_addrs.is_empty()) {
-            (true, true) => {
-                return Err(Error::ResolveAddress(String::from(
-                    "Both V4 and V6 addresses are empty after resolution.",
-                )))
-            }
-            (false, _) => (
-                v4_addrs.first().unwrap() as *const _ as *const libc::sockaddr,
+        let (addr, addr_len) = if let Some(v4) = v4_addrs.first() {
+            (
+                v4 as *const _ as *const libc::sockaddr,
                 mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
-            ),
-            (_, false) => (
-                v6_addrs.first().unwrap() as *const _ as *const libc::sockaddr,
+            )
+        } else if let Some(v6) = v6_addrs.first() {
+            (
+                v6 as *const _ as *const libc::sockaddr,
                 mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
-            ),
+            )
+        } else {
+            return Err(Error::ResolveAddress(format!(
+                "Failed to resolve address {url}:{port}"
+            )));
         };
 
-        fn socket() -> io::Result<RawFd> {
-            // SAFETY: Safe cause it is simple sys call
-            #[cfg(target_os = "linux")]
-            let fd: RawFd = cvt(unsafe {
-                libc::socket(
-                    libc::AF_INET,
-                    libc::SOCK_STREAM | libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK,
-                    0,
-                )
-            })?;
-            // SAFETY: Safe cause it is single threaded sequential sys calls
-            // and all passed pointers are not null and well aligned
-            #[cfg(target_os = "macos")]
-            let fd: RawFd = {
-                let fd = cvt(unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) })?;
-                cvt(unsafe { libc::ioctl(fd, libc::FIOCLEX) })?;
-                cvt(unsafe {
-                    libc::setsockopt(
-                        fd,
-                        libc::SOL_SOCKET,
-                        libc::SO_NOSIGPIPE,
-                        &1 as *const libc::c_int as *const _,
-                        mem::size_of::<libc::c_int>() as libc::socklen_t,
-                    )
-                })?;
-                cvt(unsafe { libc::ioctl(fd, libc::FIONBIO, &mut 1) })?;
-                fd
-            };
-            Ok(fd)
-        }
-
-        let fd = socket().map_err(|e| Error::Connect {
+        // SAFETY: it is just sequential sys calls so it's safe
+        let fd = unsafe { nonblocking_socket() }.map_err(|e| Error::Connect {
             error: e,
             address: format!("{url}:{port}"),
         })?;
@@ -268,6 +238,30 @@ impl Future for TcpConnector {
         };
         Poll::Ready(Ok(()))
     }
+}
+
+unsafe fn nonblocking_socket() -> io::Result<RawFd> {
+    #[cfg(target_os = "linux")]
+    let fd: RawFd = cvt(libc::socket(
+        libc::AF_INET,
+        libc::SOCK_STREAM | libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK,
+        0,
+    ))?;
+    #[cfg(target_os = "macos")]
+    let fd: RawFd = {
+        let fd = cvt(libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0))?;
+        cvt(libc::ioctl(fd, libc::FIOCLEX))?;
+        cvt(libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_NOSIGPIPE,
+            &1 as *const libc::c_int as *const _,
+            mem::size_of::<libc::c_int>() as libc::socklen_t,
+        ))?;
+        cvt(libc::ioctl(fd, libc::FIONBIO, &mut 1))?;
+        fd
+    };
+    Ok(fd)
 }
 
 unsafe fn get_libc_addrs_from_info(
