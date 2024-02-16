@@ -9,6 +9,8 @@
   requests after receiving a previous error response.
 - Bug in `define_str_enum` in `Decode` implementation - the slice reference was not modified
   after decoding.
+- `tarantool::set_error` used to do undefined behaviour when the message
+  contained formatting sequences of %n sort.
 
 
 # [4.0.0] Jan 12 2024
