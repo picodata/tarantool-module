@@ -1,6 +1,7 @@
 use crate::error::Error;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
+use std::ffi::CString;
 
 pub trait IntoClones<Tuple>: Clone {
     fn into_clones(self) -> Tuple;
@@ -204,5 +205,58 @@ pub const fn str_eq(lhs: &str, rhs: &str) -> bool {
             return false;
         }
         i += 1;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// to_cstring
+////////////////////////////////////////////////////////////////////////////////
+
+/// Convert `s` to a `CString` replacing any nul-bytes with `'�'` symbols.
+///
+/// Use this function when you need to unconditionally convert a rust string to
+/// a c string without failing for any reason (other then out-of-memory), for
+/// example when converting error messages.
+#[inline(always)]
+pub(crate) fn to_cstring_lossy(s: &str) -> CString {
+    into_cstring_lossy(s.into())
+}
+
+/// Convert `s` into a `CString` replacing any nul-bytes with `'�'` symbols.
+///
+/// Use this function when you need to unconditionally convert a rust string to
+/// a c string without failing for any reason (other then out-of-memory), for
+/// example when converting error messages.
+#[inline]
+pub(crate) fn into_cstring_lossy(s: String) -> CString {
+    match CString::new(s) {
+        Ok(cstring) => cstring,
+        Err(e) => {
+            // Safety: the already Vec was a String a moment earlier
+            let s = unsafe { String::from_utf8_unchecked(e.into_vec()) };
+            // The same character String::from_utf8_lossy uses to replace non-utf8 bytes
+            let s = s.replace('\0', "�");
+            // Safety: s no longer contains any nul bytes.
+            unsafe { CString::from_vec_unchecked(s.into()) }
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// test
+////////////////////////////////////////////////////////////////////////////////
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[rustfmt::skip]
+    #[test]
+    fn check_to_cstring_lossy() {
+        let message = String::from("hell\0 w\0rld\0");
+        assert!(message.as_bytes().contains(&0));
+        assert_eq!(to_cstring_lossy(&message).as_ref(), crate::c_str!("hell� w�rld�"));
+
+        assert_eq!(into_cstring_lossy(message).as_ref(), crate::c_str!("hell� w�rld�"));
     }
 }
