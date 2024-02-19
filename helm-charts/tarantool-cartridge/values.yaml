@@ -1,17 +1,15 @@
-# Declare variables to be passed into your templates.
-
 ClusterEnv: dev
 ClusterName: tarantool-cluster
 ClusterDomainName: cluster.local
 TarantoolWorkDir: /var/lib/tarantool
-LuaMemoryReserveMB: 4096
+LuaMemoryReserveMB: 2048
 
 persistence:
   storageClassName: local-path
 
 image:
-  repository: tarantool/tarantool-operator-examples-kv
-  tag: 0.0.4
+  repository: docker-public.binary.picodata.io/kirovets
+  tag: kube
   pullPolicy: IfNotPresent
 
 securityContext:
@@ -29,26 +27,69 @@ RoleConfig:
   - RoleName: routers     # ReplicaSet name
     ReplicaCount: 1       # Number of replicas in each ReplicaSet
     ReplicaSetCount: 1    # Number of ReplicaSets for this role(s)
-    DiskSize: 1Gi         # Persistent Volume disk sze
-    CPUallocation: 0.25   # Number of vCPUs to allocate to each container
+    DiskSize: 16Gi         # Persistent Volume disk sze
+    CPUallocation: 2  # Number of vCPUs to allocate to each container
     MemtxMemoryMB: 256    # MB of memory to be assigned to each container
     RolesToAssign:
+      - failover-coordinator
+      - vshard-router
       - app.roles.router
+
+  - RoleName: exporter
+    ReplicaCount: 1
+    ReplicaSetCount: 1
+    DiskSize: 16Gi
+    CPUallocation: 2
+    MemtxMemoryMB: 1024
+    Volumes:
+      share:
+        mountpoint: /opt/share
+        type:
+          hostPath:
+            path: /mnt/share
+            type: Directory
+      keytab:
+        mountpoint: /opt/cloudera/
+        type:
+          configMap:
+            name: keytab
+            items:
+              - key: keytab
+                path: keytab
+      odbc:
+        mountpoint: /etc/odbc.ini
+        subPath: odbc.ini
+        type:
+          configMap:
+            name: odbc
+            items:
+              - key: odbc.ini
+                path: odbc.ini
+      krb5:
+        mountpoint: /etc/krb5.conf
+        subPath: krb5.conf
+        type:
+          configMap:
+            name: krb5
+            items:
+              - key: krb5.conf
+                path: krb5.conf
+    RolesToAssign:
+      - app.roles.exporter
+      - vshard-router
+    lifecycle:
+      postStart:
+        exec:
+          command: ['kinit', 'visiology-kauth', '-k', '-t', '/opt/cloudera/keytab']
 
   - RoleName: storage
     ReplicaCount: 2
     ReplicaSetCount: 1
-    DiskSize: 1Gi
-    CPUallocation: 0.25
-    MemtxMemoryMB: 256
-    Volumes:
-      testVolume:
-        mountpoint: /foo
-        type:
-          hostPath:
-            path: /mnt
-            type: Directory
+    DiskSize: 16Gi
+    CPUallocation: 2
+    MemtxMemoryMB: 4096
     RolesToAssign:
+      - vshard-storage
       - app.roles.storage
 
 ingress:

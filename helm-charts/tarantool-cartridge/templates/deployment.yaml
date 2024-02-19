@@ -84,11 +84,15 @@ spec:
         fsGroup: {{ $.Values.securityContext.fsGroup }}
     {{- if $.Values.affinity }}
       affinity:
-        {{ toYaml $.Values.affinity | indent 8 }}
+{{ toYaml $.Values.affinity | indent 8 }}
     {{- end }}
       containers:
       - name: "{{ $.Release.Name }}-container"
         image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"
+      {{- if .lifecycle }}
+        lifecycle:
+{{ toYaml .lifecycle | indent 10 }}
+      {{- end }}
         volumeMounts:
           - name: {{ $.Release.Name }}
             mountPath: "{{ $.Values.TarantoolWorkDir }}"
@@ -98,6 +102,9 @@ spec:
           {{- range $name, $volume := .Volumes }}
           - name: "{{ $name }}"
             mountPath: "{{ $volume.mountpoint }}"
+            {{- if $volume.subPath }}
+            subPath: "{{ $volume.subPath }}"
+            {{- end }}
           {{- end }}
         {{- end }}
         resources:
@@ -153,7 +160,7 @@ spec:
             port: http
           initialDelaySeconds: 15
           periodSeconds: 10
-      # volumes:
+# volumes:
       #   - name: share
       #     hostPath:
       #       path: /mnt/share
