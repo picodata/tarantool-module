@@ -3,6 +3,8 @@
 # [4.0.1] Unreleased
 
 ### Fixed
+- Used to panic when implicitly converting a 64-bit integer to a `Decimal`
+  inside an arithmetic operation, due to global context contention.
 - Bug in legacy `net_box` client which resulted in a deadlock when receiving an
   error during authentication.
 - Bug in legacy `net_box` client which resulted in a deadlock when sending
