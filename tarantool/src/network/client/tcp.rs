@@ -297,11 +297,23 @@ unsafe fn resolve_addr(
     let addrinfo = match crate::coio::getaddrinfo(&host, None, &hints, timeout) {
         Ok(v) => v,
         Err(e) => {
-            if let crate::error::Error::IO(ee) = e {
-                if let io::ErrorKind::TimedOut = ee.kind() {
-                    return Err(Error::Timeout);
+            match e {
+                crate::error::Error::IO(ee) => {
+                    if let io::ErrorKind::TimedOut = ee.kind() {
+                        return Err(Error::Timeout);
+                    }
                 }
+                crate::error::Error::Tarantool(ee) => {
+                    if let Some(kind) = ee.error_type {
+                        let kind: &str = &kind;
+                        if kind == "TimedOut" {
+                            return Err(Error::Timeout);
+                        }
+                    }
+                }
+                _ => {}
             }
+
             return Err(Error::ResolveAddress(url.into()));
         }
     };
@@ -619,10 +631,8 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     fn connect_zero_timeout() {
-        let a =  TcpStream::connect_timeout("localhost", listen_port(), _0_SEC);
-        println!("{:?}", a);
         assert!(matches!(
-            a
+            TcpStream::connect_timeout("localhost", listen_port(), _0_SEC)
                 .err()
                 .unwrap(),
             Error::Timeout
