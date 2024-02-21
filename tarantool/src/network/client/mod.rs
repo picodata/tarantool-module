@@ -198,8 +198,10 @@ impl Client {
         port: u16,
         config: protocol::Config,
     ) -> Result<Self, ClientError> {
+        println!("1");
         let stream = TcpStream::connect(url, port)
             .map_err(|e| ClientError::ConnectionClosed(Arc::new(e.into())))?;
+        println!("2");
         let client = ClientInner::new(config, stream.clone());
         let client = Rc::new(RefCell::new(client));
 
