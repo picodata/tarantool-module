@@ -297,18 +297,12 @@ unsafe fn resolve_addr(
     let addrinfo = match crate::coio::getaddrinfo(&host, None, &hints, timeout) {
         Ok(v) => v,
         Err(e) => {
-            return Err(if let crate::error::Error::IO(ee) = e {
+            if let crate::error::Error::IO(ee) = e {
                 if let io::ErrorKind::TimedOut = ee.kind() {
-                    Error::Timeout
-                } else {
-                    Error::Connect {
-                        error: ee,
-                        address: format!("{url}:{port}"),
-                    }
+                    return Err(Error::Timeout);
                 }
-            } else {
-                Error::Tarantool(e)
-            });
+            }
+            return Err(Error::ResolveAddress(url.into()));
         }
     };
 
