@@ -77,6 +77,9 @@ spec:
     spec:
       terminationGracePeriodSeconds: 10
       dnsConfig:
+    {{- if $.Values.dnsConfig }}
+{{ toYaml $.Values.dnsConfig | indent 8 }}
+    {{- end }}
         options:
           - name: ndots
             value: "1"

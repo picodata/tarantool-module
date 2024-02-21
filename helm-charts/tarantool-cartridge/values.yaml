@@ -92,6 +92,11 @@ RoleConfig:
       - vshard-storage
       - app.roles.storage
 
+dnsConfig:
+  nameservers:
+    - 10.31.167.217
+    - 77.88.8.8
+
 ingress:
   enabled: true
   tls: []
