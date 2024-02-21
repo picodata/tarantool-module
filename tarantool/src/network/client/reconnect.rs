@@ -192,6 +192,7 @@ mod tests {
             "failed to connect to address 'localhost:0': Cannot assign requested address (os error 99)",
             "failed to connect to address 'localhost:0': Can't assign requested address (os error 49)",
         ].contains(dbg!(&&*err.to_string()));
+        println!("{}", dbg!(&&*err.to_string()));
         assert!(correct_err);
     }
 
