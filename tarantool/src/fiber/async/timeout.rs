@@ -29,9 +29,6 @@ pub type Result<T, E> = std::result::Result<T, Error<E>>;
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Timeout<F> {
     future: F,
-    /// This flag allows to make one more poll
-    /// to inner future after actual timeout, true by default
-    extra_check: bool,
     deadline: Option<Instant>,
 }
 
@@ -60,7 +57,6 @@ pub struct Timeout<F> {
 pub fn timeout<F: Future>(timeout: Duration, f: F) -> Timeout<F> {
     Timeout {
         future: f,
-        extra_check: true,
         deadline: fiber::clock().checked_add(timeout),
     }
 }
@@ -70,19 +66,11 @@ pub fn timeout<F: Future>(timeout: Duration, f: F) -> Timeout<F> {
 pub fn deadline<F: Future>(deadline: Instant, f: F) -> Timeout<F> {
     Timeout {
         future: f,
-        extra_check: true,
         deadline: Some(deadline),
     }
 }
 
 impl<F: Future> Timeout<F> {
-    /// Disable extra check after timeout
-    pub fn no_extra_check(self) -> Self {
-        let mut timeout = self;
-        timeout.extra_check = false;
-        timeout
-    }
-
     #[inline]
     fn pin_get_future(self: Pin<&mut Self>) -> Pin<&mut F> {
         // This is okay because `future` is pinned when `self` is.
@@ -96,35 +84,31 @@ where
 {
     type Output = Result<T, E>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let extra_check = self.extra_check;
         let deadline = self.deadline;
-        let is_timeout = if let Some(v) = deadline {
-            fiber::clock() >= v
-        } else {
-            false
-        };
 
-        // First, try polling the future in two cases
-        // - extra check flag (which is set by default)
-        // - still not timed out
-        if extra_check || !is_timeout {
-            if let Poll::Ready(v) = self.pin_get_future().poll(cx) {
-                return Poll::Ready(v.map_err(Error::Failed));
+        // First, try polling the future
+        if let Poll::Ready(v) = self.pin_get_future().poll(cx) {
+            return Poll::Ready(v.map_err(Error::Failed));
+        }
+
+        // Then check deadline and, if necessary, update wakup condition
+        // in the context.
+        match deadline {
+            Some(deadline) if fiber::clock() >= deadline => {
+                Poll::Ready(Err(Error::Expired)) // expired
+            }
+            Some(deadline) => {
+                // SAFETY: This is safe as long as the `Context` really
+                // is the `ContextExt`. It's always true within provided
+                // `block_on` async runtime.
+                unsafe { ContextExt::set_deadline(cx, deadline) };
+                Poll::Pending
+            }
+            None => {
+                // No deadline, wait forever
+                Poll::Pending
             }
         }
-        // If operation is timed out
-        if is_timeout {
-            return Poll::Ready(Err(Error::Expired));
-        };
-        // If there is None value in deadline - future will never be finished
-        if let Some(v) = deadline {
-            // SAFETY: This is safe as long as the `Context` really
-            // is the `ContextExt`. It's always true within provided
-            // `block_on` async runtime.
-            unsafe { ContextExt::set_deadline(cx, v) };
-        }
-
-        Poll::Pending
     }
 }
 
@@ -276,51 +260,5 @@ mod tests {
             check_yield(|| fiber::block_on(deadline(in_10_millis, rx))),
             Yielded(Err(Error::Expired))
         );
-    }
-
-    #[crate::test(tarantool = "crate")]
-    fn extra_check_works() {
-        struct Mock {
-            counter: std::rc::Rc<std::cell::Cell<usize>>,
-        }
-
-        impl Future for Mock {
-            type Output = Result<(), String>;
-            fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
-                let value = self.counter.get();
-                self.counter.set(value + 1);
-                Poll::Pending
-            }
-        }
-
-        let counter = std::rc::Rc::new(std::cell::Cell::new(0));
-
-        let m = Mock {
-            counter: std::rc::Rc::clone(&counter),
-        };
-
-        match fiber::block_on(timeout(_1_SEC, m).no_extra_check()) {
-            Ok(_) => unreachable!("Cannot be ok cause future always pending"),
-            Err(e) => {
-                assert!(matches!(e, Error::Expired))
-            }
-        };
-
-        assert_eq!(counter.get(), 1);
-
-        let counter = std::rc::Rc::new(std::cell::Cell::new(0));
-
-        let m = Mock {
-            counter: std::rc::Rc::clone(&counter),
-        };
-
-        match fiber::block_on(timeout(_1_SEC, m)) {
-            Ok(_) => unreachable!("Cannot be ok cause future always pending"),
-            Err(e) => {
-                assert!(matches!(e, Error::Expired))
-            }
-        };
-
-        assert_eq!(counter.get(), 2);
     }
 }
