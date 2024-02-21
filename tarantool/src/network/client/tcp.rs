@@ -272,13 +272,14 @@ unsafe fn nonblocking_socket() -> io::Result<RawFd> {
 unsafe fn check_socket_error(fd: RawFd) -> io::Result<()> {
     let mut val: libc::c_int = mem::zeroed();
     let mut val_len = mem::size_of::<libc::c_int>() as libc::socklen_t;
-    match cvt(libc::getsockopt(
+    cvt(libc::getsockopt(
         fd,
         libc::SOL_SOCKET,
         libc::SO_ERROR,
         &mut val as *mut libc::c_int as *mut _,
         &mut val_len,
-    ))? {
+    ))?;
+    match val {
         0 => Ok(()),
         v => Err(io::Error::from_raw_os_error(v as i32)),
     }
