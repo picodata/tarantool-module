@@ -619,8 +619,10 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     fn connect_zero_timeout() {
+        let a =  TcpStream::connect_timeout("localhost", listen_port(), _0_SEC);
+        println!("{:?}", a);
         assert!(matches!(
-            TcpStream::connect_timeout("localhost", listen_port(), _0_SEC)
+            a
                 .err()
                 .unwrap(),
             Error::Timeout
