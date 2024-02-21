@@ -53,6 +53,8 @@ pub enum Error {
     WriteClosed,
     #[error("connect timeout")]
     Timeout,
+    #[error("tarantool error: {0}")]
+    Tarantool(crate::error::Error),
 }
 
 /// Async TcpStream based on fibers and coio.
@@ -292,7 +294,23 @@ unsafe fn resolve_addr(
     hints.ai_socktype = libc::SOCK_STREAM;
 
     let host = CString::new(url).map_err(Error::ConstructCString)?;
-    let addrinfo = crate::coio::getaddrinfo(&host, None, &hints, timeout).unwrap();
+    let addrinfo = match crate::coio::getaddrinfo(&host, None, &hints, timeout) {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(if let crate::error::Error::IO(ee) = e {
+                if let io::ErrorKind::TimedOut = ee.kind() {
+                    Error::Timeout
+                } else {
+                    Error::Connect {
+                        error: ee,
+                        address: format!("{url}:{port}"),
+                    }
+                }
+            } else {
+                Error::Tarantool(e)
+            });
+        }
+    };
 
     let mut ipv4_addresses = Vec::with_capacity(2);
     let mut ipv6_addresses = Vec::with_capacity(2);
