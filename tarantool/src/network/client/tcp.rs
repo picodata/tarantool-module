@@ -7,7 +7,6 @@
 //! use tarantool::network::client::tcp::TcpStream;
 //!
 //! let mut stream = TcpStream::connect("localhost", 8080)
-//!     .await
 //!     .unwrap();
 //! let mut buf = vec![];
 //! let read_size = stream
