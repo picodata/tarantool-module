@@ -18,12 +18,13 @@
 //! See also:
 //! - [Lua reference: Module log](https://www.tarantool.io/en/doc/latest/reference/reference_lua/log/)
 //! - [C API reference: Module say (logging)](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/say/)
-use std::ffi::CString;
 use std::ptr::null;
 
 use log::{Level, Log, Metadata, Record};
 
 use crate::ffi::tarantool as ffi;
+use crate::util::into_cstring_lossy;
+use crate::util::to_cstring_lossy;
 
 /// [Log](https://docs.rs/log/latest/log/trait.Log.html) trait implementation. Wraps [say()](fn.say.html).
 pub struct TarantoolLogger(fn(Level) -> SayLevel);
@@ -203,13 +204,13 @@ impl<L> tlua::PushOneInto<L> for SayLevel where L: tlua::AsLua {}
 /// Format and print a message to the Tarantool log file.
 #[inline]
 pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message: &str) {
-    let file = CString::new(file).unwrap();
-    let error = error.map(|e| CString::new(e).unwrap());
+    let file = to_cstring_lossy(file);
+    let error = error.map(to_cstring_lossy);
     let error_ptr = match error {
         Some(ref error) => error.as_ptr(),
         None => null(),
     };
-    let message = CString::new(message).unwrap();
+    let message = to_cstring_lossy(message);
 
     unsafe {
         ffi::SAY_FN.unwrap()(
@@ -349,5 +350,11 @@ mod tests {
             let s = format!("%{c}");
             say(SayLevel::Warn, "<file>", 0, Some("<error>"), &s);
         }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn no_panic_when_nul_byte() {
+        #[rustfmt::skip]
+        say(SayLevel::Crit, "a\0b\0c\0d", 0, Some("e\0f\0g"), "\0h\0j\0k\0");
     }
 }
