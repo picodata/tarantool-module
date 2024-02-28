@@ -1,6 +1,6 @@
 use crate::error::Error;
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
+use std::{borrow::Cow, ffi::CString};
 
 pub trait IntoClones<Tuple>: Clone {
     fn into_clones(self) -> Tuple;
@@ -230,10 +230,31 @@ pub const fn str_eq(lhs: &str, rhs: &str) -> bool {
     }
 }
 
+/// It tries normal [CString] conversion from given string,
+/// and if `NulError` occurs, it removes offensive bytes from the input and tries conversion again.
+pub fn to_cstring_safely(str: &str) -> CString {
+    match CString::new(str) {
+        Ok(cstring) => cstring,
+        Err(err) => {
+            // SAFETY: safe to call unchecked version, as `NulError` contains original string.
+            let mut safe_str = unsafe { String::from_utf8_unchecked(err.into_vec()) };
+            safe_str.retain(|ch| ch != '\0');
+            CString::new(safe_str).expect("bug: string must be safe for CString conversion now")
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
     use pretty_assertions::assert_eq;
+
+    #[test]
+    fn cstring_from_nul_string() {
+        let message = String::from("hell\0 w\0rld\0");
+        assert!(message.as_bytes().contains(&0));
+        assert_eq!(to_cstring_safely(&message).to_str().unwrap(), "hell wrld");
+    }
 
     #[test]
     #[allow(clippy::needless_range_loop)]

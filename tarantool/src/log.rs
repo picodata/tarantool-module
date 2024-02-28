@@ -25,7 +25,7 @@ use std::ptr::null;
 
 use log::{Level, Log, Metadata, Record};
 
-use crate::ffi::tarantool as ffi;
+use crate::{ffi::tarantool as ffi, util::to_cstring_safely};
 
 /// [Log](https://docs.rs/log/latest/log/trait.Log.html) trait implementation. Wraps [say()](fn.say.html).
 pub struct TarantoolLogger(fn(Level) -> SayLevel);
@@ -225,13 +225,13 @@ impl<L> tlua::PushOneInto<L> for SayLevel where L: tlua::AsLua {}
 /// Format and print a message to the Tarantool log file.
 #[inline]
 pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message: &str) {
-    let file = CString::new(file).unwrap();
-    let error = error.map(|e| CString::new(e).unwrap());
+    let file = to_cstring_safely(file);
+    let error = error.map(to_cstring_safely);
     let error_ptr = match error {
         Some(ref error) => error.as_ptr(),
         None => null(),
     };
-    let message = CString::new(message).unwrap();
+    let message = to_cstring_safely(message);
 
     unsafe {
         ffi::SAY_FN.unwrap()(
