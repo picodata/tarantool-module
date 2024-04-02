@@ -14,6 +14,7 @@
 - `tarantool::set_error` used to do undefined behaviour when the message
   contained formatting sequences of %n sort.
 - Used to panic when logging messages which contained nul-bytes.
+- Used to fail decoding some tarantool decimal values.
 
 
 # [4.0.0] Jan 12 2024
