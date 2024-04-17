@@ -32,12 +32,37 @@ pub fn encode(value: &impl Encode) -> Vec<u8> {
     v
 }
 
+/// Encodes `value` as a vector of bytes in msgpack.
+///
+/// See [`Encode`].
+#[inline(always)]
+pub fn encode_to_byte_buf(value: &impl Encode) -> crate::tuple::RawByteBuf {
+    encode(value).into()
+}
+
+/// Encodes `value` as a vector of bytes in msgpack.
+/// Ensures that it is represented as an array, will return error otherwise.
+///
+/// See [`Encode`].
+#[inline(always)]
+pub fn encode_to_tuple_buf(value: &impl Encode) -> crate::Result<crate::tuple::TupleBuffer> {
+    crate::tuple::TupleBuffer::try_from_vec(encode(value))
+}
+
 /// Decodes `T` from a slice of bytes in msgpack.
 ///
 /// See [`Decode`].
 #[inline(always)]
 pub fn decode<T: Decode>(mut bytes: &[u8]) -> Result<T, DecodeError> {
     T::decode(&mut bytes, &Context::DEFAULT)
+}
+
+/// Decodes `T` from `tuple` contents.
+///
+/// See [`Decode`].
+#[inline(always)]
+pub fn decode_tuple<T: Decode>(tuple: &crate::tuple::Tuple) -> Result<T, DecodeError> {
+    decode(&tuple.to_vec())
 }
 
 ////////////////////////////////////////////////////////////////////////////////
