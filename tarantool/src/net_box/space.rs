@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::error::Error;
 use crate::index::IteratorType;
-use crate::tuple::{Encode, ToTupleBuffer, Tuple};
+use crate::tuple::{Tuple, TupleBuffer};
 
 use super::index::{RemoteIndex, RemoteIndexIterator};
 use super::inner::ConnInner;
@@ -41,35 +41,26 @@ impl RemoteSpace {
     /// The remote-call equivalent of the local call `Space::get(...)`
     /// (see [details](../space/struct.Space.html#method.get)).
     #[inline(always)]
-    pub fn get<K>(&self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-    {
+    pub fn get(&self, key: &TupleBuffer, options: &Options) -> Result<Option<Tuple>, Error> {
         self.primary_key().get(key, options)
     }
 
     /// The remote-call equivalent of the local call `Space::select(...)`
     /// (see [details](../space/struct.Space.html#method.select)).
     #[inline(always)]
-    pub fn select<K>(
+    pub fn select(
         &self,
         iterator_type: IteratorType,
-        key: &K,
+        key: &TupleBuffer,
         options: &Options,
-    ) -> Result<RemoteIndexIterator, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-    {
+    ) -> Result<RemoteIndexIterator, Error> {
         self.primary_key().select(iterator_type, key, options)
     }
 
     /// The remote-call equivalent of the local call `Space::insert(...)`
     /// (see [details](../space/struct.Space.html#method.insert)).
     #[inline(always)]
-    pub fn insert<T>(&self, value: &T, options: &Options) -> Result<Option<Tuple>, Error>
-    where
-        T: ToTupleBuffer + ?Sized,
-    {
+    pub fn insert(&self, value: &TupleBuffer, options: &Options) -> Result<Option<Tuple>, Error> {
         self.conn_inner.request(
             &protocol::Insert {
                 space_id: self.space_id,
@@ -82,10 +73,7 @@ impl RemoteSpace {
     /// The remote-call equivalent of the local call `Space::replace(...)`
     /// (see [details](../space/struct.Space.html#method.replace)).
     #[inline(always)]
-    pub fn replace<T>(&self, value: &T, options: &Options) -> Result<Option<Tuple>, Error>
-    where
-        T: ToTupleBuffer + ?Sized,
-    {
+    pub fn replace(&self, value: &TupleBuffer, options: &Options) -> Result<Option<Tuple>, Error> {
         self.conn_inner.request(
             &protocol::Replace {
                 space_id: self.space_id,
@@ -98,42 +86,31 @@ impl RemoteSpace {
     /// The remote-call equivalent of the local call `Space::update(...)`
     /// (see [details](../space/struct.Space.html#method.update)).
     #[inline(always)]
-    pub fn update<K, Op>(
+    pub fn update(
         &self,
-        key: &K,
-        ops: &[Op],
+        key: &TupleBuffer,
+        ops: &TupleBuffer,
         options: &Options,
-    ) -> Result<Option<Tuple>, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-        Op: Encode,
-    {
+    ) -> Result<Option<Tuple>, Error> {
         self.primary_key().update(key, ops, options)
     }
 
     /// The remote-call equivalent of the local call `Space::upsert(...)`
     /// (see [details](../space/struct.Space.html#method.upsert)).
     #[inline(always)]
-    pub fn upsert<T, Op>(
+    pub fn upsert(
         &self,
-        value: &T,
-        ops: &[Op],
+        value: &TupleBuffer,
+        ops: &TupleBuffer,
         options: &Options,
-    ) -> Result<Option<Tuple>, Error>
-    where
-        T: ToTupleBuffer + ?Sized,
-        Op: Encode,
-    {
+    ) -> Result<Option<Tuple>, Error> {
         self.primary_key().upsert(value, ops, options)
     }
 
     /// The remote-call equivalent of the local call `Space::delete(...)`
     /// (see [details](../space/struct.Space.html#method.delete)).
     #[inline(always)]
-    pub fn delete<K>(&self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-    {
+    pub fn delete(&self, key: &TupleBuffer, options: &Options) -> Result<Option<Tuple>, Error> {
         self.primary_key().delete(key, options)
     }
 }

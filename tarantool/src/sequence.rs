@@ -2,6 +2,7 @@
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
 use crate::space::{Space, SystemSpace};
+use crate::tuple::Tuple;
 
 /// A sequence is a generator of ordered integer values.
 pub struct Sequence {
@@ -14,7 +15,7 @@ impl Sequence {
         let space: Space = SystemSpace::Sequence.into();
         let name_idx = space.index("name").unwrap();
 
-        Ok(match name_idx.get(&(name,))? {
+        Ok(match name_idx.get(&Tuple::encode_rmp(&(name,))?)? {
             None => None,
             Some(row_tuple) => Some(Sequence {
                 seq_id: row_tuple.field(0)?.unwrap(),

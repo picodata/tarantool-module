@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-use tarantool::{proc, space::Space, tuple::Encode};
+use tarantool::{
+    proc,
+    space::Space,
+    tuple::{Encode, Tuple},
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Row {
@@ -15,7 +19,7 @@ fn read() {
     let space = Space::find("capi_test").unwrap();
 
     let key = 10000;
-    let result = space.get(&(key,)).unwrap();
+    let result = space.get(&Tuple::encode_rmp(&(key,)).unwrap()).unwrap();
     assert!(result.is_some());
 
     let result = result.unwrap().decode::<Row>().unwrap();

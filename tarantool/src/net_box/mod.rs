@@ -51,7 +51,7 @@ pub use space::RemoteSpace;
 
 use crate::error::Error;
 use crate::network::protocol;
-use crate::tuple::{Decode, ToTupleBuffer, Tuple};
+use crate::tuple::{Decode, Tuple, TupleBuffer};
 
 mod index;
 mod inner;
@@ -133,16 +133,12 @@ impl Conn {
     /// `conn.call("func", &("1", "2", "3"))` is the remote-call equivalent of `func('1', '2', '3')`.
     /// That is, `conn.call` is a remote stored-procedure call.
     /// The return from `conn.call` is whatever the function returns.
-    pub fn call<T>(
+    pub fn call(
         &self,
         fn_name: &str,
-        args: &T,
+        args: &TupleBuffer,
         options: &Options,
-    ) -> Result<Option<Tuple>, Error>
-    where
-        T: ToTupleBuffer,
-        T: ?Sized,
-    {
+    ) -> Result<Option<Tuple>, Error> {
         let res = self
             .inner
             .request(&protocol::Call { fn_name, args }, options)?;
@@ -153,9 +149,8 @@ impl Conn {
     ///
     /// If enqueuing a request succeeded a [`Promise`] is returned which will be
     /// kept once a response is received.
-    pub fn call_async<A, R>(&self, fn_name: &str, args: A) -> crate::Result<Promise<R>>
+    pub fn call_async<R>(&self, fn_name: &str, args: TupleBuffer) -> crate::Result<Promise<R>>
     where
-        A: ToTupleBuffer,
         R: for<'de> Decode<'de> + 'static,
     {
         self.inner.request_async(&protocol::Call {
@@ -171,11 +166,12 @@ impl Conn {
     ///
     /// To ensure that the return from `eval` is whatever the Lua expression returns, begin the Lua-string with the
     /// word `return`.
-    pub fn eval<T>(&self, expr: &str, args: &T, options: &Options) -> Result<Option<Tuple>, Error>
-    where
-        T: ToTupleBuffer,
-        T: ?Sized,
-    {
+    pub fn eval(
+        &self,
+        expr: &str,
+        args: &TupleBuffer,
+        options: &Options,
+    ) -> Result<Option<Tuple>, Error> {
         let res = self
             .inner
             .request(&protocol::Eval { expr, args }, options)?;
@@ -186,9 +182,8 @@ impl Conn {
     ///
     /// If enqueuing a request succeeded a [`Promise`] is returned which will be
     /// kept once a response is received.
-    pub fn eval_async<A, R>(&self, expr: &str, args: A) -> crate::Result<Promise<R>>
+    pub fn eval_async<R>(&self, expr: &str, args: TupleBuffer) -> crate::Result<Promise<R>>
     where
-        A: ToTupleBuffer,
         R: for<'de> Decode<'de> + 'static,
     {
         self.inner
@@ -207,12 +202,9 @@ impl Conn {
     pub fn execute<P>(
         &self,
         sql: &str,
-        bind_params: &P,
+        bind_params: &TupleBuffer,
         options: &Options,
-    ) -> Result<Vec<Tuple>, Error>
-    where
-        P: ToTupleBuffer + ?Sized,
-    {
+    ) -> Result<Vec<Tuple>, Error> {
         self.inner
             .request(&protocol::Execute { sql, bind_params }, options)
     }
@@ -229,7 +221,7 @@ impl Drop for Conn {
 #[cfg(feature = "internal_test")]
 mod tests {
     use super::*;
-    use crate::test::util::listen_port;
+    use crate::{test::util::listen_port, tuple::ToTupleBuffer};
 
     fn test_user_conn() -> Conn {
         Conn::new(
@@ -247,6 +239,7 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     fn dont_drop_worker_join_handles() {
         struct UnexpectedIOError;
+
         impl ToTupleBuffer for UnexpectedIOError {
             fn write_tuple_data(&self, _: &mut impl std::io::Write) -> Result<(), Error> {
                 Err(Error::other("some io error"))
@@ -256,12 +249,20 @@ mod tests {
         let conn = test_user_conn();
 
         let e = conn
-            .eval("return ...", &UnexpectedIOError, &Default::default())
+            .eval(
+                "return ...",
+                &UnexpectedIOError.to_tuple_buffer().unwrap(),
+                &Default::default(),
+            )
             .unwrap_err();
         assert_eq!(e.to_string(), "some io error");
 
         let e = conn
-            .eval("return ...", &[1], &Default::default())
+            .eval(
+                "return ...",
+                &Tuple::encode_rmp(&[1]).unwrap(),
+                &Default::default(),
+            )
             .unwrap_err();
         assert_eq!(e.to_string(), "io error: not connected");
 
@@ -276,7 +277,11 @@ mod tests {
         // There was a bug with this, but it's now fixed
         for _ in 0..5 {
             let e = conn
-                .eval("error 'oops'", &(), &Default::default())
+                .eval(
+                    "error 'oops'",
+                    &Tuple::encode_rmp(&()).unwrap(),
+                    &Default::default(),
+                )
                 .unwrap_err();
             #[rustfmt::skip]
             assert_eq!(e.to_string(), "server responded with error: ProcLua: eval:1: oops");

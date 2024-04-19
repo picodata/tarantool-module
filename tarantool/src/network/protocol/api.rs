@@ -4,8 +4,7 @@ use crate::error::Error;
 use crate::index::IndexId;
 use crate::index::IteratorType;
 use crate::space::SpaceId;
-use crate::tuple::Encode;
-use crate::tuple::{ToTupleBuffer, Tuple};
+use crate::tuple::{Tuple, TupleBuffer};
 
 use super::codec::IProtoType;
 use super::{codec, SyncIndex};
@@ -49,15 +48,12 @@ impl Request for Ping {
     }
 }
 
-pub struct Call<'a, 'b, T: ?Sized> {
+pub struct Call<'a, 'b> {
     pub fn_name: &'a str,
-    pub args: &'b T,
+    pub args: &'b TupleBuffer,
 }
 
-impl<'a, 'b, T> Request for Call<'a, 'b, T>
-where
-    T: ToTupleBuffer + ?Sized,
-{
+impl<'a, 'b> Request for Call<'a, 'b> {
     const TYPE: IProtoType = IProtoType::Call;
     type Response = Tuple;
 
@@ -72,15 +68,12 @@ where
     }
 }
 
-pub struct Eval<'a, 'b, T: ?Sized> {
+pub struct Eval<'a, 'b> {
     pub expr: &'a str,
-    pub args: &'b T,
+    pub args: &'b TupleBuffer,
 }
 
-impl<'a, 'b, T> Request for Eval<'a, 'b, T>
-where
-    T: ToTupleBuffer + ?Sized,
-{
+impl<'a, 'b> Request for Eval<'a, 'b> {
     const TYPE: IProtoType = IProtoType::Eval;
     type Response = Tuple;
 
@@ -95,15 +88,12 @@ where
     }
 }
 
-pub struct Execute<'a, 'b, T: ?Sized> {
+pub struct Execute<'a, 'b> {
     pub sql: &'a str,
-    pub bind_params: &'b T,
+    pub bind_params: &'b TupleBuffer,
 }
 
-impl<'a, 'b, T> Request for Execute<'a, 'b, T>
-where
-    T: ToTupleBuffer + ?Sized,
-{
+impl<'a, 'b> Request for Execute<'a, 'b> {
     const TYPE: IProtoType = IProtoType::Execute;
     type Response = Vec<Tuple>;
 
@@ -140,19 +130,16 @@ impl<'u, 'p, 's> Request for Auth<'u, 'p, 's> {
     }
 }
 
-pub struct Select<'a, T: ?Sized> {
+pub struct Select<'a> {
     pub space_id: SpaceId,
     pub index_id: IndexId,
     pub limit: u32,
     pub offset: u32,
     pub iterator_type: IteratorType,
-    pub key: &'a T,
+    pub key: &'a TupleBuffer,
 }
 
-impl<'a, T> Request for Select<'a, T>
-where
-    T: ToTupleBuffer + ?Sized,
-{
+impl<'a> Request for Select<'a> {
     const TYPE: IProtoType = IProtoType::Select;
     type Response = Vec<Tuple>;
 
@@ -175,18 +162,12 @@ where
     }
 }
 
-pub struct Insert<'a, T>
-where
-    T: ?Sized,
-{
+pub struct Insert<'a> {
     pub space_id: SpaceId,
-    pub value: &'a T,
+    pub value: &'a TupleBuffer,
 }
 
-impl<'a, T> Request for Insert<'a, T>
-where
-    T: ToTupleBuffer + ?Sized,
-{
+impl<'a> Request for Insert<'a> {
     const TYPE: IProtoType = IProtoType::Insert;
     // TODO: can this be just Tuple?
     type Response = Option<Tuple>;
@@ -202,18 +183,12 @@ where
     }
 }
 
-pub struct Replace<'a, T>
-where
-    T: ?Sized,
-{
+pub struct Replace<'a> {
     pub space_id: SpaceId,
-    pub value: &'a T,
+    pub value: &'a TupleBuffer,
 }
 
-impl<'a, T> Request for Replace<'a, T>
-where
-    T: ToTupleBuffer + ?Sized,
-{
+impl<'a> Request for Replace<'a> {
     const TYPE: IProtoType = IProtoType::Replace;
     // TODO: can this be just Tuple?
     type Response = Option<Tuple>;
@@ -229,21 +204,14 @@ where
     }
 }
 
-pub struct Update<'a, T, Op>
-where
-    T: ?Sized,
-{
+pub struct Update<'a> {
     pub space_id: SpaceId,
     pub index_id: IndexId,
-    pub key: &'a T,
-    pub ops: &'a [Op],
+    pub key: &'a TupleBuffer,
+    pub ops: &'a TupleBuffer,
 }
 
-impl<'a, T, Op> Request for Update<'a, T, Op>
-where
-    T: ToTupleBuffer + ?Sized,
-    Op: Encode,
-{
+impl<'a> Request for Update<'a> {
     const TYPE: IProtoType = IProtoType::Update;
     // TODO: can this be just Tuple?
     type Response = Option<Tuple>;
@@ -259,21 +227,14 @@ where
     }
 }
 
-pub struct Upsert<'a, T, Op>
-where
-    T: ?Sized,
-{
+pub struct Upsert<'a> {
     pub space_id: SpaceId,
     pub index_id: IndexId,
-    pub value: &'a T,
-    pub ops: &'a [Op],
+    pub value: &'a TupleBuffer,
+    pub ops: &'a TupleBuffer,
 }
 
-impl<'a, T, Op> Request for Upsert<'a, T, Op>
-where
-    T: ToTupleBuffer + ?Sized,
-    Op: Encode,
-{
+impl<'a> Request for Upsert<'a> {
     const TYPE: IProtoType = IProtoType::Upsert;
     // TODO: can this be just Tuple?
     type Response = Option<Tuple>;
@@ -289,19 +250,13 @@ where
     }
 }
 
-pub struct Delete<'a, T>
-where
-    T: ?Sized,
-{
+pub struct Delete<'a> {
     pub space_id: SpaceId,
     pub index_id: IndexId,
-    pub key: &'a T,
+    pub key: &'a TupleBuffer,
 }
 
-impl<'a, T> Request for Delete<'a, T>
-where
-    T: ToTupleBuffer + ?Sized,
-{
+impl<'a> Request for Delete<'a> {
     const TYPE: IProtoType = IProtoType::Delete;
     // TODO: can this be just Tuple?
     type Response = Option<Tuple>;

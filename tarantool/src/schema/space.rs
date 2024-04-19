@@ -98,7 +98,7 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
 
     let res = (|| -> Result<_, Error> {
         let sys_space = SystemSpace::Space.as_space();
-        sys_space.insert(&Metadata {
+        sys_space.insert(&Tuple::encode_rmp(&Metadata {
             id,
             user_id,
             name: name.into(),
@@ -106,15 +106,15 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
             field_count: opts.field_count,
             flags,
             format,
-        })?;
+        })?)?;
 
         // Update max_id for backwards compatibility.
         if opts.id.is_none() && opts.space_type != SpaceType::Temporary {
             let sys_schema = SystemSpace::Schema.as_space();
-            if let Some(t) = sys_schema.get(&["max_id"])? {
+            if let Some(t) = sys_schema.get(&Tuple::encode_rmp(&["max_id"])?)? {
                 if let Ok(Some(max_id)) = t.field::<SpaceId>(1) {
                     if id > max_id {
-                        sys_schema.replace(&("max_id", id))?;
+                        sys_schema.replace(&Tuple::encode_rmp(&("max_id", id))?)?;
                     }
                 }
             }
@@ -166,7 +166,7 @@ fn generate_space_id(is_temporary: bool) -> Result<SpaceId, Error> {
         id_range_max = space_id_temporary_min().unwrap_or(space::SPACE_ID_MAX + 1);
     };
 
-    let mut iter = sys_space.select(IteratorType::LT, &[id_range_max])?;
+    let mut iter = sys_space.select(IteratorType::LT, &Tuple::encode_rmp(&[id_range_max])?)?;
     let tuple = iter.next().expect("there's always at least system spaces");
     let mut max_id: SpaceId = tuple
         .field(0)
@@ -174,7 +174,7 @@ fn generate_space_id(is_temporary: bool) -> Result<SpaceId, Error> {
         .expect("space id should always be present");
 
     let find_next_unused_id = |start: SpaceId| -> Result<SpaceId, Error> {
-        let iter = sys_space.select(IteratorType::GE, &[start])?;
+        let iter = sys_space.select(IteratorType::GE, &Tuple::encode_rmp(&[start])?)?;
         let mut next_id = start;
         for tuple in iter {
             let id: SpaceId = tuple
@@ -208,7 +208,9 @@ fn generate_space_id(is_temporary: bool) -> Result<SpaceId, Error> {
 
 pub fn space_metadata(space_id: SpaceId) -> Result<Metadata<'static>, Error> {
     let sys_space = SystemSpace::VSpace.as_space();
-    let tuple = sys_space.get(&[space_id])?.ok_or(Error::MetaNotFound)?;
+    let tuple = sys_space
+        .get(&Tuple::encode_rmp(&[space_id])?)?
+        .ok_or(Error::MetaNotFound)?;
     tuple.decode::<Metadata>()
 }
 
@@ -216,8 +218,8 @@ pub fn space_metadata(space_id: SpaceId) -> Result<Metadata<'static>, Error> {
 pub fn drop_space(space_id: SpaceId) -> Result<(), Error> {
     // Delete automatically generated sequence.
     let sys_space_sequence: Space = SystemSpace::SpaceSequence.into();
-    if let Some(t) = sys_space_sequence.get(&(space_id,))? {
-        sys_space_sequence.delete(&(space_id,))?;
+    if let Some(t) = sys_space_sequence.get(&Tuple::encode_rmp(&(space_id,))?)? {
+        sys_space_sequence.delete(&Tuple::encode_rmp(&(space_id,))?)?;
         let is_generated = t.field::<bool>(2)?.unwrap();
         if is_generated {
             let seq_id = t.field::<u32>(1)?.unwrap();
@@ -229,58 +231,58 @@ pub fn drop_space(space_id: SpaceId) -> Result<(), Error> {
     let sys_trigger: Space = SystemSpace::Trigger.into();
     let sys_space_idx = sys_trigger.index("space_id").unwrap();
     for t in sys_space_idx
-        .select(IteratorType::Eq, &(space_id,))?
+        .select(IteratorType::Eq, &Tuple::encode_rmp(&(space_id,))?)?
         .collect::<Vec<Tuple>>()
     {
         let name = t.field::<String>(0)?.unwrap();
-        sys_trigger.delete(&(name,))?;
+        sys_trigger.delete(&Tuple::encode_rmp(&(name,))?)?;
     }
 
     // Remove from _fk_constraint.
     let sys_fk_constraint: Space = SystemSpace::FkConstraint.into();
     let sys_space_idx = sys_fk_constraint.index("child_id").unwrap();
     for t in sys_space_idx
-        .select(IteratorType::Eq, &(space_id,))?
+        .select(IteratorType::Eq, &Tuple::encode_rmp(&(space_id,))?)?
         .collect::<Vec<Tuple>>()
     {
         let name = t.field::<String>(0)?.unwrap();
-        sys_fk_constraint.delete(&(name, space_id))?;
+        sys_fk_constraint.delete(&Tuple::encode_rmp(&(name, space_id))?)?;
     }
 
     // CRemove from _ck_constraint.
     let sys_ck_constraint: Space = SystemSpace::CkConstraint.into();
     let sys_space_idx = sys_ck_constraint.index("primary").unwrap();
     for t in sys_space_idx
-        .select(IteratorType::Eq, &(space_id,))?
+        .select(IteratorType::Eq, &Tuple::encode_rmp(&(space_id,))?)?
         .collect::<Vec<Tuple>>()
     {
         let name = t.field::<String>(2)?.unwrap();
-        sys_ck_constraint.delete(&(space_id, name))?;
+        sys_ck_constraint.delete(&Tuple::encode_rmp(&(space_id, name))?)?;
     }
 
     // Remove from _func_index.
     let sys_func_index: Space = SystemSpace::FuncIndex.into();
     let sys_space_idx = sys_func_index.index("primary").unwrap();
     for t in sys_space_idx
-        .select(IteratorType::Eq, &(space_id,))?
+        .select(IteratorType::Eq, &Tuple::encode_rmp(&(space_id,))?)?
         .collect::<Vec<Tuple>>()
     {
         let index_id = t.field::<u32>(1)?.unwrap();
-        sys_func_index.delete(&(space_id, index_id))?;
+        sys_func_index.delete(&Tuple::encode_rmp(&(space_id, index_id))?)?;
     }
 
     // Remove from _index.
     let sys_vindex: Space = SystemSpace::VIndex.into();
     let sys_index: Space = SystemSpace::Index.into();
     let keys = sys_vindex
-        .select(IteratorType::Eq, &(space_id,))?
+        .select(IteratorType::Eq, &Tuple::encode_rmp(&(space_id,))?)?
         .collect::<Vec<Tuple>>();
     for i in 1..keys.len() + 1 {
         let t_idx = keys.len() - i;
         let t = &keys[t_idx];
         let id = t.field::<u32>(0)?.unwrap();
         let iid = t.field::<u32>(1)?.unwrap();
-        sys_index.delete(&(id, iid))?;
+        sys_index.delete(&Tuple::encode_rmp(&(id, iid))?)?;
     }
 
     // Revoke priveleges.
@@ -288,11 +290,11 @@ pub fn drop_space(space_id: SpaceId) -> Result<(), Error> {
 
     // Remove from _truncate.
     let sys_truncate: Space = SystemSpace::Truncate.into();
-    sys_truncate.delete(&(space_id,))?;
+    sys_truncate.delete(&Tuple::encode_rmp(&(space_id,))?)?;
 
     // Remove from _space.
     let sys_space: Space = SystemSpace::Space.into();
-    sys_space.delete(&(space_id,))?;
+    sys_space.delete(&Tuple::encode_rmp(&(space_id,))?)?;
 
     Ok(())
 }

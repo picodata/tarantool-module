@@ -12,7 +12,7 @@ use crate::tuple::Tuple;
 fn resolve_user_or_role(user: &str) -> Result<Option<u32>, Error> {
     let space_vuser: Space = SystemSpace::VUser.into();
     let name_idx = space_vuser.index("name").unwrap();
-    Ok(match name_idx.get(&(user,))? {
+    Ok(match name_idx.get(&Tuple::encode_rmp(&(user,))?)? {
         None => None,
         Some(user_tuple) => Some(user_tuple.field::<u32>(0)?.unwrap()),
     })
@@ -28,12 +28,15 @@ fn revoke_object_privileges(obj_type: &str, obj_id: u32) -> Result<(), Error> {
 
     let index_obj = sys_vpriv.index("object").unwrap();
     let privs: Vec<Tuple> = index_obj
-        .select(IteratorType::Eq, &(obj_type, obj_id))?
+        .select(
+            IteratorType::Eq,
+            &Tuple::encode_rmp(&(obj_type, obj_id)).unwrap(),
+        )?
         .collect();
 
     for t in privs {
         let uid = t.field::<u32>(1)?.unwrap();
-        sys_priv.delete(&(uid,))?;
+        sys_priv.delete(&Tuple::encode_rmp(&(uid,))?)?;
     }
 
     Ok(())

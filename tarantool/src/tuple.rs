@@ -10,7 +10,7 @@
 //! - [C API reference: Module tuple](https://www.tarantool.io/en/doc/2.2/dev_guide/reference_capi/tuple/)
 use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::ffi::{CStr, CString};
 use std::fmt::{self, Debug, Formatter};
 use std::io::Write;
@@ -46,11 +46,8 @@ impl Debug for Tuple {
 impl Tuple {
     /// Create a new tuple from `value` implementing [`ToTupleBuffer`].
     #[inline]
-    pub fn new<T>(value: &T) -> Result<Self>
-    where
-        T: ToTupleBuffer + ?Sized,
-    {
-        Ok(Self::from(&value.to_tuple_buffer()?))
+    pub fn new(value: &TupleBuffer) -> Result<Self> {
+        Ok(Self::from(value))
     }
 
     /// # Safety
@@ -570,6 +567,32 @@ impl TupleBuffer {
         let data = validate_msgpack(data)?;
         unsafe { Ok(Self::from_vec_unchecked(data)) }
     }
+
+    #[inline]
+    pub fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
+        w.write_all(&self.0).map_err(Into::into)
+    }
+
+    #[inline]
+    pub fn data(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl Tuple {
+    pub fn encode_rmp<T: Serialize>(data: T) -> Result<TupleBuffer> {
+        let data = rmp_serde::encode::to_vec(&data)?;
+        TupleBuffer::try_from_vec(data)
+    }
+
+    pub fn encode_custom<T: crate::msgpack::Encode>(data: T) -> Result<TupleBuffer> {
+        let data = crate::msgpack::encode::encode(&data);
+        TupleBuffer::try_from_vec(data)
+    }
+
+    pub fn encode_empty() -> TupleBuffer {
+        Self::encode_rmp(()).unwrap()
+    }
 }
 
 impl AsRef<[u8]> for TupleBuffer {
@@ -616,23 +639,6 @@ impl Debug for TupleBuffer {
         } else {
             f.debug_tuple("TupleBuffer").field(&self.0).finish()
         }
-    }
-}
-
-impl ToTupleBuffer for TupleBuffer {
-    #[inline(always)]
-    fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
-        Ok(self.clone())
-    }
-
-    #[inline(always)]
-    fn tuple_data(&self) -> Option<&[u8]> {
-        Some(&self.0)
-    }
-
-    #[inline(always)]
-    fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
-        w.write_all(self.as_ref()).map_err(Into::into)
     }
 }
 
@@ -954,14 +960,10 @@ impl KeyDef {
     /// - `Ordering::Less`    if `key_fields(tuple) < parts(key)`
     /// - `Ordering::Greater` if `key_fields(tuple) > parts(key)`
     #[inline]
-    pub fn compare_with_key<K>(&self, tuple: &Tuple, key: &K) -> Ordering
-    where
-        K: ToTupleBuffer + ?Sized,
-    {
-        let key_buf = key.to_tuple_buffer().unwrap();
-        let key_buf_ptr = key_buf.as_ptr() as _;
+    pub fn compare_with_key(&self, tuple: &TupleBuffer, key: &TupleBuffer) -> Ordering {
+        let key_buf_ptr = key.as_ptr() as _;
         unsafe {
-            ffi::box_tuple_compare_with_key(tuple.ptr.as_ptr(), key_buf_ptr, self.inner.as_ptr())
+            ffi::box_tuple_compare_with_key(tuple.as_ptr() as _, key_buf_ptr, self.inner.as_ptr())
                 .cmp(&0)
         }
     }
@@ -1209,13 +1211,9 @@ impl FunctionArgs {
 /// successful push does not guarantee delivery in case it was sent
 /// into the network. Just like with `write()`/`send()` system calls.
 #[inline]
-pub fn session_push<T>(value: &T) -> Result<()>
-where
-    T: ToTupleBuffer + ?Sized,
-{
-    let buf = value.to_tuple_buffer().unwrap();
-    let buf_ptr = buf.as_ptr() as *const c_char;
-    if unsafe { ffi::box_session_push(buf_ptr, buf_ptr.add(buf.len())) } < 0 {
+pub fn session_push(value: &TupleBuffer) -> Result<()> {
+    let buf_ptr = value.as_ptr() as *const c_char;
+    if unsafe { ffi::box_session_push(buf_ptr, buf_ptr.add(value.len())) } < 0 {
         Err(TarantoolError::last().into())
     } else {
         Ok(())
@@ -1401,19 +1399,11 @@ impl<'de> Decode<'de> for &'de RawBytes {
     }
 }
 
-impl ToTupleBuffer for RawBytes {
-    #[inline(always)]
-    fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
-        let data = &**self;
-        validate_msgpack(data)?;
-        w.write_all(data).map_err(Into::into)
-    }
+impl<'a> TryInto<TupleBuffer> for &'a RawBytes {
+    type Error = crate::error::Error;
 
-    #[inline(always)]
-    fn tuple_data(&self) -> Option<&[u8]> {
-        let data = &**self;
-        validate_msgpack(data).ok()?;
-        Some(data)
+    fn try_into(self) -> std::result::Result<TupleBuffer, Self::Error> {
+        TupleBuffer::try_from_vec(self.0.into())
     }
 }
 
@@ -1480,6 +1470,15 @@ impl Decode<'_> for RawByteBuf {
     fn decode(data: &[u8]) -> Result<Self> {
         // TODO: only read msgpack bytes
         Ok(Self(data.into()))
+    }
+}
+
+// TODO: try from instead
+impl TryInto<TupleBuffer> for RawByteBuf {
+    type Error = crate::error::Error;
+
+    fn try_into(self) -> std::result::Result<TupleBuffer, Self::Error> {
+        TupleBuffer::try_from_vec(self.0)
     }
 }
 
@@ -1722,11 +1721,11 @@ mod test {
 
         let key_def = index.meta().unwrap().to_key_def();
 
-        let tuple = Tuple::new(&["foo"]).unwrap();
+        let tuple = Tuple::new(&Tuple::encode_rmp(&["foo"]).unwrap()).unwrap();
         let e = key_def.extract_key(&tuple).unwrap_err();
         assert_eq!(e.to_string(), "box error: KeyPartType: Supplied key type of part 0 does not match index part type: expected unsigned");
 
-        let tuple = Tuple::new(&[1]).unwrap();
+        let tuple = Tuple::new(&Tuple::encode_rmp(&[1]).unwrap()).unwrap();
         let e = key_def.extract_key(&tuple).unwrap_err();
         // XXX: notice how this error message shows the 1-based index, but the
         // previous one showed the 0-based index. You can thank tarantool devs
@@ -1736,7 +1735,7 @@ mod test {
             "box error: FieldMissing: Tuple field [3] required by space format is missing"
         );
 
-        let tuple = Tuple::new(&(1, [1, 2, 3], "foo")).unwrap();
+        let tuple = Tuple::new(&Tuple::encode_rmp(&(1, [1, 2, 3], "foo")).unwrap()).unwrap();
         let e = key_def.extract_key(&tuple).unwrap_err();
         assert_eq!(
             e.to_string(),
@@ -1744,7 +1743,7 @@ mod test {
         );
 
         let raw_data = b"\x94\x69\x93\x01\x02\x03\xa3foo\x93\xc0\x81\xa6blabla\x42\x07"; // [0x69, [1, 2, 3], "foo", [null, {blabla: 0x42}, 7]]
-        let tuple = Tuple::new(RawBytes::new(raw_data)).unwrap();
+        let tuple = Tuple::new(&(RawBytes::new(raw_data).try_into().unwrap())).unwrap();
         let key = key_def.extract_key(&tuple).unwrap();
         assert_eq!(key.as_ref(), b"\x93\x69\xa3foo\x42"); // [0x69, "foo", 0x42]
 
@@ -1753,12 +1752,12 @@ mod test {
         // Even though the tuple doesn't actually satisfy the space's format,
         // the key def only know about the locations & types of the key parts,
         // so it doesn't care.
-        let tuple = Tuple::new(RawBytes::new(raw_data)).unwrap();
+        let tuple = Tuple::new(&(RawBytes::new(raw_data).try_into().unwrap())).unwrap();
         let key = key_def.extract_key(&tuple).unwrap();
         assert_eq!(key.as_ref(), b"\x93\x13\xa3bar\x37");
 
         // This tuple can't be inserted into the space.
-        let e = space.insert(&tuple).unwrap_err();
+        let e = space.insert(&tuple.to_tuple_buffer().unwrap()).unwrap_err();
         assert_eq!(e.to_string(), "box error: FieldType: Tuple field 2 (not-key) type does not match one required by operation: expected array, got string");
     }
 }

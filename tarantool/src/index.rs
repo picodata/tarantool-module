@@ -19,8 +19,7 @@ use crate::error::{Error, TarantoolError, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
 use crate::msgpack;
 use crate::space::{Space, SpaceId, SystemSpace};
-use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
-use crate::tuple::{KeyDef, KeyDefPart};
+use crate::tuple::{KeyDef, KeyDefPart, Tuple, TupleBuffer};
 use crate::tuple_from_box_api;
 use crate::unwrap_or;
 use crate::util::NumOrStr;
@@ -518,7 +517,7 @@ impl Index {
     #[inline]
     pub fn meta(&self) -> Result<Metadata, Error> {
         let sys_space: Space = SystemSpace::Index.into();
-        let tuple = sys_space.get(&[self.space_id, self.index_id])?;
+        let tuple = sys_space.get(&Tuple::encode_rmp(&[self.space_id, self.index_id])?)?;
         let Some(tuple) = tuple else {
             return Err(crate::error::BoxError::new(
                 TarantoolErrorCode::NoSuchIndexID,
@@ -546,17 +545,8 @@ impl Index {
     ///
     /// Returns a tuple or `None` if index is empty
     #[inline]
-    pub fn get<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-    {
-        let buf;
-        let data = unwrap_or!(key.tuple_data(), {
-            // TODO: use region allocation for this
-            buf = key.to_tuple_buffer()?;
-            buf.as_ref()
-        });
-        let Range { start, end } = data.as_ptr_range();
+    pub fn get(&self, key: &TupleBuffer) -> Result<Option<Tuple>, Error> {
+        let Range { start, end } = key.as_ref().as_ptr_range();
         tuple_from_box_api!(
             ffi::box_index_get[
                 self.space_id,
@@ -576,12 +566,12 @@ impl Index {
     /// - `type` - iterator type
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     #[inline]
-    pub fn select<K>(&self, iterator_type: IteratorType, key: &K) -> Result<IndexIterator, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-    {
-        let key_buf = key.to_tuple_buffer().unwrap();
-        let Range { start, end } = key_buf.as_ref().as_ptr_range();
+    pub fn select(
+        &self,
+        iterator_type: IteratorType,
+        key: &TupleBuffer,
+    ) -> Result<IndexIterator, Error> {
+        let Range { start, end } = key.as_ref().as_ptr_range();
 
         let ptr = unsafe {
             ffi::box_index_iterator(
@@ -599,7 +589,7 @@ impl Index {
 
         Ok(IndexIterator {
             ptr,
-            _key_data: key_buf,
+            _key_data: key.clone(),
         })
     }
 
@@ -612,17 +602,8 @@ impl Index {
     ///
     /// Returns the deleted tuple or `Ok(None)` if tuple was not found.
     #[inline]
-    pub fn delete<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-    {
-        let buf;
-        let data = unwrap_or!(key.tuple_data(), {
-            // TODO: use region allocation for this
-            buf = key.to_tuple_buffer()?;
-            buf.as_ref()
-        });
-        let Range { start, end } = data.as_ptr_range();
+    pub fn delete(&self, key: &TupleBuffer) -> Result<Option<Tuple>, Error> {
+        let Range { start, end } = key.as_ref().as_ptr_range();
         tuple_from_box_api!(
             ffi::box_delete[
                 self.space_id,
@@ -647,38 +628,14 @@ impl Index {
     /// See also: [index.upsert()](#method.upsert)
     // TODO(gmoshkin): accept a single Ops argument instead of a slice of ops
     #[inline]
-    pub fn update<K, Op>(&self, key: &K, ops: impl AsRef<[Op]>) -> Result<Option<Tuple>, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-        Op: ToTupleBuffer,
-    {
-        let key_buf;
-        let key_data = unwrap_or!(key.tuple_data(), {
-            // TODO: use region allocation for this
-            key_buf = key.to_tuple_buffer()?;
-            key_buf.as_ref()
-        });
+    pub fn update(
+        &self,
+        key: &TupleBuffer,
+        ops: impl AsRef<[TupleBuffer]>,
+    ) -> Result<Option<Tuple>, Error> {
         let mut ops_buf = Vec::with_capacity(4 + ops.as_ref().len() * 4);
         msgpack::write_array(&mut ops_buf, ops.as_ref())?;
-        unsafe { self.update_raw(key_data, ops_buf.as_ref()) }
-    }
-
-    /// # Safety
-    /// `ops` must be a slice of valid msgpack arrays.
-    #[deprecated = "use update_raw instead"]
-    pub unsafe fn update_mp<K>(&self, key: &K, ops: &[Vec<u8>]) -> Result<Option<Tuple>, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-    {
-        let key_buf;
-        let key_data = unwrap_or!(key.tuple_data(), {
-            // TODO: use region allocation for this
-            key_buf = key.to_tuple_buffer()?;
-            key_buf.as_ref()
-        });
-        let mut ops_buf = Vec::with_capacity(128);
-        msgpack::write_array(&mut ops_buf, ops)?;
-        self.update_raw(key_data, ops_buf.as_ref())
+        unsafe { self.update_raw(key.as_ref(), ops_buf.as_ref()) }
     }
 
     /// # Safety
@@ -709,38 +666,10 @@ impl Index {
     ///
     /// See also: [index.update()](#method.update)
     #[inline]
-    pub fn upsert<T, Op>(&self, value: &T, ops: impl AsRef<[Op]>) -> Result<(), Error>
-    where
-        T: ToTupleBuffer + ?Sized,
-        Op: ToTupleBuffer,
-    {
-        let value_buf;
-        let value_data = unwrap_or!(value.tuple_data(), {
-            // TODO: use region allocation for this
-            value_buf = value.to_tuple_buffer()?;
-            value_buf.as_ref()
-        });
+    pub fn upsert(&self, value: &TupleBuffer, ops: impl AsRef<[TupleBuffer]>) -> Result<(), Error> {
         let mut ops_buf = Vec::with_capacity(4 + ops.as_ref().len() * 4);
         msgpack::write_array(&mut ops_buf, ops.as_ref())?;
-        unsafe { self.upsert_raw(value_data, ops_buf.as_ref()) }
-    }
-
-    /// # Safety
-    /// `ops` must be a slice of valid msgpack arrays.
-    #[deprecated = "use upsert_raw instead"]
-    pub unsafe fn upsert_mp<T>(&self, value: &T, ops: &[Vec<u8>]) -> Result<(), Error>
-    where
-        T: ToTupleBuffer + ?Sized,
-    {
-        let value_buf;
-        let value_data = unwrap_or!(value.tuple_data(), {
-            // TODO: use region allocation for this
-            value_buf = value.to_tuple_buffer()?;
-            value_buf.as_ref()
-        });
-        let mut ops_buf = Vec::with_capacity(128);
-        msgpack::write_array(&mut ops_buf, ops)?;
-        self.upsert_raw(value_data, ops_buf.as_ref())
+        unsafe { self.upsert_raw(value.as_ref(), ops_buf.as_ref()) }
     }
 
     /// # Safety
@@ -817,17 +746,8 @@ impl Index {
     ///
     /// Returns a tuple or `None` if index is empty
     #[inline]
-    pub fn min<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-    {
-        let buf;
-        let data = unwrap_or!(key.tuple_data(), {
-            // TODO: use region allocation for this
-            buf = key.to_tuple_buffer()?;
-            buf.as_ref()
-        });
-        let Range { start, end } = data.as_ptr_range();
+    pub fn min(&self, key: &TupleBuffer) -> Result<Option<Tuple>, Error> {
+        let Range { start, end } = key.as_ref().as_ptr_range();
         tuple_from_box_api!(
             ffi::box_index_min[
                 self.space_id,
@@ -845,17 +765,8 @@ impl Index {
     ///
     /// Returns a tuple or `None` if index is empty
     #[inline]
-    pub fn max<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-    {
-        let buf;
-        let data = unwrap_or!(key.tuple_data(), {
-            // TODO: use region allocation for this
-            buf = key.to_tuple_buffer()?;
-            buf.as_ref()
-        });
-        let Range { start, end } = data.as_ptr_range();
+    pub fn max(&self, key: &TupleBuffer) -> Result<Option<Tuple>, Error> {
+        let Range { start, end } = key.as_ref().as_ptr_range();
         tuple_from_box_api!(
             ffi::box_index_max[
                 self.space_id,
@@ -872,17 +783,8 @@ impl Index {
     /// - `type` - iterator type
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     #[inline]
-    pub fn count<K>(&self, iterator_type: IteratorType, key: &K) -> Result<usize, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-    {
-        let buf;
-        let data = unwrap_or!(key.tuple_data(), {
-            // TODO: use region allocation for this
-            buf = key.to_tuple_buffer()?;
-            buf.as_ref()
-        });
-        let Range { start, end } = data.as_ptr_range();
+    pub fn count(&self, iterator_type: IteratorType, key: &TupleBuffer) -> Result<usize, Error> {
+        let Range { start, end } = key.as_ref().as_ptr_range();
         let result = unsafe {
             ffi::box_index_count(
                 self.space_id,
@@ -937,7 +839,6 @@ pub struct Metadata<'a> {
     pub opts: BTreeMap<Cow<'a, str>, Value<'a>>,
     pub parts: Vec<Part>,
 }
-impl Encode for Metadata<'_> {}
 
 #[derive(thiserror::Error, Debug)]
 #[error("field number expected, got string '{0}'")]
@@ -1143,22 +1044,22 @@ mod tests {
 
         assert!(key_def
             .compare_with_key(
-                &Tuple::new(&("foo", 13, "bar", 37)).unwrap(),
-                &("foo", 13, "bar", 37),
+                &Tuple::encode_rmp(&("foo", 13, "bar", 37)).unwrap(),
+                &Tuple::encode_rmp(&("foo", 13, "bar", 37)).unwrap(),
             )
             .is_eq());
 
         assert!(key_def
             .compare_with_key(
-                &Tuple::new(&("foo", 13, "bar", 37)).unwrap(),
-                &("foo", 14, "bar", 37),
+                &Tuple::encode_rmp(&("foo", 13, "bar", 37)).unwrap(),
+                &Tuple::encode_rmp(&("foo", 14, "bar", 37)).unwrap(),
             )
             .is_lt());
 
         assert!(key_def
             .compare_with_key(
-                &Tuple::new(&("foo", 13, "baz", 37)).unwrap(),
-                &("foo", 13, "bar", 37),
+                &Tuple::encode_rmp(&("foo", 13, "baz", 37)).unwrap(),
+                &Tuple::encode_rmp(&("foo", 13, "bar", 37)).unwrap(),
             )
             .is_gt());
 
@@ -1168,8 +1069,12 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     fn sys_index_metadata() {
         let sys_index = Space::from(SystemSpace::Index);
-        for tuple in sys_index.select(IteratorType::All, &()).unwrap() {
+        for tuple in sys_index
+            .select(IteratorType::All, &Tuple::encode_rmp(&()).unwrap())
+            .unwrap()
+        {
             // Check index metadata is deserializable from what is actually in _index
+            // TODO: also don't use decode
             let _meta: Metadata = tuple.decode().unwrap();
         }
     }

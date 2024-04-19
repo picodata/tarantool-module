@@ -52,7 +52,7 @@ use crate::fiber::r#async::oneshot;
 use crate::fiber::r#async::IntoOnDrop as _;
 use crate::fiber::FiberId;
 use crate::fiber::NoYieldsRefCell;
-use crate::tuple::{ToTupleBuffer, Tuple};
+use crate::tuple::{Tuple, TupleBuffer};
 use crate::unwrap_ok_or;
 
 use futures::{AsyncReadExt, AsyncWriteExt};
@@ -254,10 +254,7 @@ pub trait AsClient {
     /// `conn.call("func", &("1", "2", "3"))` is the remote-call equivalent of `func('1', '2', '3')`.
     /// That is, `conn.call` is a remote stored-procedure call.
     /// The return from `conn.call` is whatever the function returns.
-    async fn call<T>(&self, fn_name: &str, args: &T) -> Result<Tuple, ClientError>
-    where
-        T: ToTupleBuffer + ?Sized,
-    {
+    async fn call(&self, fn_name: &str, args: &TupleBuffer) -> Result<Tuple, ClientError> {
         self.send(&Call { fn_name, args }).await
     }
 
@@ -268,18 +265,16 @@ pub trait AsClient {
     ///
     /// To ensure that the return from `eval` is whatever the Lua expression returns, begin the Lua-string with the
     /// word `return`.
-    async fn eval<T>(&self, expr: &str, args: &T) -> Result<Tuple, ClientError>
-    where
-        T: ToTupleBuffer + ?Sized,
-    {
+    async fn eval(&self, expr: &str, args: &TupleBuffer) -> Result<Tuple, ClientError> {
         self.send(&Eval { args, expr }).await
     }
 
     /// Execute sql query remotely.
-    async fn execute<T>(&self, sql: &str, bind_params: &T) -> Result<Vec<Tuple>, ClientError>
-    where
-        T: ToTupleBuffer + ?Sized,
-    {
+    async fn execute(
+        &self,
+        sql: &str,
+        bind_params: &TupleBuffer,
+    ) -> Result<Vec<Tuple>, ClientError> {
         self.send(&Execute { sql, bind_params }).await
     }
 }
@@ -467,6 +462,7 @@ mod tests {
     use crate::fiber::r#async::timeout::IntoTimeout as _;
     use crate::space::Space;
     use crate::test::util::listen_port;
+    use std::convert::TryInto;
     use std::time::Duration;
 
     async fn test_client() -> Client {
@@ -521,11 +517,11 @@ mod tests {
     async fn execute() {
         Space::find("test_s1")
             .unwrap()
-            .insert(&(6001, "6001"))
+            .insert(&Tuple::encode_rmp(&(6001, "6001")).unwrap())
             .unwrap();
         Space::find("test_s1")
             .unwrap()
-            .insert(&(6002, "6002"))
+            .insert(&Tuple::encode_rmp(&(6002, "6002")).unwrap())
             .unwrap();
 
         let client = test_client().await;
@@ -535,14 +531,17 @@ mod tests {
         _ = lua.exec("require'compat'.sql_seq_scan_default = 'old'");
 
         let result = client
-            .execute(r#"SELECT * FROM "test_s1""#, &())
+            .execute(r#"SELECT * FROM "test_s1""#, &Tuple::encode_empty())
             .timeout(Duration::from_secs(3))
             .await
             .unwrap();
         assert!(result.len() >= 2);
 
         let result = client
-            .execute(r#"SELECT * FROM "test_s1" WHERE "id" = ?"#, &(6002,))
+            .execute(
+                r#"SELECT * FROM "test_s1" WHERE "id" = ?"#,
+                &Tuple::encode_rmp(&(6002,)).unwrap(),
+            )
             .timeout(Duration::from_secs(3))
             .await
             .unwrap();
@@ -559,7 +558,7 @@ mod tests {
         let client = test_client().await;
 
         let result = client
-            .call("test_stored_proc", &(1, 2))
+            .call("test_stored_proc", &Tuple::encode_rmp(&(1, 2)).unwrap())
             .timeout(Duration::from_secs(3))
             .await
             .unwrap();
@@ -571,7 +570,7 @@ mod tests {
         let client = test_client().await;
 
         let err = client
-            .call("unexistent_proc", &())
+            .call("unexistent_proc", &Tuple::encode_empty())
             .timeout(Duration::from_secs(3))
             .await
             .unwrap_err();
@@ -593,7 +592,7 @@ mod tests {
 
         // Ok result
         let result = client
-            .eval("return ...", &(1, 2))
+            .eval("return ...", &Tuple::encode_rmp(&(1, 2)).unwrap())
             .timeout(Duration::from_secs(3))
             .await
             .unwrap();
@@ -601,7 +600,7 @@ mod tests {
 
         // Error result
         let err = client
-            .eval("box.error(420)", &())
+            .eval("box.error(420)", &Tuple::encode_empty())
             .timeout(Duration::from_secs(3))
             .await
             .unwrap_err();
@@ -661,8 +660,11 @@ mod tests {
 
         // Even though we do a return without value,
         // error `ResponseDataNotFound` is never returned, the result is Ok(_) instead.
-        client.eval("return", &()).await.unwrap();
-        client.call("LUA", &("return",)).await.unwrap();
+        client.eval("return", &Tuple::encode_empty()).await.unwrap();
+        client
+            .call("LUA", &Tuple::encode_rmp(&("return",)).unwrap())
+            .await
+            .unwrap();
     }
 
     #[crate::test(tarantool = "crate")]
@@ -708,7 +710,7 @@ mod tests {
         };
 
         let t0 = std::time::Instant::now();
-        let t = client.call(&proc, &s).await.unwrap();
+        let t = client.call(&proc, &s.try_into().unwrap()).await.unwrap();
         dbg!(t0.elapsed());
 
         if let Ok((len,)) = t.decode::<(u32,)>() {
@@ -816,7 +818,7 @@ mod tests {
                 error2:set_prev(error3)
                 error1:set_prev(error2)
                 error1:raise()",
-                &(),
+                &Tuple::encode_empty(),
             )
             .timeout(Duration::from_secs(3))
             .await;
@@ -874,7 +876,7 @@ mod tests {
         let client = test_client().await;
 
         let res = client
-            .call(&proc, &())
+            .call(&proc, &Tuple::encode_empty())
             .timeout(Duration::from_secs(3))
             .await;
 

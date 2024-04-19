@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 use tarantool::fiber;
 use tarantool::index::IteratorType;
 use tarantool::space::Space;
-use tarantool::tuple;
+use tarantool::tuple::{self, Tuple};
 
 #[derive(Debug, Clone, ::serde::Deserialize, ::serde::Serialize)]
 struct Fruit {
@@ -115,14 +115,16 @@ fn start_server() {
                 Err(TryRecvError::Disconnected) => break,
                 Ok(Cmd::ListAll) => {
                     let fruit = space_fruit
-                        .select(IteratorType::All, &())
+                        .select(IteratorType::All, &Tuple::encode_empty())
                         .unwrap()
                         .map(|t| t.decode::<Fruit>().unwrap())
                         .collect();
                     fruit_tx.send(fruit).unwrap();
                 }
                 Ok(Cmd::AddAPieceOfFruit(single_fruit)) => {
-                    space_fruit.replace(&single_fruit).unwrap();
+                    space_fruit
+                        .replace(&Tuple::encode_rmp(single_fruit).unwrap())
+                        .unwrap();
                 }
             }
         }

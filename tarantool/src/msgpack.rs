@@ -1,4 +1,4 @@
-use super::tuple::ToTupleBuffer;
+use crate::tuple::TupleBuffer;
 use crate::unwrap_ok_or;
 use crate::Result;
 use std::io::Cursor;
@@ -137,10 +137,7 @@ pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
 }
 
 /// Write to `w` a msgpack array with values from `arr`.
-pub fn write_array<T>(w: &mut impl std::io::Write, arr: &[T]) -> Result<()>
-where
-    T: ToTupleBuffer,
-{
+pub fn write_array(w: &mut impl std::io::Write, arr: &[TupleBuffer]) -> Result<()> {
     rmp::encode::write_array_len(w, arr.len() as _)?;
     for elem in arr {
         elem.write_tuple_data(w)?;
@@ -254,10 +251,7 @@ where
 
     /// Push a type representable as a tarantool tuple.
     #[inline(always)]
-    pub fn push_tuple<T>(&mut self, v: &T) -> Result<()>
-    where
-        T: ToTupleBuffer + ?Sized,
-    {
+    pub fn push_tuple(&mut self, v: &TupleBuffer) -> Result<()> {
         v.write_tuple_data(&mut self.writer)?;
         self.len += 1;
         Ok(())
@@ -625,12 +619,15 @@ where
 
 #[cfg(test)]
 mod test {
+    use crate::tuple::Tuple;
+
     use super::*;
 
     #[test]
     fn array_writer() {
         let mut aw = ArrayWriter::from_vec(Vec::new());
-        aw.push_tuple(&(420, "foo")).unwrap();
+        aw.push_tuple(&Tuple::encode_rmp(&(420, "foo")).unwrap())
+            .unwrap();
         aw.push(&"bar").unwrap();
         aw.push_raw(b"\xa3baz").unwrap();
         let data = aw.finish().unwrap().into_inner();

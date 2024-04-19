@@ -167,6 +167,7 @@ mod tests {
     use crate::fiber;
     use crate::fiber::r#async::timeout::IntoTimeout as _;
     use crate::test::util::listen_port;
+    use crate::tuple::Tuple;
     use std::time::Duration;
 
     const _3_SEC: Duration = Duration::from_secs(3);
@@ -274,7 +275,10 @@ mod tests {
         fiber::block_on(async move {
             // reconnect will happen during this request
             let result = client
-                .eval("return _G.reconnect_test_chan:get()", &())
+                .eval(
+                    "return _G.reconnect_test_chan:get()",
+                    &Tuple::encode_empty(),
+                )
                 .await
                 .unwrap()
                 .decode::<(i32,)>()

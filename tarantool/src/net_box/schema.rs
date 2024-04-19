@@ -128,7 +128,7 @@ impl ConnSchema {
                 limit: u32::MAX,
                 offset: 0,
                 iterator_type: IteratorType::GT,
-                key: &(SYSTEM_ID_MAX,),
+                key: &Tuple::encode_rmp(&(SYSTEM_ID_MAX,))?,
             },
             &Options::default(),
         )?;
@@ -148,7 +148,7 @@ impl ConnSchema {
                 limit: u32::MAX,
                 offset: 0,
                 iterator_type: IteratorType::All,
-                key: &(),
+                key: &Tuple::encode_rmp(&())?,
             },
             &Options::default(),
         )

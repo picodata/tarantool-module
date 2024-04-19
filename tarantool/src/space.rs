@@ -9,7 +9,7 @@
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
 use crate::index::{Index, IndexIterator, IteratorType};
-use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
+use crate::tuple::{RawByteBuf, Tuple, TupleBuffer};
 use crate::unwrap_or;
 use crate::util::Value;
 use crate::{msgpack, tuple_from_box_api};
@@ -410,8 +410,6 @@ pub struct FuncMetadata {
     pub last_altered: String,
 }
 
-impl Encode for FuncMetadata {}
-
 #[derive(Clone, Debug, Serialize)]
 pub struct Privilege {
     pub grantor: u32,
@@ -420,8 +418,6 @@ pub struct Privilege {
     pub object_id: u32,
     pub privilege: u32,
 }
-
-impl Encode for Privilege {}
 
 struct SpaceCache {
     spaces: RefCell<HashMap<String, Space>>,
@@ -648,17 +644,8 @@ impl Space {
     ///
     /// See also: `box.space[space_id]:insert(tuple)`
     #[inline]
-    pub fn insert<T>(&self, value: &T) -> Result<Tuple, Error>
-    where
-        T: ToTupleBuffer + ?Sized,
-    {
-        let buf;
-        let data = unwrap_or!(value.tuple_data(), {
-            // TODO: use region allocation for this
-            buf = value.to_tuple_buffer()?;
-            buf.as_ref()
-        });
-        let Range { start, end } = data.as_ptr_range();
+    pub fn insert(&self, value: &TupleBuffer) -> Result<Tuple, Error> {
+        let Range { start, end } = value.data().as_ptr_range();
         tuple_from_box_api!(
             ffi::box_insert[
                 self.id,
@@ -682,17 +669,8 @@ impl Space {
     ///
     /// Returns a new tuple.
     #[inline]
-    pub fn replace<T>(&self, value: &T) -> Result<Tuple, Error>
-    where
-        T: ToTupleBuffer + ?Sized,
-    {
-        let buf;
-        let data = unwrap_or!(value.tuple_data(), {
-            // TODO: use region allocation for this
-            buf = value.to_tuple_buffer()?;
-            buf.as_ref()
-        });
-        let Range { start, end } = data.as_ptr_range();
+    pub fn replace(&self, value: &TupleBuffer) -> Result<Tuple, Error> {
+        let Range { start, end } = value.data().as_ptr_range();
         tuple_from_box_api!(
             ffi::box_replace[
                 self.id,
@@ -707,10 +685,7 @@ impl Space {
     /// Insert a tuple into a space. If a tuple with the same primary key already exists, it replaces the existing tuple
     /// with a new one. Alias for [space.replace()](#method.replace)
     #[inline(always)]
-    pub fn put<T>(&self, value: &T) -> Result<Tuple, Error>
-    where
-        T: ToTupleBuffer + ?Sized,
-    {
+    pub fn put(&self, value: &TupleBuffer) -> Result<Tuple, Error> {
         self.replace(value)
     }
 
@@ -752,10 +727,7 @@ impl Space {
 
     /// Search for a tuple in the given space.
     #[inline(always)]
-    pub fn get<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-    {
+    pub fn get(&self, key: &TupleBuffer) -> Result<Option<Tuple>, Error> {
         self.primary_key().get(key)
     }
 
@@ -765,10 +737,11 @@ impl Space {
     /// - `type` - iterator type
     /// - `key` - encoded key in the MsgPack Array format (`[part1, part2, ...]`).
     #[inline(always)]
-    pub fn select<K>(&self, iterator_type: IteratorType, key: &K) -> Result<IndexIterator, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-    {
+    pub fn select(
+        &self,
+        iterator_type: IteratorType,
+        key: &TupleBuffer,
+    ) -> Result<IndexIterator, Error> {
         self.primary_key().select(iterator_type, key)
     }
 
@@ -778,10 +751,7 @@ impl Space {
     /// - `type` - iterator type
     /// - `key` - encoded key in the MsgPack Array format (`[part1, part2, ...]`).
     #[inline(always)]
-    pub fn count<K>(&self, iterator_type: IteratorType, key: &K) -> Result<usize, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-    {
+    pub fn count(&self, iterator_type: IteratorType, key: &TupleBuffer) -> Result<usize, Error> {
         self.primary_key().count(iterator_type, key)
     }
 
@@ -792,10 +762,7 @@ impl Space {
     ///
     /// Returns the deleted tuple or `Ok(None)` if tuple was not found.
     #[inline(always)]
-    pub fn delete<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-    {
+    pub fn delete(&self, key: &TupleBuffer) -> Result<Option<Tuple>, Error> {
         self.primary_key().delete(key)
     }
 
@@ -821,33 +788,12 @@ impl Space {
     ///
     /// See also: [space.upsert()](#method.upsert)
     #[inline(always)]
-    pub fn update<K, Op>(&self, key: &K, ops: impl AsRef<[Op]>) -> Result<Option<Tuple>, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-        Op: ToTupleBuffer,
-    {
+    pub fn update(
+        &self,
+        key: &TupleBuffer,
+        ops: impl AsRef<[TupleBuffer]>,
+    ) -> Result<Option<Tuple>, Error> {
         self.primary_key().update(key, ops)
-    }
-
-    /// Update a tuple using `ops` already encoded in the message pack format.
-    ///
-    /// This function is similar to [`update`](#method.update) but instead
-    /// of a generic type parameter `Op` it accepts preencoded message pack
-    /// values. This is usefull when the operations have values of different
-    /// types.
-    ///
-    /// Returns a new tuple.
-    ///
-    /// # Safety
-    /// `ops` must be a slice of valid msgpack arrays.
-    #[inline(always)]
-    #[deprecated = "use update_raw instead"]
-    pub unsafe fn update_mp<K>(&self, key: &K, ops: &[Vec<u8>]) -> Result<Option<Tuple>, Error>
-    where
-        K: ToTupleBuffer + ?Sized,
-    {
-        #[allow(deprecated)]
-        self.primary_key().update_mp(key, ops)
     }
 
     /// Update a tuple using already encoded arguments.
@@ -879,31 +825,8 @@ impl Space {
     ///
     /// See also: [space.update()](#method.update)
     #[inline(always)]
-    pub fn upsert<T, Op>(&self, value: &T, ops: impl AsRef<[Op]>) -> Result<(), Error>
-    where
-        T: ToTupleBuffer + ?Sized,
-        Op: ToTupleBuffer,
-    {
+    pub fn upsert(&self, value: &TupleBuffer, ops: impl AsRef<[TupleBuffer]>) -> Result<(), Error> {
         self.primary_key().upsert(value, ops)
-    }
-
-    /// Upsert a tuple using `ops` already encoded in the message pack format.
-    ///
-    /// This function is similar to [`upsert`](#method.upsert) but instead
-    /// of a generic type parameter `Op` it accepts preencoded message pack
-    /// values. This is usefull when the operations have values of different
-    /// types.
-    ///
-    /// # Safety
-    /// `ops` must be a slice of valid msgpack arrays.
-    #[inline(always)]
-    #[deprecated = "use upsert_raw instead"]
-    pub unsafe fn upsert_mp<T>(&self, value: &T, ops: &[Vec<u8>]) -> Result<(), Error>
-    where
-        T: ToTupleBuffer + ?Sized,
-    {
-        #[allow(deprecated)]
-        self.primary_key().upsert_mp(value, ops)
     }
 
     /// Upsert a tuple using already encoded arguments.
@@ -925,7 +848,9 @@ impl Space {
     #[inline(always)]
     pub fn meta(&self) -> Result<Metadata, Error> {
         let sys_space: Space = SystemSpace::Space.into();
-        let tuple = sys_space.get(&(self.id,))?.ok_or(Error::MetaNotFound)?;
+        let tuple = sys_space
+            .get(&Tuple::encode_rmp(&(self.id,))?)?
+            .ok_or(Error::MetaNotFound)?;
         tuple.decode::<Metadata>()
     }
 }
@@ -945,7 +870,6 @@ pub struct Metadata<'a> {
     pub flags: BTreeMap<Cow<'a, str>, Value<'a>>,
     pub format: Vec<BTreeMap<Cow<'a, str>, Value<'a>>>,
 }
-impl Encode for Metadata<'_> {}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Builder
@@ -1122,13 +1046,14 @@ macro_rules! define_bin_ops {
                 K: Serialize,
                 V: Serialize,
             {
-                self.ops.push(($op_code, field, value).to_tuple_buffer()?);
+                self.ops.push(Tuple::encode_rmp(&($op_code, field, value))?);
                 Ok(self)
             }
         )+
     }
 }
 
+// TODO: refactor
 impl UpdateOps {
     #[inline]
     pub fn new() -> Self {
@@ -1199,11 +1124,10 @@ impl UpdateOps {
     /// Field indexing is zero based (first field has index 0).
     /// Negative indexes are offset from array's end (last field has index -1).
     #[inline]
-    pub fn delete<K>(&mut self, field: K, count: usize) -> crate::Result<&mut Self>
-    where
-        K: Serialize,
-    {
-        self.ops.push(('#', field, count).to_tuple_buffer()?);
+    pub fn delete<K>(&mut self, field: RawByteBuf, count: usize) -> crate::Result<&mut Self> {
+        let mut buf = vec![];
+        rmp_serde::encode::write(&mut buf, &('#', serde_bytes::ByteBuf::from(field.0), count))?;
+        self.ops.push(TupleBuffer::try_from_vec(buf)?);
         Ok(self)
     }
 
@@ -1213,18 +1137,25 @@ impl UpdateOps {
     /// Field indexing is zero based (first field has index 0).
     /// Negative indexes are offset from array's end (last field has index -1).
     #[inline]
-    pub fn splice<K>(
+    pub fn splice(
         &mut self,
-        field: K,
+        field: RawByteBuf,
         start: isize,
         count: usize,
         value: &str,
-    ) -> crate::Result<&mut Self>
-    where
-        K: Serialize,
-    {
-        self.ops
-            .push((':', field, start, count, value).to_tuple_buffer()?);
+    ) -> crate::Result<&mut Self> {
+        let mut buf = vec![];
+        rmp_serde::encode::write(
+            &mut buf,
+            &(
+                ':',
+                serde_bytes::ByteBuf::from(field.0),
+                start,
+                count,
+                value,
+            ),
+        )?;
+        self.ops.push(TupleBuffer::try_from_vec(buf)?);
         Ok(self)
     }
 
@@ -1249,7 +1180,7 @@ impl UpdateOps {
     pub fn encode_to(&self, w: &mut impl std::io::Write) -> crate::Result<()> {
         crate::msgpack::write_array_len(w, self.ops.len() as _)?;
         for op in &self.ops {
-            op.write_tuple_data(w)?;
+            w.write_all(op.as_ref())?;
         }
         Ok(())
     }
@@ -1383,6 +1314,8 @@ pub fn space_id_temporary_min() -> Option<SpaceId> {
 
 #[cfg(feature = "internal_test")]
 mod test {
+    use std::convert::TryInto;
+
     use super::*;
     use crate::tuple::RawBytes;
 
@@ -1391,8 +1324,13 @@ mod test {
         let space_name = crate::temp_space_name!();
         let space = Space::builder(&space_name).create().unwrap();
         space.index_builder("pk").create().unwrap();
-        space.insert(RawBytes::new(b"\x93*\xa3foo\xa3bar")).unwrap();
-        let t = space.get(&(42,)).unwrap().unwrap();
+        space
+            .insert(&RawBytes::new(b"\x93*\xa3foo\xa3bar").try_into().unwrap())
+            .unwrap();
+        let t = space
+            .get(&Tuple::encode_rmp(&(42,)).unwrap())
+            .unwrap()
+            .unwrap();
         let t: (u32, String, String) = t.decode().unwrap();
         assert_eq!(t, (42, "foo".to_owned(), "bar".to_owned()));
         space.drop().unwrap();
@@ -1401,7 +1339,10 @@ mod test {
     #[crate::test(tarantool = "crate")]
     fn sys_space_metadata() {
         let sys_space = Space::from(SystemSpace::Space);
-        for tuple in sys_space.select(IteratorType::All, &()).unwrap() {
+        for tuple in sys_space
+            .select(IteratorType::All, &Tuple::encode_rmp(&()).unwrap())
+            .unwrap()
+        {
             // Check space metadata is deserializable from what is actually in _space
             let _meta: Metadata = tuple.decode().unwrap();
         }
@@ -1417,11 +1358,16 @@ mod test {
         // it's the newer version of tarantool, which doesn't use it, or it's
         // an older version, which knows what to do when _schema.max_id is unset.
         //
-        sys_schema.delete(&["max_id"]).unwrap();
+        sys_schema
+            .delete(&Tuple::encode_rmp(&["max_id"]).unwrap())
+            .unwrap();
 
         let space = Space::builder(&crate::temp_space_name!()).create().unwrap();
         // Still no _schema.max_id
-        assert!(sys_schema.get(&["max_id"]).unwrap().is_none());
+        assert!(sys_schema
+            .get(&Tuple::encode_rmp(&["max_id"]).unwrap())
+            .unwrap()
+            .is_none());
         spaces.push(space);
 
         //
@@ -1429,7 +1375,7 @@ mod test {
         // tarantool doesn't care.
         //
         sys_schema
-            .put(&("max_id", "this is not a space id"))
+            .put(&Tuple::encode_rmp(&("max_id", "this is not a space id")).unwrap())
             .unwrap();
 
         let space = Space::builder(&crate::temp_space_name!()).create().unwrap();
@@ -1437,7 +1383,7 @@ mod test {
         assert_eq!(space.id(), spaces.last().unwrap().id() + 1);
         // Whatever was in _schema.max_id is still there.
         let not_max_id = sys_schema
-            .get(&["max_id"])
+            .get(&Tuple::encode_rmp(&["max_id"]).unwrap())
             .unwrap()
             .unwrap()
             .field::<String>(1)
@@ -1451,11 +1397,13 @@ mod test {
         // so as not to break space creation via lua on older versions.
         //
         let max_id_before = 0;
-        sys_schema.put(&("max_id", max_id_before)).unwrap();
+        sys_schema
+            .put(&Tuple::encode_rmp(&("max_id", max_id_before)).unwrap())
+            .unwrap();
 
         let space = Space::builder(&crate::temp_space_name!()).create().unwrap();
         let max_id = sys_schema
-            .get(&["max_id"])
+            .get(&Tuple::encode_rmp(&["max_id"]).unwrap())
             .unwrap()
             .unwrap()
             .field::<SpaceId>(1)
@@ -1472,11 +1420,11 @@ mod test {
         // we don't care.
         //
         let max_id_before = max_id + 13;
-        sys_schema.put(&("max_id", max_id_before)).unwrap();
+        sys_schema.put(&Tuple::encode_rmp(&("max_id", max_id_before)).unwrap());
 
         let space = Space::builder(&crate::temp_space_name!()).create().unwrap();
         let max_id = sys_schema
-            .get(&["max_id"])
+            .get(&Tuple::encode_rmp(&["max_id"]).unwrap())
             .unwrap()
             .unwrap()
             .field::<SpaceId>(1)
@@ -1501,7 +1449,7 @@ mod test {
                 .create()
                 .unwrap();
             let max_id = sys_schema
-                .get(&["max_id"])
+                .get(&Tuple::encode_rmp(&["max_id"]).unwrap())
                 .unwrap()
                 .unwrap()
                 .field::<SpaceId>(1)

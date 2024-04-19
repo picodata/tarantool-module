@@ -282,7 +282,7 @@ impl<L: AsLua> PushOneInto<L> for Vclock {}
 mod tests {
     use std::collections::HashMap;
 
-    use crate::lua_state;
+    use crate::{lua_state, tuple::Tuple};
 
     use super::*;
 
@@ -294,7 +294,7 @@ mod tests {
 
         let mut vc = Vclock::current();
 
-        space.insert(&(1,)).unwrap();
+        space.insert(&Tuple::encode_rmp(&(1,)).unwrap()).unwrap();
 
         vc.0.entry(1).and_modify(|v| *v += 1);
         assert_eq!(Vclock::current(), vc);
