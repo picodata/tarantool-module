@@ -1,6 +1,6 @@
 # Change Log
 
-# [4.0.1] Unreleased
+# [4.0.1] Apr 22 2024
 
 ### Fixed
 - Used to panic when implicitly converting a 64-bit integer to a `Decimal`
