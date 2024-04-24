@@ -9,6 +9,7 @@
 //! - [Lua reference: Submodule box.tuple](https://www.tarantool.io/en/doc/2.2/reference/reference_lua/box_tuple/)
 //! - [C API reference: Module tuple](https://www.tarantool.io/en/doc/2.2/dev_guide/reference_capi/tuple/)
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::convert::{TryFrom, TryInto};
 use std::ffi::{CStr, CString};
@@ -26,6 +27,210 @@ use crate::ffi::tarantool as ffi;
 use crate::index;
 use crate::tlua;
 use crate::util::NumOrStr;
+
+enum TupleInner {
+    Tuple(Tuple),
+    Buffer(TupleBuffer),
+}
+
+impl TupleInner {
+    pub fn tuple(&mut self) -> &Tuple {
+        match self {
+            Self::Tuple(tuple) => tuple,
+            Self::Buffer(buffer) => {
+                *self = Self::Tuple(Tuple::from(&*buffer));
+                let Self::Tuple(tuple) = self else {
+                    unreachable!();
+                };
+                tuple
+            }
+        }
+    }
+
+    pub fn buffer(&mut self) -> &TupleBuffer {
+        match self {
+            Self::Buffer(buffer) => buffer,
+            Self::Tuple(tuple) => {
+                *self = Self::Buffer(TupleBuffer::from(&*tuple));
+                let Self::Buffer(buffer) = self else {
+                    unreachable!();
+                };
+                buffer
+            }
+        }
+    }
+}
+
+pub struct _Tuple(RefCell<TupleInner>);
+
+impl _Tuple {
+    #[inline(always)]
+    pub unsafe fn from_raw_data(data: *mut c_char, len: u32) -> Self {
+        Tuple::from_raw_data(data, len).into()
+    }
+
+    /// # Safety
+    /// `data` must represent a valid messagepack array
+    #[inline(always)]
+    pub unsafe fn from_slice_unchecked(data: &[u8]) -> Self {
+        Tuple::from_slice(data).into()
+    }
+
+    #[inline]
+    pub fn try_from_slice(data: &[u8]) -> Result<Self> {
+        Tuple::try_from_slice(data).map(Into::into)
+    }
+
+    #[inline(always)]
+    pub fn from_ptr(ptr: NonNull<ffi::BoxTuple>) -> Self {
+        Tuple::from_ptr(ptr).into()
+    }
+
+    #[inline(always)]
+    pub fn try_from_ptr(ptr: *mut ffi::BoxTuple) -> Option<Self> {
+        Tuple::try_from_ptr(ptr).map(Into::into)
+    }
+
+    /// Return the number of fields in tuple (the size of MsgPack Array).
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        match &*self.0.borrow() {
+            TupleInner::Tuple(tuple) => tuple.len() as usize,
+            TupleInner::Buffer(buffer) => buffer.len(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        match &*self.0.borrow() {
+            TupleInner::Tuple(tuple) => tuple.is_empty(),
+            TupleInner::Buffer(buffer) => buffer.is_empty(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn bsize(&self) -> usize {
+        self.0.borrow_mut().tuple().bsize()
+    }
+
+    #[inline(always)]
+    pub fn format(&self) -> TupleFormat {
+        self.0.borrow_mut().tuple().format()
+    }
+
+    #[inline]
+    pub fn iter(&self) -> Result<TupleIterator> {
+        self.0.borrow_mut().tuple().iter()
+    }
+
+    // TODO: support custom msgpack
+    #[inline(always)]
+    pub fn field<'a, T>(&'a self, fieldno: u32) -> Result<Option<T>>
+    where
+        T: Decode<'a>,
+    {
+        // TODO: use raw ptr and asserts to get around borrow checker
+        self.0.borrow_mut().tuple().field(fieldno)
+    }
+
+    // TODO: support custom msgpack
+    #[inline(always)]
+    pub fn try_get<'a, I, T>(&'a self, key: I) -> Result<Option<T>>
+    where
+        I: TupleIndex,
+        T: Decode<'a>,
+    {
+        self.0.borrow_mut().tuple().try_get(key)
+    }
+
+    // TODO: support custom msgpack
+    #[inline(always)]
+    #[track_caller]
+    pub fn get<'a, I, T>(&'a self, key: I) -> Option<T>
+    where
+        I: TupleIndex,
+        T: Decode<'a>,
+    {
+        self.0.borrow_mut().tuple().get(key)
+    }
+
+    #[inline]
+    pub fn decode_rmp<T>(&self) -> Result<T>
+    where
+        T: DecodeOwned,
+    {
+        Decode::decode(self.0.borrow_mut().buffer().as_ref())
+    }
+
+    #[inline]
+    pub fn decode_custom<T>(&self) -> Result<T>
+    where
+        T: crate::msgpack::Decode,
+    {
+        crate::msgpack::decode(self.0.borrow_mut().buffer().as_ref()).map_err(Into::into)
+    }
+
+    /// Get tuple contents as a vector of raw bytes.
+    ///
+    /// Returns tuple bytes in msgpack encoding.
+    #[inline]
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.0.borrow_mut().buffer().0.clone()
+    }
+
+    #[inline(always)]
+    pub(crate) fn into_ptr(self) -> *mut ffi::BoxTuple {
+        self.0.borrow_mut().tuple().ptr.as_ptr()
+    }
+
+    #[inline]
+    pub fn try_from_vec(data: Vec<u8>) -> Result<Self> {
+        let data = validate_msgpack(data)?;
+        unsafe { Ok(Self::from_vec_unchecked(data)) }
+    }
+
+    /// # Safety
+    /// `buf` must be a valid message pack array
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn from_vec_unchecked(buf: Vec<u8>) -> Self {
+        TupleBuffer::from_vec_unchecked(buf).into()
+    }
+
+    #[inline]
+    pub fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
+        w.write_all(self.0.borrow_mut().buffer().as_ref())
+            .map_err(Into::into)
+    }
+
+    pub fn encode_rmp<T: Serialize>(data: T) -> Result<Self> {
+        let data = rmp_serde::encode::to_vec(&data)?;
+        let buf = TupleBuffer::try_from_vec(data)?;
+        Ok(buf.into())
+    }
+
+    pub fn encode_custom<T: crate::msgpack::Encode>(data: T) -> Result<Self> {
+        let data = crate::msgpack::encode::encode(&data);
+        let buf = TupleBuffer::try_from_vec(data)?;
+        Ok(buf.into())
+    }
+
+    pub fn encode_empty() -> Self {
+        Self::encode_rmp(()).unwrap()
+    }
+}
+
+impl From<Tuple> for _Tuple {
+    fn from(value: Tuple) -> Self {
+        Self(RefCell::new(TupleInner::Tuple(value)))
+    }
+}
+
+impl From<TupleBuffer> for _Tuple {
+    fn from(value: TupleBuffer) -> Self {
+        Self(RefCell::new(TupleInner::Buffer(value)))
+    }
+}
 
 /// Tuple
 pub struct Tuple {
