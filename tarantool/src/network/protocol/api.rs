@@ -4,7 +4,7 @@ use crate::error::Error;
 use crate::index::IndexId;
 use crate::index::IteratorType;
 use crate::space::SpaceId;
-use crate::tuple::{Tuple, TupleBuffer};
+use crate::tuple::Tuple;
 
 use super::codec::IProtoType;
 use super::{codec, SyncIndex};
@@ -50,7 +50,7 @@ impl Request for Ping {
 
 pub struct Call<'a, 'b> {
     pub fn_name: &'a str,
-    pub args: &'b TupleBuffer,
+    pub args: &'b Tuple,
 }
 
 impl<'a, 'b> Request for Call<'a, 'b> {
@@ -70,7 +70,7 @@ impl<'a, 'b> Request for Call<'a, 'b> {
 
 pub struct Eval<'a, 'b> {
     pub expr: &'a str,
-    pub args: &'b TupleBuffer,
+    pub args: &'b Tuple,
 }
 
 impl<'a, 'b> Request for Eval<'a, 'b> {
@@ -90,7 +90,7 @@ impl<'a, 'b> Request for Eval<'a, 'b> {
 
 pub struct Execute<'a, 'b> {
     pub sql: &'a str,
-    pub bind_params: &'b TupleBuffer,
+    pub bind_params: &'b Tuple,
 }
 
 impl<'a, 'b> Request for Execute<'a, 'b> {
@@ -136,7 +136,7 @@ pub struct Select<'a> {
     pub limit: u32,
     pub offset: u32,
     pub iterator_type: IteratorType,
-    pub key: &'a TupleBuffer,
+    pub key: &'a Tuple,
 }
 
 impl<'a> Request for Select<'a> {
@@ -164,7 +164,7 @@ impl<'a> Request for Select<'a> {
 
 pub struct Insert<'a> {
     pub space_id: SpaceId,
-    pub value: &'a TupleBuffer,
+    pub value: &'a Tuple,
 }
 
 impl<'a> Request for Insert<'a> {
@@ -185,7 +185,7 @@ impl<'a> Request for Insert<'a> {
 
 pub struct Replace<'a> {
     pub space_id: SpaceId,
-    pub value: &'a TupleBuffer,
+    pub value: &'a Tuple,
 }
 
 impl<'a> Request for Replace<'a> {
@@ -207,8 +207,8 @@ impl<'a> Request for Replace<'a> {
 pub struct Update<'a> {
     pub space_id: SpaceId,
     pub index_id: IndexId,
-    pub key: &'a TupleBuffer,
-    pub ops: &'a TupleBuffer,
+    pub key: &'a Tuple,
+    pub ops: &'a Tuple,
 }
 
 impl<'a> Request for Update<'a> {
@@ -230,8 +230,8 @@ impl<'a> Request for Update<'a> {
 pub struct Upsert<'a> {
     pub space_id: SpaceId,
     pub index_id: IndexId,
-    pub value: &'a TupleBuffer,
-    pub ops: &'a TupleBuffer,
+    pub value: &'a Tuple,
+    pub ops: &'a Tuple,
 }
 
 impl<'a> Request for Upsert<'a> {
@@ -253,7 +253,7 @@ impl<'a> Request for Upsert<'a> {
 pub struct Delete<'a> {
     pub space_id: SpaceId,
     pub index_id: IndexId,
-    pub key: &'a TupleBuffer,
+    pub key: &'a Tuple,
 }
 
 impl<'a> Request for Delete<'a> {

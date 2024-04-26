@@ -22,6 +22,6 @@ fn read() {
     let result = space.get(&Tuple::encode_rmp(&(key,)).unwrap()).unwrap();
     assert!(result.is_some());
 
-    let result = result.unwrap().decode::<Row>().unwrap();
+    let result = result.unwrap().decode_rmp::<Row>().unwrap();
     println!("value={:?}", result);
 }

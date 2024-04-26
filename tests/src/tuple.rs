@@ -15,7 +15,7 @@ pub fn tuple_new_from_struct() {
         id: 1,
         text: "text".to_string(),
     };
-    assert!(Tuple::new(&input).is_ok());
+    assert!(Tuple::encode_rmp(&input).is_ok());
 }
 
 pub fn new_tuple_from_flatten_struct() {
@@ -37,7 +37,7 @@ pub fn new_tuple_from_flatten_struct() {
         emb: Embedded { b: 2, c: 3 },
     };
     assert_eq!(
-        Tuple::new(&input).unwrap_err().to_string(),
+        Tuple::encode_rmp(&input).unwrap_err().to_string(),
         concat![
             "failed to encode tuple: invalid msgpack value (epxected array, found Map([",
             r#"(String(Utf8String { s: Ok("a") }), Integer(PosInt(1))), "#,
@@ -59,7 +59,7 @@ pub fn tuple_buffer_from_vec_fail() {
 
 pub fn tuple_field_count() {
     // struct -> tuple
-    let tuple = Tuple::new(&S2Record {
+    let tuple = Tuple::encode_rmp(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -70,20 +70,21 @@ pub fn tuple_field_count() {
     assert_eq!(tuple.len(), 5);
 
     // empty tuple
-    let tuple = Tuple::new(&()).unwrap();
+    let tuple = Tuple::encode_rmp(&()).unwrap();
     assert_eq!(tuple.len(), 0);
 
     // tuple w/ single field
-    let tuple = Tuple::new(&(0,)).unwrap();
+    let tuple = Tuple::encode_rmp(&(0,)).unwrap();
     assert_eq!(tuple.len(), 1);
 
     // very long tuple
-    let tuple = Tuple::new(&(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)).unwrap();
+    let tuple =
+        Tuple::encode_rmp(&(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)).unwrap();
     assert_eq!(tuple.len(), 16);
 }
 
 pub fn tuple_size() {
-    let tuple = Tuple::new(&S2Record {
+    let tuple = Tuple::encode_rmp(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -104,8 +105,8 @@ pub fn tuple_decode() {
     };
 
     // 1:1 decode
-    let tuple = Tuple::new(&input).unwrap();
-    let output: S2Record = tuple.decode().unwrap();
+    let tuple = Tuple::encode_rmp(&input).unwrap();
+    let output: S2Record = tuple.decode_rmp().unwrap();
     assert_eq!(output, input);
 
     // partial decode (with trimming trailing fields) - does not work since rpm_serde 1.1
@@ -116,17 +117,17 @@ pub fn tuple_decode() {
 
 #[allow(clippy::redundant_clone)]
 pub fn tuple_clone() {
-    let tuple_2 = Tuple::new(&S1Record {
+    let tuple_2 = Tuple::encode_rmp(&S1Record {
         id: 1,
         text: "text".to_string(),
     })
     .unwrap();
     let tuple_1 = tuple_2.clone();
-    assert!(tuple_1.decode::<S1Record>().is_ok());
+    assert!(tuple_1.decode_rmp::<S1Record>().is_ok());
 }
 
 pub fn tuple_iterator() {
-    let tuple = Tuple::new(&S1Record {
+    let tuple = Tuple::encode_rmp(&S1Record {
         id: 1,
         text: "text".to_string(),
     })
@@ -139,7 +140,7 @@ pub fn tuple_iterator() {
 }
 
 pub fn tuple_iterator_seek_rewind() {
-    let tuple = Tuple::new(&S2Record {
+    let tuple = Tuple::encode_rmp(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -159,7 +160,7 @@ pub fn tuple_iterator_seek_rewind() {
 }
 
 pub fn tuple_get_format() {
-    let tuple = Tuple::new(&S1Record {
+    let tuple = Tuple::encode_rmp(&S1Record {
         id: 1,
         text: "text".to_string(),
     })
@@ -168,7 +169,7 @@ pub fn tuple_get_format() {
 }
 
 pub fn tuple_get_field() {
-    let tuple = Tuple::new(&S2Record {
+    let tuple = Tuple::encode_rmp(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -195,7 +196,10 @@ pub fn tuple_get_field() {
 pub fn tuple_get_field_path() {
     let space = tarantool::space::Space::find("test_s2").unwrap();
     let idx_1 = space.index("idx_1").unwrap();
-    let tuple = idx_1.get(&("key_16",)).unwrap().unwrap();
+    let tuple = idx_1
+        .get(&Tuple::encode_rmp(&("key_16",)).unwrap())
+        .unwrap()
+        .unwrap();
     assert_eq!(tuple.get("key"), Some("key_16".to_string()));
     assert_eq!(tuple.get("id"), Some(16));
     assert_eq!(tuple.get("value"), Some("value_16".to_string()));
@@ -204,7 +208,10 @@ pub fn tuple_get_field_path() {
 
     let space = tarantool::space::Space::find("with_array").unwrap();
     let idx = space.index("pk").unwrap();
-    let tuple = idx.get(&(1,)).unwrap().unwrap();
+    let tuple = idx
+        .get(&Tuple::encode_rmp(&(1,)).unwrap())
+        .unwrap()
+        .unwrap();
     assert_eq!(tuple.get("array[0]"), None::<()>);
     assert_eq!(tuple.get("array[1]"), Some(1));
     assert_eq!(tuple.get("array[2]"), Some(2));
@@ -212,7 +219,10 @@ pub fn tuple_get_field_path() {
     assert_eq!(tuple.get("array[4]"), None::<()>);
     assert_eq!(tuple.get("array"), Some(vec![1, 2, 3]));
 
-    let tuple = idx.get(&(2,)).unwrap().unwrap();
+    let tuple = idx
+        .get(&Tuple::encode_rmp(&(2,)).unwrap())
+        .unwrap()
+        .unwrap();
     assert_eq!(tuple.get("array[1]"), Some("foo".to_string()));
     assert_eq!(tuple.get("array[2][1]"), Some("bar".to_string()));
     assert_eq!(tuple.get("array[2][2][1]"), Some(69));
@@ -235,7 +245,7 @@ pub fn tuple_get_field_path() {
 }
 
 pub fn tuple_compare() {
-    let tuple_a = Tuple::new(&S2Record {
+    let tuple_a = Tuple::encode_rmp(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -244,7 +254,7 @@ pub fn tuple_compare() {
     })
     .unwrap();
 
-    let tuple_b = Tuple::new(&S2Record {
+    let tuple_b = Tuple::encode_rmp(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -269,7 +279,7 @@ pub fn tuple_compare() {
 }
 
 pub fn tuple_compare_with_key() {
-    let tuple = Tuple::new(&S2Record {
+    let tuple = Tuple::encode_rmp(&S2Record {
         id: 0x1d,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -282,7 +292,10 @@ pub fn tuple_compare_with_key() {
     let index = space.index("primary").unwrap();
     let meta = index.meta().unwrap();
     let key_def = meta.to_key_def();
-    assert_eq!(key_def.compare_with_key(&tuple, &[0x1d]), Ordering::Equal);
+    assert_eq!(
+        key_def.compare_with_key(&tuple, &Tuple::encode_rmp(&[0x1d]).unwrap()),
+        Ordering::Equal
+    );
 
     let key_def = KeyDef::new([
         &KeyDefPart {
@@ -305,16 +318,17 @@ pub fn tuple_compare_with_key() {
     assert_eq!(
         key_def.compare_with_key(
             &tuple,
-            &S2Key {
+            &Tuple::encode_rmp(&S2Key {
                 id: 0x1d,
                 a: 3,
                 b: 4
-            }
+            })
+            .unwrap()
         ),
         Ordering::Less
     );
 
-    let key = Tuple::new(&S2Key { id: 3, a: 1, b: 4 }).unwrap();
+    let key = Tuple::encode_rmp(&S2Key { id: 3, a: 1, b: 4 }).unwrap();
     let key_def = KeyDef::new([
         &KeyDefPart {
             field_no: 0,
@@ -338,7 +352,7 @@ pub fn tuple_compare_with_key() {
 
 pub fn to_and_from_lua() {
     let svp = unsafe { ffi::box_region_used() };
-    let tuple = Tuple::new(&S2Record {
+    let tuple = Tuple::encode_rmp(&S2Record {
         id: 42,
         key: "hello".into(),
         value: "nice".into(),
@@ -353,13 +367,13 @@ pub fn to_and_from_lua() {
     let tuple: Tuple = lua
         .eval("return box.tuple.new{ 1, 3.14, 'hello', { 10, 20, 30 } }")
         .unwrap();
-    let data: (u32, f64, String, [u32; 3]) = tuple.decode().unwrap();
+    let data: (u32, f64, String, [u32; 3]) = tuple.decode_rmp().unwrap();
     assert_eq!(data, (1, 3.14, "hello".to_string(), [10, 20, 30]));
 
     let tuple: Tuple = lua
         .eval("return { 1, 3.14, 'hello', { 10, 20, 30 } }")
         .unwrap();
-    let data: (u32, f64, String, [u32; 3]) = tuple.decode().unwrap();
+    let data: (u32, f64, String, [u32; 3]) = tuple.decode_rmp().unwrap();
     assert_eq!(data, (1, 3.14, "hello".to_string(), [10, 20, 30]));
 
     let tuple_in_lua: Indexable<_> = lua.get("to_and_from_lua").unwrap();
@@ -371,7 +385,7 @@ pub fn to_and_from_lua() {
     drop(tuple_in_lua);
 
     let tuple: Tuple = lua.get("to_and_from_lua").unwrap();
-    let res = tuple.decode::<S2Record>().unwrap();
+    let res = tuple.decode_rmp::<S2Record>().unwrap();
     assert_eq!(
         res,
         S2Record {
@@ -384,7 +398,10 @@ pub fn to_and_from_lua() {
     );
 
     // check PushInto
-    lua.set("to_and_from_lua", Tuple::new(&[420, 69, 1337]).unwrap());
+    lua.set(
+        "to_and_from_lua",
+        Tuple::encode_rmp(&[420, 69, 1337]).unwrap(),
+    );
     let res: Indexable<_> = lua.get("to_and_from_lua").unwrap();
     assert_eq!(res.get(1), Some(420));
     assert_eq!(res.get(2), Some(69));
@@ -396,7 +413,7 @@ pub fn to_and_from_lua() {
 }
 
 pub fn tuple_debug_fmt() {
-    let tuple = Tuple::new(&S2Record {
+    let tuple = Tuple::encode_rmp(&S2Record {
         id: 42,
         key: "hello".into(),
         value: "nice".into(),
@@ -410,17 +427,16 @@ pub fn tuple_debug_fmt() {
         r#"Tuple(Array([Integer(PosInt(42)), String(Utf8String { s: Ok("hello") }), String(Utf8String { s: Ok("nice") }), Integer(PosInt(420)), Integer(PosInt(69))]))"#
     );
 
-    let tuple = Tuple::new(&(1, true, "foo")).unwrap();
-    let buf = TupleBuffer::from(tuple);
+    let tuple = Tuple::encode_rmp(&(1, true, "foo")).unwrap();
 
     assert_eq!(
-        format!("{:?}", buf),
+        format!("{:?}", tuple),
         r#"TupleBuffer(Array([Integer(PosInt(1)), Boolean(true), String(Utf8String { s: Ok("foo") })]))"#
     );
 }
 
 pub fn raw_bytes() {
-    let tuple = Tuple::new(&(1, (2, ("test", [3, 1, 4])), 3)).unwrap();
+    let tuple = Tuple::encode_rmp(&(1, (2, ("test", [3, 1, 4])), 3)).unwrap();
     let bytes: &RawBytes = tuple.field(1).unwrap().unwrap();
     let field: (u32, (&str, [u32; 3])) = rmp_serde::from_slice(bytes).unwrap();
     assert_eq!(field, (2, ("test", [3, 1, 4])));

@@ -9,7 +9,7 @@ use crate::error::TarantoolError;
 use crate::index::IteratorType;
 use crate::msgpack;
 use crate::network::protocol::ProtocolError;
-use crate::tuple::{Tuple, TupleBuffer};
+use crate::tuple::Tuple;
 
 use super::SyncIndex;
 
@@ -182,7 +182,7 @@ pub fn encode_ping(stream: &mut impl Write) -> Result<(), Error> {
 pub fn encode_execute(
     stream: &mut impl Write,
     sql: &str,
-    bind_params: &TupleBuffer,
+    bind_params: &Tuple,
 ) -> Result<(), Error> {
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, SQL_TEXT)?;
@@ -196,7 +196,7 @@ pub fn encode_execute(
 pub fn encode_call(
     stream: &mut impl Write,
     function_name: &str,
-    args: &TupleBuffer,
+    args: &Tuple,
 ) -> Result<(), Error> {
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, FUNCTION_NAME)?;
@@ -206,11 +206,7 @@ pub fn encode_call(
     Ok(())
 }
 
-pub fn encode_eval(
-    stream: &mut impl Write,
-    expression: &str,
-    args: &TupleBuffer,
-) -> Result<(), Error> {
+pub fn encode_eval(stream: &mut impl Write, expression: &str, args: &Tuple) -> Result<(), Error> {
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, EXPR)?;
     rmp::encode::write_str(stream, expression)?;
@@ -227,7 +223,7 @@ pub fn encode_select(
     limit: u32,
     offset: u32,
     iterator_type: IteratorType,
-    key: &TupleBuffer,
+    key: &Tuple,
 ) -> Result<(), Error> {
     rmp::encode::write_map_len(stream, 6)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;
@@ -245,11 +241,7 @@ pub fn encode_select(
     Ok(())
 }
 
-pub fn encode_insert(
-    stream: &mut impl Write,
-    space_id: u32,
-    value: &TupleBuffer,
-) -> Result<(), Error> {
+pub fn encode_insert(stream: &mut impl Write, space_id: u32, value: &Tuple) -> Result<(), Error> {
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;
     rmp::encode::write_u32(stream, space_id)?;
@@ -258,11 +250,7 @@ pub fn encode_insert(
     Ok(())
 }
 
-pub fn encode_replace(
-    stream: &mut impl Write,
-    space_id: u32,
-    value: &TupleBuffer,
-) -> Result<(), Error> {
+pub fn encode_replace(stream: &mut impl Write, space_id: u32, value: &Tuple) -> Result<(), Error> {
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;
     rmp::encode::write_u32(stream, space_id)?;
@@ -275,8 +263,8 @@ pub fn encode_update(
     stream: &mut impl Write,
     space_id: u32,
     index_id: u32,
-    key: &TupleBuffer,
-    ops: &TupleBuffer,
+    key: &Tuple,
+    ops: &Tuple,
 ) -> Result<(), Error> {
     rmp::encode::write_map_len(stream, 4)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;
@@ -294,8 +282,8 @@ pub fn encode_upsert(
     stream: &mut impl Write,
     space_id: u32,
     index_id: u32,
-    value: &TupleBuffer,
-    ops: &TupleBuffer,
+    value: &Tuple,
+    ops: &Tuple,
 ) -> Result<(), Error> {
     rmp::encode::write_map_len(stream, 4)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;
@@ -313,7 +301,7 @@ pub fn encode_delete(
     stream: &mut impl Write,
     space_id: u32,
     index_id: u32,
-    key: &TupleBuffer,
+    key: &Tuple,
 ) -> Result<(), Error> {
     rmp::encode::write_map_len(stream, 3)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;

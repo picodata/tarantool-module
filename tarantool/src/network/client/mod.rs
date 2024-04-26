@@ -52,7 +52,7 @@ use crate::fiber::r#async::oneshot;
 use crate::fiber::r#async::IntoOnDrop as _;
 use crate::fiber::FiberId;
 use crate::fiber::NoYieldsRefCell;
-use crate::tuple::{Tuple, TupleBuffer};
+use crate::tuple::Tuple;
 use crate::unwrap_ok_or;
 
 use futures::{AsyncReadExt, AsyncWriteExt};
@@ -254,7 +254,7 @@ pub trait AsClient {
     /// `conn.call("func", &("1", "2", "3"))` is the remote-call equivalent of `func('1', '2', '3')`.
     /// That is, `conn.call` is a remote stored-procedure call.
     /// The return from `conn.call` is whatever the function returns.
-    async fn call(&self, fn_name: &str, args: &TupleBuffer) -> Result<Tuple, ClientError> {
+    async fn call(&self, fn_name: &str, args: &Tuple) -> Result<Tuple, ClientError> {
         self.send(&Call { fn_name, args }).await
     }
 
@@ -265,16 +265,12 @@ pub trait AsClient {
     ///
     /// To ensure that the return from `eval` is whatever the Lua expression returns, begin the Lua-string with the
     /// word `return`.
-    async fn eval(&self, expr: &str, args: &TupleBuffer) -> Result<Tuple, ClientError> {
+    async fn eval(&self, expr: &str, args: &Tuple) -> Result<Tuple, ClientError> {
         self.send(&Eval { args, expr }).await
     }
 
     /// Execute sql query remotely.
-    async fn execute(
-        &self,
-        sql: &str,
-        bind_params: &TupleBuffer,
-    ) -> Result<Vec<Tuple>, ClientError> {
+    async fn execute(&self, sql: &str, bind_params: &Tuple) -> Result<Vec<Tuple>, ClientError> {
         self.send(&Execute { sql, bind_params }).await
     }
 }
@@ -548,7 +544,11 @@ mod tests {
 
         assert_eq!(result.len(), 1);
         assert_eq!(
-            result.first().unwrap().decode::<(u64, String)>().unwrap(),
+            result
+                .first()
+                .unwrap()
+                .decode_rmp::<(u64, String)>()
+                .unwrap(),
             (6002, "6002".into())
         );
     }
@@ -562,7 +562,7 @@ mod tests {
             .timeout(Duration::from_secs(3))
             .await
             .unwrap();
-        assert_eq!(result.decode::<(i32,)>().unwrap(), (3,));
+        assert_eq!(result.decode_rmp::<(i32,)>().unwrap(), (3,));
     }
 
     #[crate::test(tarantool = "crate")]
@@ -596,7 +596,7 @@ mod tests {
             .timeout(Duration::from_secs(3))
             .await
             .unwrap();
-        assert_eq!(result.decode::<(i32, i32)>().unwrap(), (1, 2));
+        assert_eq!(result.decode_rmp::<(i32, i32)>().unwrap(), (1, 2));
 
         // Error result
         let err = client
@@ -713,10 +713,10 @@ mod tests {
         let t = client.call(&proc, &s.try_into().unwrap()).await.unwrap();
         dbg!(t0.elapsed());
 
-        if let Ok((len,)) = t.decode::<(u32,)>() {
+        if let Ok((len,)) = t.decode_rmp::<(u32,)>() {
             assert_eq!(len, N + 17);
         } else {
-            let ((len,),): ((u32,),) = t.decode().unwrap();
+            let ((len,),): ((u32,),) = t.decode_rmp().unwrap();
             assert_eq!(len, N + 17);
         }
     }

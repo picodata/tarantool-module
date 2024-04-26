@@ -33,7 +33,10 @@ pub fn space_cache_invalidated() {
 
     // `space` is invalid due to stale cache
     let space = Space::find_cached(SPACE_NAME).unwrap();
-    let msg = space.get(&[1]).unwrap_err().to_string();
+    let msg = space
+        .get(&Tuple::encode_rmp(&[1]).unwrap())
+        .unwrap_err()
+        .to_string();
     const HEAD: &str = "box error: NoSuchSpace: Space '";
     const TAIL: &str = "' does not exist";
     assert_eq!(&msg[..HEAD.len()], HEAD);
@@ -73,7 +76,10 @@ pub fn index_cache_invalidated() {
     // `index` is invalid due to stale cache
     let index = space.index_cached(INDEX_NAME).unwrap();
     assert_eq!(
-        index.get(&[1]).unwrap_err().to_string(),
+        index
+            .get(&Tuple::encode_rmp(&[1]).unwrap())
+            .unwrap_err()
+            .to_string(),
         format!("box error: NoSuchIndexID: No index #0 is defined in space '{SPACE_NAME}'")
     );
 
@@ -86,10 +92,12 @@ pub fn get() {
     let space = Space::find("test_s2").unwrap();
 
     let idx_1 = space.index("idx_1").unwrap();
-    let output = idx_1.get(&("key_16".to_string(),)).unwrap();
+    let output = idx_1
+        .get(&Tuple::encode_rmp(&("key_16".to_string(),).unwrap()))
+        .unwrap();
     assert!(output.is_some());
     assert_eq!(
-        output.unwrap().decode::<S2Record>().unwrap(),
+        output.unwrap().decode_rmp::<S2Record>().unwrap(),
         S2Record {
             id: 16,
             key: "key_16".to_string(),
@@ -100,7 +108,9 @@ pub fn get() {
     );
 
     let idx_2 = space.index("idx_2").unwrap();
-    let output = idx_2.get(&S2Key { id: 17, a: 2, b: 3 }).unwrap();
+    let output = idx_2
+        .get(&Tuple::encode_rmp(&S2Key { id: 17, a: 2, b: 3 }).unwrap())
+        .unwrap();
     assert!(output.is_some());
     assert_eq!(
         output.unwrap().decode::<S2Record>().unwrap(),
@@ -118,9 +128,9 @@ pub fn select() {
     let space = Space::find("test_s2").unwrap();
     let result: Vec<S2Record> = space
         .primary_key()
-        .select(IteratorType::LE, &(5,))
+        .select(IteratorType::LE, &Tuple::encode_rmp(&(5,)).unwrap())
         .unwrap()
-        .map(|x| x.decode().unwrap())
+        .map(|x| x.decode_rmp().unwrap())
         .collect();
     assert_eq!(
         result,
@@ -165,9 +175,9 @@ pub fn select() {
 
     let idx = space.index("idx_3").unwrap();
     let result: Vec<S2Record> = idx
-        .select(IteratorType::Eq, &(3,))
+        .select(IteratorType::Eq, &Tuple::encode_rmp(&(3,)).unwrap())
         .unwrap()
-        .map(|x| x.decode().unwrap())
+        .map(|x| x.decode_rmp().unwrap())
         .collect();
     assert_eq!(
         result,
@@ -209,9 +219,9 @@ pub fn select_composite_key() {
     let idx = space.index("idx_2").unwrap();
 
     let result: Vec<S2Record> = idx
-        .select(IteratorType::Eq, &(3, 3, 0))
+        .select(IteratorType::Eq, &Tuple::encode_rmp(&(3, 3, 0)).unwrap())
         .unwrap()
-        .map(|x| x.decode().unwrap())
+        .map(|x| x.decode_rmp().unwrap())
         .collect();
     assert_eq!(
         result,
@@ -238,7 +248,7 @@ pub fn random() {
     let result = idx.random(rng.gen()).unwrap();
     assert!(result.is_some());
 
-    let output = result.unwrap().decode::<S2Record>().unwrap();
+    let output = result.unwrap().decode_rmp::<S2Record>().unwrap();
     assert_eq!(output.a, (output.id as i32) % 5);
     assert_eq!(output.b, (output.id as i32) / 5);
     assert_eq!(output.key, format!("key_{}", output.id));
@@ -249,10 +259,10 @@ pub fn min_max() {
     let space = Space::find("test_s2").unwrap();
     let idx = space.index("idx_3").unwrap();
 
-    let result_min = idx.min(&(3,)).unwrap();
+    let result_min = idx.min(&Tuple::encode_rmp(&(3,)).unwrap()).unwrap();
     assert!(result_min.is_some());
     assert_eq!(
-        result_min.unwrap().decode::<S2Record>().unwrap(),
+        result_min.unwrap().decode_rmp::<S2Record>().unwrap(),
         S2Record {
             id: 3,
             key: "key_3".to_string(),
@@ -262,10 +272,10 @@ pub fn min_max() {
         },
     );
 
-    let result_max = idx.max(&(3,)).unwrap();
+    let result_max = idx.max(&Tuple::encode_rmp(&(3,)).unwrap()).unwrap();
     assert!(result_max.is_some());
     assert_eq!(
-        result_max.unwrap().decode::<S2Record>().unwrap(),
+        result_max.unwrap().decode_rmp::<S2Record>().unwrap(),
         S2Record {
             id: 18,
             key: "key_18".to_string(),
@@ -279,11 +289,17 @@ pub fn min_max() {
 pub fn count() {
     let space = Space::find("test_s2").unwrap();
     assert_eq!(
-        space.primary_key().count(IteratorType::LE, &(7,),).unwrap(),
+        space
+            .primary_key()
+            .count(IteratorType::LE, &Tuple::encode_rmp(&(7,).unwrap()))
+            .unwrap(),
         7_usize
     );
     assert_eq!(
-        space.primary_key().count(IteratorType::GT, &(7,),).unwrap(),
+        space
+            .primary_key()
+            .count(IteratorType::GT, &Tuple::encode_rmp(&(7,).unwrap()))
+            .unwrap(),
         13_usize
     );
 }
@@ -299,9 +315,12 @@ pub fn extract_key() {
         b: 2,
     };
     let key: Tuple = unsafe { idx.extract_key(Tuple::new(&record).unwrap()) };
-    assert_eq!(key.decode::<S2Key>().unwrap(), S2Key { id: 11, a: 1, b: 2 });
+    assert_eq!(
+        key.decode_rmp::<S2Key>().unwrap(),
+        S2Key { id: 11, a: 1, b: 2 }
+    );
     let tuple = idx.get(&key).unwrap().unwrap();
-    assert_eq!(tuple.decode::<S2Record>().unwrap(), record);
+    assert_eq!(tuple.decode_rmp::<S2Record>().unwrap(), record);
 }
 
 pub fn insert() {
@@ -312,12 +331,14 @@ pub fn insert() {
         id: 1,
         text: "Test".to_string(),
     };
-    let insert_result = space.insert(&input).unwrap();
-    assert_eq!(insert_result.decode::<S1Record>().unwrap(), input);
+    let insert_result = space.insert(&Tuple::encode_rmp(&input).unwrap()).unwrap();
+    assert_eq!(insert_result.decode_rmp::<S1Record>().unwrap(), input);
 
-    let output = space.get(&(input.id,)).unwrap();
+    let output = space
+        .get(&Tuple::encode_rmp(&(input.id,)).unwrap())
+        .unwrap();
     assert!(output.is_some());
-    assert_eq!(output.unwrap().decode::<S1Record>().unwrap(), input);
+    assert_eq!(output.unwrap().decode_rmp::<S1Record>().unwrap(), input);
 }
 
 pub fn replace() {
@@ -328,18 +349,24 @@ pub fn replace() {
         id: 1,
         text: "Original".to_string(),
     };
-    space.insert(&original_input).unwrap();
+    space
+        .insert(&Tuple::encode_rmp(&original_input).unwrap())
+        .unwrap();
 
     let new_input = S1Record {
         id: original_input.id,
         text: "New".to_string(),
     };
-    let replace_result = space.replace(&new_input).unwrap();
-    assert_eq!(replace_result.decode::<S1Record>().unwrap(), new_input);
+    let replace_result = space
+        .replace(&Tuple::encode_rmp(&new_input).unwrap())
+        .unwrap();
+    assert_eq!(replace_result.decode_rmp::<S1Record>().unwrap(), new_input);
 
-    let output = space.get(&(new_input.id,)).unwrap();
+    let output = space
+        .get(&Tuple::encode_rmp(&(new_input.id,)).unwrap())
+        .unwrap();
     assert!(output.is_some());
-    assert_eq!(output.unwrap().decode::<S1Record>().unwrap(), new_input);
+    assert_eq!(output.unwrap().decode_rmp::<S1Record>().unwrap(), new_input);
 }
 
 pub fn delete() {
@@ -351,20 +378,29 @@ pub fn delete() {
         id: 334,
         text: "Test".to_string(),
     };
-    space.insert(&input).unwrap();
+    space.insert(&Tuple::encode_rmp(&input).unwrap()).unwrap();
 
     // Delete the tuple we just inserted.
-    let delete_result = space.delete(&(input.id,)).unwrap();
+    let delete_result = space
+        .delete(&Tuple::encode_rmp(&(input.id,)).unwrap())
+        .unwrap();
     assert!(delete_result.is_some());
-    assert_eq!(delete_result.unwrap().decode::<S1Record>().unwrap(), input);
+    assert_eq!(
+        delete_result.unwrap().decode_rmp::<S1Record>().unwrap(),
+        input
+    );
 
     // Tuple is no longer in the space.
-    let output = space.get(&(input.id,)).unwrap();
+    let output = space
+        .get(&Tuple::encode_rmp(&(input.id,)).unwrap())
+        .unwrap();
     assert!(output.is_none());
 
     // If id isn't found in the space, delete returns Ok(None).
     let invalid_id = 0xdead_beef_u32;
-    let res = space.delete(&[invalid_id]).unwrap();
+    let res = space
+        .delete(&Tuple::encode_rmp(&[invalid_id]).unwrap())
+        .unwrap();
     assert!(res.is_none());
 }
 
@@ -377,23 +413,39 @@ pub fn update() {
         id: 361,
         text: "Original".to_string(),
     };
-    space.insert(&input).unwrap();
+    space.insert(&Tuple::encode_rmp(&input).unwrap()).unwrap();
 
     // Update the tuple we just inserted.
-    let update_result = space.update(&[input.id], [("=", 1, "New")]).unwrap();
+    let update_result = space
+        .update(&Tuple::encode_rmp(&[input.id]).unwrap(), [("=", 1, "New")])
+        .unwrap();
     assert!(update_result.is_some());
     assert_eq!(
-        update_result.unwrap().decode::<S1Record>().unwrap().text,
+        update_result
+            .unwrap()
+            .decode_rmp::<S1Record>()
+            .unwrap()
+            .text,
         "New"
     );
 
     // Tuple was updated.
-    let output = space.get(&(input.id,)).unwrap();
-    assert_eq!(output.unwrap().decode::<S1Record>().unwrap().text, "New");
+    let output = space
+        .get(&Tuple::encode_rmp(&(input.id,)).unwrap())
+        .unwrap();
+    assert_eq!(
+        output.unwrap().decode_rmp::<S1Record>().unwrap().text,
+        "New"
+    );
 
     // If id isn't found in the space, update returns Ok(None).
     let invalid_id = 0xdead_beef_u32;
-    let res = space.update(&[invalid_id], [("=", 1, "New")]).unwrap();
+    let res = space
+        .update(
+            &Tuple::encode_rmp(&[invalid_id]).unwrap(),
+            &[Tuple::encode_rmp(("=", 1, "New")).unwrap()],
+        )
+        .unwrap();
     assert!(res.is_none());
 }
 
@@ -420,17 +472,17 @@ pub fn update_macro() {
     .unwrap();
     assert!(update_result.is_some());
 
-    let updated = update_result.unwrap().decode::<S2Record>().unwrap();
+    let updated = update_result.unwrap().decode_rmp::<S2Record>().unwrap();
     assert_eq!(updated.key, "New");
     assert_eq!(updated.value, "New");
     assert_eq!(updated.a, 1);
     assert_eq!(updated.b, 2);
 
     let output = space
-        .get(&(input.id,))
+        .get(&Tuple::encode_rmp(&(input.id,)).unwrap())
         .unwrap()
         .unwrap()
-        .decode::<S2Record>()
+        .decode_rmp::<S2Record>()
         .unwrap();
     assert_eq!(output.key, "New");
     assert_eq!(output.value, "New");
@@ -448,7 +500,7 @@ pub fn update_index_macro() {
         a: 0,
         b: 0,
     };
-    space.put(&input).unwrap();
+    space.put(&Tuple::encode_rmp(&input).unwrap().unwrap());
 
     let update_result = update!(
         space.index("primary").unwrap(),
@@ -467,17 +519,17 @@ pub fn update_index_macro() {
     .unwrap();
     assert!(update_result.is_some());
 
-    let updated = update_result.unwrap().decode::<S2Record>().unwrap();
+    let updated = update_result.unwrap().decode_rmp::<S2Record>().unwrap();
     assert_eq!(updated.key, "NewKey");
     assert_eq!(updated.value, "New");
     assert_eq!(updated.a, 1);
     assert_eq!(updated.b, 2);
 
     let output = space
-        .get(&(input.id,))
+        .get(&Tuple::encode_rmp(&(input.id,)).unwrap())
         .unwrap()
         .unwrap()
-        .decode::<S2Record>()
+        .decode_rmp::<S2Record>()
         .unwrap();
     assert_eq!(output.key, "NewKey");
     assert_eq!(output.value, "New");
@@ -489,52 +541,55 @@ pub fn update_ops() {
     let space = Space::builder("update_ops_test_space").create().unwrap();
     space.index_builder("pk").create().unwrap();
 
-    space.insert(&(1, 0)).unwrap();
+    space.insert(&Tuple::encode_rmp(&(1, 0)).unwrap()).unwrap();
 
     assert_eq!(
         space
-            .get(&[1])
+            .get(&Tuple::encode_rmp(&[1]).unwrap())
             .unwrap()
             .unwrap()
-            .decode::<(i32, i32)>()
+            .decode_rmp::<(i32, i32)>()
             .unwrap(),
         (1, 0),
     );
 
     space
-        .update(&[1], UpdateOps::new().add(1, 13).unwrap())
+        .update(
+            &Tuple::encode_rmp(&[1].unwrap()),
+            UpdateOps::new().add(1, 13).unwrap(),
+        )
         .unwrap();
 
     assert_eq!(
         space
-            .get(&[1])
+            .get(&Tuple::encode_rmp(&[1]).unwrap())
             .unwrap()
             .unwrap()
-            .decode::<(i32, i32)>()
+            .decode_rmp::<(i32, i32)>()
             .unwrap(),
         (1, 13),
     );
 
     space
         .update(
-            &[1],
+            &Tuple::encode_rmp(&[1].unwrap()),
             UpdateOps::new().insert(-1, 69).unwrap().sub(1, 8).unwrap(),
         )
         .unwrap();
 
     assert_eq!(
         space
-            .get(&[1])
+            .get(&Tuple::encode_rmp(&[1]).unwrap())
             .unwrap()
             .unwrap()
-            .decode::<(i32, i32, i32)>()
+            .decode_rmp::<(i32, i32, i32)>()
             .unwrap(),
         (1, 5, 69),
     );
 
     space
         .update(
-            &[1],
+            &Tuple::encode_rmp(&[1].unwrap()),
             UpdateOps::new()
                 .insert(-1, "hello")
                 .unwrap()
@@ -551,17 +606,17 @@ pub fn update_ops() {
 
     assert_eq!(
         space
-            .get(&[1])
+            .get(&Tuple::encode_rmp(&[1]).unwrap())
             .unwrap()
             .unwrap()
-            .decode::<(i32, i32, i32, String, String)>()
+            .decode_rmp::<(i32, i32, i32, String, String)>()
             .unwrap(),
         (1, 5, 69, "hello".to_string(), "world".to_string()),
     );
 
     space
         .update(
-            &[1],
+            &Tuple::encode_rmp(&[1].unwrap()),
             UpdateOps::new()
                 .and(1, 0b100)
                 .unwrap()
@@ -576,17 +631,17 @@ pub fn update_ops() {
 
     assert_eq!(
         space
-            .get(&[1])
+            .get(&Tuple::encode_rmp(&[1]).unwrap())
             .unwrap()
             .unwrap()
-            .decode::<(i32, i32, i32, i32, String)>()
+            .decode_rmp::<(i32, i32, i32, i32, String)>()
             .unwrap(),
         (1, 4, 64, 0, "wild".to_string()),
     );
 
     space
         .update(
-            &[1],
+            &Tuple::encode_rmp(&[1].unwrap()),
             UpdateOps::new()
                 .delete(1, 2)
                 .unwrap()
@@ -599,10 +654,10 @@ pub fn update_ops() {
 
     assert_eq!(
         space
-            .get(&[1])
+            .get(&Tuple::encode_rmp(&[1]).unwrap())
             .unwrap()
             .unwrap()
-            .decode::<(i32, i32)>()
+            .decode_rmp::<(i32, i32)>()
             .unwrap(),
         (1, 420),
     );
@@ -616,41 +671,61 @@ pub fn upsert() {
         id: 1,
         text: "Original".to_string(),
     };
-    space.insert(&original_input).unwrap();
+    space
+        .insert(&Tuple::encode_rmp(&original_input).unwrap())
+        .unwrap();
 
     space
         .upsert(
-            &S1Record {
-                id: 1,
-                text: "New".to_string(),
-            },
-            [QueryOperation {
-                op: "=".to_string(),
-                field_id: 1,
-                value: "Test 1".into(),
-            }],
+            &Tuple::encode_rmp(
+                &S1Record {
+                    id: 1,
+                    text: "New".to_string(),
+                }
+                .unwrap(),
+            ),
+            [&Tuple::encode_rmp(
+                QueryOperation {
+                    op: "=".to_string(),
+                    field_id: 1,
+                    value: "Test 1".into(),
+                }
+                .unwrap(),
+            )],
         )
         .unwrap();
 
     space
         .upsert(
-            &S1Record {
-                id: 2,
-                text: "New".to_string(),
-            },
-            [QueryOperation {
-                op: "=".to_string(),
-                field_id: 1,
-                value: "Test 2".into(),
-            }],
+            &Tuple::encode_rmp(
+                &S1Record {
+                    id: 2,
+                    text: "New".to_string(),
+                }
+                .unwrap(),
+            ),
+            [&Tuple::encode_rmp(
+                QueryOperation {
+                    op: "=".to_string(),
+                    field_id: 1,
+                    value: "Test 2".into(),
+                }
+                .unwrap(),
+            )],
         )
         .unwrap();
 
-    let output = space.get(&(1,)).unwrap();
-    assert_eq!(output.unwrap().decode::<S1Record>().unwrap().text, "Test 1");
+    let output = space.get(&Tuple::encode_rmp(&(1,)).unwrap()).unwrap();
+    assert_eq!(
+        output.unwrap().decode_rmp::<S1Record>().unwrap().text,
+        "Test 1"
+    );
 
-    let output = space.get(&(2,)).unwrap();
-    assert_eq!(output.unwrap().decode::<S1Record>().unwrap().text, "New");
+    let output = space.get(&Tuple::encode_rmp(&(2,)).unwrap()).unwrap();
+    assert_eq!(
+        output.unwrap().decode_rmp::<S1Record>().unwrap().text,
+        "New"
+    );
 }
 
 pub fn upsert_macro() {
@@ -663,7 +738,9 @@ pub fn upsert_macro() {
         a: 0,
         b: 0,
     };
-    space.insert(&original_input).unwrap();
+    space
+        .insert(&Tuple::encode_rmp(&original_input).unwrap())
+        .unwrap();
 
     upsert!(
         space,
@@ -694,20 +771,20 @@ pub fn upsert_macro() {
     .unwrap();
 
     let output = space
-        .get(&(111,))
+        .get(&Tuple::encode_rmp(&(111,).unwrap()))
         .unwrap()
         .unwrap()
-        .decode::<S2Record>()
+        .decode_rmp::<S2Record>()
         .unwrap();
     assert_eq!(output.key, "test_box_upsert_macro_1");
     assert_eq!(output.value, "UpsertUpdated");
     assert_eq!(output.a, 1);
 
     let output = space
-        .get(&(112,))
+        .get(&Tuple::encode_rmp(&(112,).unwrap()))
         .unwrap()
         .unwrap()
-        .decode::<S2Record>()
+        .decode_rmp::<S2Record>()
         .unwrap();
     assert_eq!(output.key, "test_box_upsert_macro_2");
     assert_eq!(output.value, "UpsertNew");
@@ -721,10 +798,13 @@ pub fn truncate() {
     assert_eq!(space.len().unwrap(), 0_usize);
     for i in 0..10 {
         space
-            .insert(&S1Record {
-                id: i,
-                text: "Test".to_string(),
-            })
+            .insert(&Tuple::encode_rmp(
+                &S1Record {
+                    id: i,
+                    text: "Test".to_string(),
+                }
+                .unwrap(),
+            ))
             .unwrap();
     }
     assert_eq!(space.len().unwrap(), 10_usize);
@@ -975,23 +1055,36 @@ pub fn index_parts() {
         .create()
         .unwrap();
 
-    space.insert(&(1, 2, 3)).unwrap();
-    space.insert(&(2, "foo")).unwrap();
-    space.insert(&(3, 3.14, [3, 2, 1])).unwrap();
-    space.insert(&(4,)).unwrap_err();
-    space.insert(&("5", 1)).unwrap_err();
+    space
+        .insert(&Tuple::encode_rmp(&(1, 2, 3)).unwrap())
+        .unwrap();
+    space
+        .insert(&Tuple::encode_rmp(&(2, "foo")).unwrap())
+        .unwrap();
+    space
+        .insert(&Tuple::encode_rmp(&(3, 3.14, [3, 2, 1])).unwrap())
+        .unwrap();
+    space
+        .insert(&Tuple::encode_rmp(&(4,)).unwrap())
+        .unwrap_err();
+    space
+        .insert(&Tuple::encode_rmp(&("5", 1)).unwrap())
+        .unwrap_err();
 
     let mut iter = index
-        .select(tarantool::index::IteratorType::All, &())
+        .select(tarantool::index::IteratorType::All, &Tuple::encode_empty())
         .unwrap();
 
-    assert_eq!(iter.next().and_then(|t| t.decode().ok()), Some((1, 2, 3)));
     assert_eq!(
-        iter.next().and_then(|t| t.decode().ok()),
+        iter.next().and_then(|t| t.decode_rmp().ok()),
+        Some((1, 2, 3))
+    );
+    assert_eq!(
+        iter.next().and_then(|t| t.decode_rmp().ok()),
         Some((2, "foo".to_string()))
     );
     assert_eq!(
-        iter.next().and_then(|t| t.decode().ok()),
+        iter.next().and_then(|t| t.decode_rmp().ok()),
         Some((3, 3.14, [3, 2, 1]))
     );
     assert!(iter.next().is_none());
@@ -1031,18 +1124,21 @@ pub fn fully_temporary_space() {
     let index = space.index_builder("pk").create().unwrap();
 
     // Inserting obviously works, because the space is data-temporary
-    space.put(&(1, 2, 3)).unwrap();
+    space.put(&Tuple::encode_rmp(&(1, 2, 3)).unwrap()).unwrap();
     let row = space
-        .select(IteratorType::All, &())
+        .select(IteratorType::All, &Tuple::encode_empty())
         .unwrap()
-        .map(|t| t.decode::<(i32, i32, i32)>().unwrap())
+        .map(|t| t.decode_rmp::<(i32, i32, i32)>().unwrap())
         .next()
         .unwrap();
     assert_eq!(row, (1, 2, 3));
 
     // Truncating also works
     space.truncate().unwrap();
-    let count = space.select(IteratorType::All, &()).unwrap().count();
+    let count = space
+        .select(IteratorType::All, &Tuple::encode_rmp(&()).unwrap())
+        .unwrap()
+        .count();
     assert_eq!(count, 0);
 
     // Drop space and index works

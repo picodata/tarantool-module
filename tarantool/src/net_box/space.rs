@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::error::Error;
 use crate::index::IteratorType;
-use crate::tuple::{Tuple, TupleBuffer};
+use crate::tuple::Tuple;
 
 use super::index::{RemoteIndex, RemoteIndexIterator};
 use super::inner::ConnInner;
@@ -41,7 +41,7 @@ impl RemoteSpace {
     /// The remote-call equivalent of the local call `Space::get(...)`
     /// (see [details](../space/struct.Space.html#method.get)).
     #[inline(always)]
-    pub fn get(&self, key: &TupleBuffer, options: &Options) -> Result<Option<Tuple>, Error> {
+    pub fn get(&self, key: &Tuple, options: &Options) -> Result<Option<Tuple>, Error> {
         self.primary_key().get(key, options)
     }
 
@@ -51,7 +51,7 @@ impl RemoteSpace {
     pub fn select(
         &self,
         iterator_type: IteratorType,
-        key: &TupleBuffer,
+        key: &Tuple,
         options: &Options,
     ) -> Result<RemoteIndexIterator, Error> {
         self.primary_key().select(iterator_type, key, options)
@@ -60,7 +60,7 @@ impl RemoteSpace {
     /// The remote-call equivalent of the local call `Space::insert(...)`
     /// (see [details](../space/struct.Space.html#method.insert)).
     #[inline(always)]
-    pub fn insert(&self, value: &TupleBuffer, options: &Options) -> Result<Option<Tuple>, Error> {
+    pub fn insert(&self, value: &Tuple, options: &Options) -> Result<Option<Tuple>, Error> {
         self.conn_inner.request(
             &protocol::Insert {
                 space_id: self.space_id,
@@ -73,7 +73,7 @@ impl RemoteSpace {
     /// The remote-call equivalent of the local call `Space::replace(...)`
     /// (see [details](../space/struct.Space.html#method.replace)).
     #[inline(always)]
-    pub fn replace(&self, value: &TupleBuffer, options: &Options) -> Result<Option<Tuple>, Error> {
+    pub fn replace(&self, value: &Tuple, options: &Options) -> Result<Option<Tuple>, Error> {
         self.conn_inner.request(
             &protocol::Replace {
                 space_id: self.space_id,
@@ -88,8 +88,8 @@ impl RemoteSpace {
     #[inline(always)]
     pub fn update(
         &self,
-        key: &TupleBuffer,
-        ops: &TupleBuffer,
+        key: &Tuple,
+        ops: &Tuple,
         options: &Options,
     ) -> Result<Option<Tuple>, Error> {
         self.primary_key().update(key, ops, options)
@@ -100,8 +100,8 @@ impl RemoteSpace {
     #[inline(always)]
     pub fn upsert(
         &self,
-        value: &TupleBuffer,
-        ops: &TupleBuffer,
+        value: &Tuple,
+        ops: &Tuple,
         options: &Options,
     ) -> Result<Option<Tuple>, Error> {
         self.primary_key().upsert(value, ops, options)
@@ -110,7 +110,7 @@ impl RemoteSpace {
     /// The remote-call equivalent of the local call `Space::delete(...)`
     /// (see [details](../space/struct.Space.html#method.delete)).
     #[inline(always)]
-    pub fn delete(&self, key: &TupleBuffer, options: &Options) -> Result<Option<Tuple>, Error> {
+    pub fn delete(&self, key: &Tuple, options: &Options) -> Result<Option<Tuple>, Error> {
         self.primary_key().delete(key, options)
     }
 }

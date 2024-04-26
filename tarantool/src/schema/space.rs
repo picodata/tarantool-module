@@ -211,7 +211,7 @@ pub fn space_metadata(space_id: SpaceId) -> Result<Metadata<'static>, Error> {
     let tuple = sys_space
         .get(&Tuple::encode_rmp(&[space_id])?)?
         .ok_or(Error::MetaNotFound)?;
-    tuple.decode::<Metadata>()
+    tuple.decode_rmp::<Metadata>()
 }
 
 /// Drop a space.

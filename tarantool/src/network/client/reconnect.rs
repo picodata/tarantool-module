@@ -281,7 +281,7 @@ mod tests {
                 )
                 .await
                 .unwrap()
-                .decode::<(i32,)>()
+                .decode_rmp::<(i32,)>()
                 .unwrap();
             // value received on an old connection, though there was a reconnect request
             assert_eq!(result, (42,));

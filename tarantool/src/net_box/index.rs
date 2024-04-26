@@ -28,7 +28,7 @@ impl RemoteIndex {
     /// The remote-call equivalent of the local call `Index::get(...)`
     /// (see [details](../index/struct.Index.html#method.get)).
     #[inline(always)]
-    pub fn get(&self, key: &TupleBuffer, options: &Options) -> Result<Option<Tuple>, Error> {
+    pub fn get(&self, key: &Tuple, options: &Options) -> Result<Option<Tuple>, Error> {
         Ok(self
             .select(
                 IteratorType::Eq,
@@ -48,7 +48,7 @@ impl RemoteIndex {
     pub fn select(
         &self,
         iterator_type: IteratorType,
-        key: &TupleBuffer,
+        key: &Tuple,
         options: &Options,
     ) -> Result<RemoteIndexIterator, Error> {
         let rows = self.conn_inner.request(
@@ -72,8 +72,8 @@ impl RemoteIndex {
     #[inline(always)]
     pub fn update(
         &self,
-        key: &TupleBuffer,
-        ops: &TupleBuffer,
+        key: &Tuple,
+        ops: &Tuple,
         options: &Options,
     ) -> Result<Option<Tuple>, Error> {
         self.conn_inner.request(
@@ -92,8 +92,8 @@ impl RemoteIndex {
     #[inline(always)]
     pub fn upsert(
         &self,
-        value: &TupleBuffer,
-        ops: &TupleBuffer,
+        value: &Tuple,
+        ops: &Tuple,
         options: &Options,
     ) -> Result<Option<Tuple>, Error> {
         self.conn_inner.request(
@@ -109,7 +109,7 @@ impl RemoteIndex {
 
     /// The remote-call equivalent of the local call `Space::delete(...)`
     /// (see [details](../index/struct.Index.html#method.delete)).
-    pub fn delete(&self, key: &TupleBuffer, options: &Options) -> Result<Option<Tuple>, Error> {
+    pub fn delete(&self, key: &Tuple, options: &Options) -> Result<Option<Tuple>, Error> {
         self.conn_inner.request(
             &protocol::Delete {
                 space_id: self.space_id,

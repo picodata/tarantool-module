@@ -1,3 +1,4 @@
+use crate::tuple::Tuple;
 use crate::tuple::TupleBuffer;
 use crate::unwrap_ok_or;
 use crate::Result;
@@ -137,7 +138,7 @@ pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
 }
 
 /// Write to `w` a msgpack array with values from `arr`.
-pub fn write_array(w: &mut impl std::io::Write, arr: &[TupleBuffer]) -> Result<()> {
+pub fn write_array(w: &mut impl std::io::Write, arr: &[Tuple]) -> Result<()> {
     rmp::encode::write_array_len(w, arr.len() as _)?;
     for elem in arr {
         elem.write_tuple_data(w)?;
@@ -251,7 +252,7 @@ where
 
     /// Push a type representable as a tarantool tuple.
     #[inline(always)]
-    pub fn push_tuple(&mut self, v: &TupleBuffer) -> Result<()> {
+    pub fn push_tuple(&mut self, v: &Tuple) -> Result<()> {
         v.write_tuple_data(&mut self.writer)?;
         self.len += 1;
         Ok(())

@@ -19,7 +19,7 @@ use crate::error::{Error, TarantoolError, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
 use crate::msgpack;
 use crate::space::{Space, SpaceId, SystemSpace};
-use crate::tuple::{KeyDef, KeyDefPart, Tuple, TupleBuffer};
+use crate::tuple::{KeyDef, KeyDefPart, Tuple};
 use crate::tuple_from_box_api;
 use crate::unwrap_or;
 use crate::util::NumOrStr;
@@ -528,7 +528,7 @@ impl Index {
             )
             .into());
         };
-        tuple.decode::<Metadata>()
+        tuple.decode_rmp::<Metadata>()
     }
 
     // Drops index.
@@ -545,8 +545,8 @@ impl Index {
     ///
     /// Returns a tuple or `None` if index is empty
     #[inline]
-    pub fn get(&self, key: &TupleBuffer) -> Result<Option<Tuple>, Error> {
-        let Range { start, end } = key.as_ref().as_ptr_range();
+    pub fn get(&self, key: &Tuple) -> Result<Option<Tuple>, Error> {
+        let Range { start, end } = key.as_slice().as_ptr_range();
         tuple_from_box_api!(
             ffi::box_index_get[
                 self.space_id,
@@ -566,12 +566,8 @@ impl Index {
     /// - `type` - iterator type
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     #[inline]
-    pub fn select(
-        &self,
-        iterator_type: IteratorType,
-        key: &TupleBuffer,
-    ) -> Result<IndexIterator, Error> {
-        let Range { start, end } = key.as_ref().as_ptr_range();
+    pub fn select(&self, iterator_type: IteratorType, key: &Tuple) -> Result<IndexIterator, Error> {
+        let Range { start, end } = key.as_slice().as_ptr_range();
 
         let ptr = unsafe {
             ffi::box_index_iterator(
@@ -602,8 +598,8 @@ impl Index {
     ///
     /// Returns the deleted tuple or `Ok(None)` if tuple was not found.
     #[inline]
-    pub fn delete(&self, key: &TupleBuffer) -> Result<Option<Tuple>, Error> {
-        let Range { start, end } = key.as_ref().as_ptr_range();
+    pub fn delete(&self, key: &Tuple) -> Result<Option<Tuple>, Error> {
+        let Range { start, end } = key.as_slice().as_ptr_range();
         tuple_from_box_api!(
             ffi::box_delete[
                 self.space_id,
@@ -628,14 +624,10 @@ impl Index {
     /// See also: [index.upsert()](#method.upsert)
     // TODO(gmoshkin): accept a single Ops argument instead of a slice of ops
     #[inline]
-    pub fn update(
-        &self,
-        key: &TupleBuffer,
-        ops: impl AsRef<[TupleBuffer]>,
-    ) -> Result<Option<Tuple>, Error> {
+    pub fn update(&self, key: &Tuple, ops: impl AsRef<[Tuple]>) -> Result<Option<Tuple>, Error> {
         let mut ops_buf = Vec::with_capacity(4 + ops.as_ref().len() * 4);
         msgpack::write_array(&mut ops_buf, ops.as_ref())?;
-        unsafe { self.update_raw(key.as_ref(), ops_buf.as_ref()) }
+        unsafe { self.update_raw(key.as_slice(), ops_buf.as_ref()) }
     }
 
     /// # Safety
@@ -666,10 +658,10 @@ impl Index {
     ///
     /// See also: [index.update()](#method.update)
     #[inline]
-    pub fn upsert(&self, value: &TupleBuffer, ops: impl AsRef<[TupleBuffer]>) -> Result<(), Error> {
+    pub fn upsert(&self, value: &Tuple, ops: impl AsRef<[Tuple]>) -> Result<(), Error> {
         let mut ops_buf = Vec::with_capacity(4 + ops.as_ref().len() * 4);
         msgpack::write_array(&mut ops_buf, ops.as_ref())?;
-        unsafe { self.upsert_raw(value.as_ref(), ops_buf.as_ref()) }
+        unsafe { self.upsert_raw(value.as_slice(), ops_buf.as_ref()) }
     }
 
     /// # Safety
@@ -746,8 +738,8 @@ impl Index {
     ///
     /// Returns a tuple or `None` if index is empty
     #[inline]
-    pub fn min(&self, key: &TupleBuffer) -> Result<Option<Tuple>, Error> {
-        let Range { start, end } = key.as_ref().as_ptr_range();
+    pub fn min(&self, key: &Tuple) -> Result<Option<Tuple>, Error> {
+        let Range { start, end } = key.as_slice().as_ptr_range();
         tuple_from_box_api!(
             ffi::box_index_min[
                 self.space_id,
@@ -765,8 +757,8 @@ impl Index {
     ///
     /// Returns a tuple or `None` if index is empty
     #[inline]
-    pub fn max(&self, key: &TupleBuffer) -> Result<Option<Tuple>, Error> {
-        let Range { start, end } = key.as_ref().as_ptr_range();
+    pub fn max(&self, key: &Tuple) -> Result<Option<Tuple>, Error> {
+        let Range { start, end } = key.as_slice().as_ptr_range();
         tuple_from_box_api!(
             ffi::box_index_max[
                 self.space_id,
@@ -783,8 +775,8 @@ impl Index {
     /// - `type` - iterator type
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     #[inline]
-    pub fn count(&self, iterator_type: IteratorType, key: &TupleBuffer) -> Result<usize, Error> {
-        let Range { start, end } = key.as_ref().as_ptr_range();
+    pub fn count(&self, iterator_type: IteratorType, key: &Tuple) -> Result<usize, Error> {
+        let Range { start, end } = key.as_slice().as_ptr_range();
         let result = unsafe {
             ffi::box_index_count(
                 self.space_id,
@@ -815,7 +807,7 @@ impl Index {
         unsafe {
             let mut result_size = MaybeUninit::uninit();
             let result_ptr = ffi::box_tuple_extract_key(
-                tuple.into_ptr(),
+                tuple.to_ptr(),
                 self.space_id,
                 self.index_id,
                 result_size.as_mut_ptr(),
@@ -912,7 +904,7 @@ impl Metadata<'_> {
 /// Index iterator. Can be used with `for` statement.
 pub struct IndexIterator {
     ptr: *mut ffi::BoxIterator,
-    _key_data: TupleBuffer,
+    _key_data: Tuple,
 }
 
 impl Iterator for IndexIterator {
@@ -1075,7 +1067,7 @@ mod tests {
         {
             // Check index metadata is deserializable from what is actually in _index
             // TODO: also don't use decode
-            let _meta: Metadata = tuple.decode().unwrap();
+            let _meta: Metadata = tuple.decode_rmp().unwrap();
         }
     }
 }

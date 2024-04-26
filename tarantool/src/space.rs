@@ -644,8 +644,9 @@ impl Space {
     ///
     /// See also: `box.space[space_id]:insert(tuple)`
     #[inline]
-    pub fn insert(&self, value: &TupleBuffer) -> Result<Tuple, Error> {
-        let Range { start, end } = value.data().as_ptr_range();
+    pub fn insert(&self, value: &Tuple) -> Result<Tuple, Error> {
+        // TODO: handle it depending on the tuple contents
+        let Range { start, end } = value.as_slice().as_ptr_range();
         tuple_from_box_api!(
             ffi::box_insert[
                 self.id,
@@ -669,8 +670,8 @@ impl Space {
     ///
     /// Returns a new tuple.
     #[inline]
-    pub fn replace(&self, value: &TupleBuffer) -> Result<Tuple, Error> {
-        let Range { start, end } = value.data().as_ptr_range();
+    pub fn replace(&self, value: &Tuple) -> Result<Tuple, Error> {
+        let Range { start, end } = value.as_slice().as_ptr_range();
         tuple_from_box_api!(
             ffi::box_replace[
                 self.id,
@@ -685,7 +686,7 @@ impl Space {
     /// Insert a tuple into a space. If a tuple with the same primary key already exists, it replaces the existing tuple
     /// with a new one. Alias for [space.replace()](#method.replace)
     #[inline(always)]
-    pub fn put(&self, value: &TupleBuffer) -> Result<Tuple, Error> {
+    pub fn put(&self, value: &Tuple) -> Result<Tuple, Error> {
         self.replace(value)
     }
 
@@ -727,7 +728,7 @@ impl Space {
 
     /// Search for a tuple in the given space.
     #[inline(always)]
-    pub fn get(&self, key: &TupleBuffer) -> Result<Option<Tuple>, Error> {
+    pub fn get(&self, key: &Tuple) -> Result<Option<Tuple>, Error> {
         self.primary_key().get(key)
     }
 
@@ -737,11 +738,7 @@ impl Space {
     /// - `type` - iterator type
     /// - `key` - encoded key in the MsgPack Array format (`[part1, part2, ...]`).
     #[inline(always)]
-    pub fn select(
-        &self,
-        iterator_type: IteratorType,
-        key: &TupleBuffer,
-    ) -> Result<IndexIterator, Error> {
+    pub fn select(&self, iterator_type: IteratorType, key: &Tuple) -> Result<IndexIterator, Error> {
         self.primary_key().select(iterator_type, key)
     }
 
@@ -751,7 +748,7 @@ impl Space {
     /// - `type` - iterator type
     /// - `key` - encoded key in the MsgPack Array format (`[part1, part2, ...]`).
     #[inline(always)]
-    pub fn count(&self, iterator_type: IteratorType, key: &TupleBuffer) -> Result<usize, Error> {
+    pub fn count(&self, iterator_type: IteratorType, key: &Tuple) -> Result<usize, Error> {
         self.primary_key().count(iterator_type, key)
     }
 
@@ -762,7 +759,7 @@ impl Space {
     ///
     /// Returns the deleted tuple or `Ok(None)` if tuple was not found.
     #[inline(always)]
-    pub fn delete(&self, key: &TupleBuffer) -> Result<Option<Tuple>, Error> {
+    pub fn delete(&self, key: &Tuple) -> Result<Option<Tuple>, Error> {
         self.primary_key().delete(key)
     }
 
@@ -788,11 +785,7 @@ impl Space {
     ///
     /// See also: [space.upsert()](#method.upsert)
     #[inline(always)]
-    pub fn update(
-        &self,
-        key: &TupleBuffer,
-        ops: impl AsRef<[TupleBuffer]>,
-    ) -> Result<Option<Tuple>, Error> {
+    pub fn update(&self, key: &Tuple, ops: impl AsRef<[Tuple]>) -> Result<Option<Tuple>, Error> {
         self.primary_key().update(key, ops)
     }
 
@@ -825,7 +818,7 @@ impl Space {
     ///
     /// See also: [space.update()](#method.update)
     #[inline(always)]
-    pub fn upsert(&self, value: &TupleBuffer, ops: impl AsRef<[TupleBuffer]>) -> Result<(), Error> {
+    pub fn upsert(&self, value: &Tuple, ops: impl AsRef<[Tuple]>) -> Result<(), Error> {
         self.primary_key().upsert(value, ops)
     }
 
@@ -851,7 +844,7 @@ impl Space {
         let tuple = sys_space
             .get(&Tuple::encode_rmp(&(self.id,))?)?
             .ok_or(Error::MetaNotFound)?;
-        tuple.decode::<Metadata>()
+        tuple.decode_rmp::<Metadata>()
     }
 }
 
@@ -1033,7 +1026,7 @@ impl<'a> Builder<'a> {
 /// [`encode`]: UpdateOps::encode
 /// [`into_inner`]: UpdateOps::into_inner
 pub struct UpdateOps {
-    ops: Vec<TupleBuffer>,
+    ops: Vec<Tuple>,
 }
 
 macro_rules! define_bin_ops {
@@ -1127,7 +1120,7 @@ impl UpdateOps {
     pub fn delete<K>(&mut self, field: RawByteBuf, count: usize) -> crate::Result<&mut Self> {
         let mut buf = vec![];
         rmp_serde::encode::write(&mut buf, &('#', serde_bytes::ByteBuf::from(field.0), count))?;
-        self.ops.push(TupleBuffer::try_from_vec(buf)?);
+        self.ops.push(Tuple::try_from_vec(buf)?);
         Ok(self)
     }
 
@@ -1155,17 +1148,17 @@ impl UpdateOps {
                 value,
             ),
         )?;
-        self.ops.push(TupleBuffer::try_from_vec(buf)?);
+        self.ops.push(Tuple::try_from_vec(buf)?);
         Ok(self)
     }
 
     #[inline(always)]
-    pub fn as_slice(&self) -> &[TupleBuffer] {
+    pub fn as_slice(&self) -> &[Tuple] {
         &self.ops
     }
 
     #[inline(always)]
-    pub fn into_inner(self) -> Vec<TupleBuffer> {
+    pub fn into_inner(self) -> Vec<Tuple> {
         self.ops
     }
 
@@ -1180,7 +1173,7 @@ impl UpdateOps {
     pub fn encode_to(&self, w: &mut impl std::io::Write) -> crate::Result<()> {
         crate::msgpack::write_array_len(w, self.ops.len() as _)?;
         for op in &self.ops {
-            w.write_all(op.as_ref())?;
+            w.write_all(op.as_slice())?;
         }
         Ok(())
     }
@@ -1193,23 +1186,23 @@ impl Default for UpdateOps {
     }
 }
 
-impl AsRef<[TupleBuffer]> for UpdateOps {
+impl AsRef<[Tuple]> for UpdateOps {
     #[inline(always)]
-    fn as_ref(&self) -> &[TupleBuffer] {
+    fn as_ref(&self) -> &[Tuple] {
         &self.ops
     }
 }
 
-impl From<UpdateOps> for Vec<TupleBuffer> {
+impl From<UpdateOps> for Vec<Tuple> {
     #[inline(always)]
-    fn from(ops: UpdateOps) -> Vec<TupleBuffer> {
+    fn from(ops: UpdateOps) -> Vec<Tuple> {
         ops.ops
     }
 }
 
 impl IntoIterator for UpdateOps {
-    type Item = TupleBuffer;
-    type IntoIter = std::vec::IntoIter<TupleBuffer>;
+    type Item = Tuple;
+    type IntoIter = std::vec::IntoIter<Tuple>;
 
     #[inline(always)]
     fn into_iter(self) -> Self::IntoIter {
@@ -1331,7 +1324,7 @@ mod test {
             .get(&Tuple::encode_rmp(&(42,)).unwrap())
             .unwrap()
             .unwrap();
-        let t: (u32, String, String) = t.decode().unwrap();
+        let t: (u32, String, String) = t.decode_rmp().unwrap();
         assert_eq!(t, (42, "foo".to_owned(), "bar".to_owned()));
         space.drop().unwrap();
     }
@@ -1344,7 +1337,7 @@ mod test {
             .unwrap()
         {
             // Check space metadata is deserializable from what is actually in _space
-            let _meta: Metadata = tuple.decode().unwrap();
+            let _meta: Metadata = tuple.decode_rmp().unwrap();
         }
     }
 

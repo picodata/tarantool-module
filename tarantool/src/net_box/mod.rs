@@ -136,7 +136,7 @@ impl Conn {
     pub fn call(
         &self,
         fn_name: &str,
-        args: &TupleBuffer,
+        args: &Tuple,
         options: &Options,
     ) -> Result<Option<Tuple>, Error> {
         let res = self
@@ -149,7 +149,7 @@ impl Conn {
     ///
     /// If enqueuing a request succeeded a [`Promise`] is returned which will be
     /// kept once a response is received.
-    pub fn call_async<R>(&self, fn_name: &str, args: TupleBuffer) -> crate::Result<Promise<R>>
+    pub fn call_async<R>(&self, fn_name: &str, args: Tuple) -> crate::Result<Promise<R>>
     where
         R: for<'de> Decode<'de> + 'static,
     {
@@ -169,7 +169,7 @@ impl Conn {
     pub fn eval(
         &self,
         expr: &str,
-        args: &TupleBuffer,
+        args: &Tuple,
         options: &Options,
     ) -> Result<Option<Tuple>, Error> {
         let res = self
@@ -182,7 +182,7 @@ impl Conn {
     ///
     /// If enqueuing a request succeeded a [`Promise`] is returned which will be
     /// kept once a response is received.
-    pub fn eval_async<R>(&self, expr: &str, args: TupleBuffer) -> crate::Result<Promise<R>>
+    pub fn eval_async<R>(&self, expr: &str, args: Tuple) -> crate::Result<Promise<R>>
     where
         R: for<'de> Decode<'de> + 'static,
     {
@@ -202,7 +202,7 @@ impl Conn {
     pub fn execute<P>(
         &self,
         sql: &str,
-        bind_params: &TupleBuffer,
+        bind_params: &Tuple,
         options: &Options,
     ) -> Result<Vec<Tuple>, Error> {
         self.inner
@@ -251,7 +251,7 @@ mod tests {
         let e = conn
             .eval(
                 "return ...",
-                &UnexpectedIOError.to_tuple_buffer().unwrap(),
+                &UnexpectedIOError.to_tuple_buffer().unwrap().into(),
                 &Default::default(),
             )
             .unwrap_err();
