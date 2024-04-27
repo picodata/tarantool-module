@@ -9,7 +9,7 @@ local tmpdir = fio.tempdir()
 
 -- Change current working directory into the one this file is in
 local current_file = debug.getinfo(1).source
-while current_file:sub(1, 1) == '@' do
+if current_file:sub(1, 1) == '@' then
     current_file = current_file:sub(2)
 end
 local current_dir = fio.dirname(current_file)
