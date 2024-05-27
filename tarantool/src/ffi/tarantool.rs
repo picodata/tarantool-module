@@ -875,11 +875,11 @@ pub struct BoxTuple {
 #[cfg(feature = "picodata")]
 #[repr(C, packed)]
 pub struct BoxTuple {
-    refs: u8,
-    _flags: u8,
-    format_id: u16,
-    data_offset: u16,
-    bsize: u32,
+    pub(crate) refs: u8,
+    pub(crate) flags: u8,
+    pub(crate) format_id: u16,
+    pub(crate) data_offset: u16,
+    pub(crate) bsize: u32,
 }
 
 #[cfg(not(feature = "picodata"))]
@@ -977,6 +977,27 @@ extern "C" {
     pub fn box_tuple_to_buf(tuple: *const BoxTuple, buf: *mut c_char, size: usize) -> isize;
     pub fn box_tuple_format_default() -> *mut BoxTupleFormat;
     pub fn box_tuple_format(tuple: *const BoxTuple) -> *mut BoxTupleFormat;
+
+    /// * Increment tuple format ref count.
+    /// *
+    /// * - `tuple_format` the tuple format to ref
+    pub fn box_tuple_format_ref(format: *mut BoxTupleFormat);
+
+    /// Decrement tuple format ref count.
+    ///
+    /// - `tuple_format` the tuple format to unref
+    pub fn box_tuple_format_unref(format: *mut BoxTupleFormat);
+
+    /// Return new in-memory tuple format based on passed key definitions.
+    ///
+    /// - `keys` array of keys defined for the format
+    /// - `key_count` count of keys
+    ///
+    /// Returns
+    /// - new tuple format if success
+    /// - `NULL` for error
+    pub fn box_tuple_format_new(keys: *mut *mut BoxKeyDef, key_count: u16) -> *mut BoxTupleFormat;
+
     pub fn box_tuple_field(tuple: *const BoxTuple, fieldno: u32) -> *const c_char;
     pub fn box_tuple_compare(
         tuple_a: *mut BoxTuple,
