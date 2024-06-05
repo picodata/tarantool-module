@@ -49,6 +49,9 @@
 - Custom Encode/Decode allows skipping `Option` fields
 - added support for zero-copy string decoding
   via `tarantool::msgpack::encode::Decode` trait as `&str`.
+- `tlua::Push` trait implementations for `OsString`, `OsStr`, `Path`, `PathBuf`
+- `tlua::LuaRead` trait implementations for `OsString`, `PathBuf`
+
 
 ### Changed
 
