@@ -565,6 +565,11 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
         ..
     } = ctx;
 
+    println!(
+        "tarantool - {:?}, linkme - {:?}, section- {:?}, ",
+        tarantool, section, linkme
+    );
+
     let inner_fn_name = syn::Ident::new("__tp_inner", ident.span());
     let desc_name = ident.to_string();
     let desc_ident = syn::Ident::new(&desc_name.to_uppercase(), ident.span());
