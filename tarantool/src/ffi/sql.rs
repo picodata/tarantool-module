@@ -23,12 +23,21 @@ extern "C" {
         stmt_id: u32,
         bind: *const Bind,
         bind_count: u32,
+        vdbe_max_steps: u64,
         port: *const Port,
     ) -> c_int;
     pub(crate) fn sql_unprepare(stmt_id: u32) -> c_int;
     pub(crate) fn sql_stmt_query_str(stmt: *const SqlStatement) -> *const c_char;
     pub(crate) fn sql_stmt_calculate_id(sql_str: *const c_char, len: size_t) -> u32;
     pub(crate) fn sql_bind_list_decode(data: *const c_char, bind: *mut *const Bind) -> c_int;
+    pub(crate) fn sql_prepare_and_execute_ext(
+        sql: *const c_char,
+        len: c_int,
+        bind: *const Bind,
+        bind_count: u32,
+        vdbe_max_steps: u64,
+        port: *const Port,
+    ) -> c_int;
 }
 
 #[repr(C)]
