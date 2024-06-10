@@ -18,11 +18,17 @@ extern "C" {
     fn obuf_create(obuf: *mut Obuf, slab_cache: *const SlabCache, start_cap: size_t);
     fn obuf_destroy(obuf: *mut Obuf);
 
-    pub(crate) fn sql_prepare(sql: *const c_char, len: u32, port: *const Port) -> c_int;
+    pub(crate) fn sql_prepare(
+        sql: *const c_char,
+        len: u32,
+        port: *const Port,
+        is_global: bool
+    ) -> c_int;
     pub(crate) fn sql_execute_prepared_ext(
         stmt_id: u32,
         bind: *const Bind,
         bind_count: u32,
+        is_global: bool,
         port: *const Port,
     ) -> c_int;
     pub(crate) fn sql_unprepare(stmt_id: u32) -> c_int;

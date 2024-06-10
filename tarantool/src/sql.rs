@@ -20,6 +20,7 @@ pub fn prepare(query: &str) -> crate::Result<Statement> {
             query.as_ptr() as *const c_char,
             query.len() as u32,
             &port as *const Port,
+            true,
         )
     } < 0
     {
@@ -83,6 +84,7 @@ impl Statement {
                     self.id,
                     bind_ptr as *const Bind,
                     bind_cnt as u32,
+                    true,
                     &port as *const Port,
                 )
             }
@@ -92,6 +94,7 @@ impl Statement {
                     self.id,
                     std::ptr::null::<Bind>() as *const Bind,
                     0,
+                    true,
                     &port as *const Port,
                 )
             }
