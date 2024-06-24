@@ -10,13 +10,13 @@ use std::io::Read;
 use std::os::raw::c_char;
 use std::str;
 
-fn decode_params<IN>(bind_params: &IN) -> crate::Result<(*const Bind, u32)>
+fn decode_params<IN>(bind_params: &IN) -> crate::Result<(*const Bind, u32, Vec<u8>)>
 where
     IN: Serialize,
 {
     let mut bind_ptr = std::ptr::null::<Bind>();
     if std::mem::size_of::<IN>() == 0 {
-        return Ok((bind_ptr, 0));
+        return Ok((bind_ptr, 0, vec![]));
     }
     let params = rmp_serde::to_vec(bind_params)?;
     let bind_cnt = unsafe {
@@ -29,7 +29,7 @@ where
         return Err(TarantoolError::last().into());
     }
 
-    Ok((bind_ptr, bind_cnt as u32))
+    Ok((bind_ptr, bind_cnt as u32, params))
 }
 
 /// Executes SQL query without storing prepared statement in the instance cache
@@ -44,7 +44,7 @@ where
 {
     let mut port = Port::zeroed();
 
-    let (bind_ptr, bind_cnt) = decode_params(bind_params)?;
+    let (bind_ptr, bind_cnt, _params) = decode_params(bind_params)?;
     let execute_result = unsafe {
         ffi::sql::sql_prepare_and_execute_ext(
             query.as_ptr() as *const c_char,
@@ -125,7 +125,7 @@ impl Statement {
         IN: Serialize,
     {
         let mut port = Port::zeroed();
-        let (bind_ptr, bind_cnt) = decode_params(bind_params)?;
+        let (bind_ptr, bind_cnt, _params) = decode_params(bind_params)?;
         let execute_result = unsafe {
             ffi::sql::sql_execute_prepared_ext(
                 self.id,
