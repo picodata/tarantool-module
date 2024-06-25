@@ -16,6 +16,7 @@ use std::hash::Hash;
 use std::io::{Read, Write};
 use std::ops::Deref;
 
+use crate::msgpack;
 pub use tarantool_proc::{Decode, Encode};
 
 use rmp::decode::{NumValueReadError, ValueReadError};
@@ -164,6 +165,11 @@ pub enum StructStyle {
 // TODO: Use this trait instead of `tuple::Decode`, replace derive `Deserialize` with derive `Decode`
 pub trait Decode<'de>: Sized {
     fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError>;
+    fn preserve_decode(
+        r: &mut &'de [u8],
+        context: &Context,
+        amount_read: &mut usize,
+    ) -> Result<Self, DecodeError>;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -261,6 +267,18 @@ impl<'de> Decode<'de> for () {
         rmp::decode::read_nil(r).map_err(DecodeError::from_vre::<Self>)?;
         Ok(())
     }
+
+    #[inline(always)]
+    fn preserve_decode(
+        r: &mut &'de [u8],
+        _context: &Context,
+        amount_read: &mut usize,
+    ) -> Result<Self, DecodeError> {
+        rmp::decode::read_nil(&mut [r[0]].as_slice()).map_err(DecodeError::from_vre::<Self>)?;
+        *r = &r[1..];
+        *amount_read += 1;
+        Ok(())
+    }
 }
 
 impl<'de, T> Decode<'de> for Box<T>
@@ -271,6 +289,15 @@ where
     fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
         T::decode(r, context).map(Box::new)
     }
+
+    #[inline(always)]
+    fn preserve_decode(
+        r: &mut &'de [u8],
+        context: &Context,
+        amount_read: &mut usize,
+    ) -> Result<Self, DecodeError> {
+        T::preserve_decode(r, context, amount_read).map(Box::new)
+    }
 }
 
 impl<'de, T> Decode<'de> for std::rc::Rc<T>
@@ -280,6 +307,15 @@ where
     #[inline(always)]
     fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
         T::decode(r, context).map(std::rc::Rc::new)
+    }
+
+    #[inline(always)]
+    fn preserve_decode(
+        r: &mut &'de [u8],
+        context: &Context,
+        amount_read: &mut usize,
+    ) -> Result<Self, DecodeError> {
+        T::preserve_decode(r, context, amount_read).map(std::rc::Rc::new)
     }
 }
 
@@ -299,6 +335,24 @@ where
             T::decode(r, context).map(Some)
         }
     }
+
+    #[inline(always)]
+    fn preserve_decode(
+        r: &mut &'de [u8],
+        context: &Context,
+        amount_read: &mut usize,
+    ) -> Result<Self, DecodeError> {
+        // In case input is empty, don't return `None` but call the T::decode.
+        // This will allow some users to handle empty input the way they want,
+        // if they want to.
+        if !r.is_empty() && r[0] == super::MARKER_NULL {
+            rmp::decode::read_nil(&mut [r[0]].as_slice()).map_err(DecodeError::from_vre::<Self>)?;
+            *r = &r[1..];
+            Ok(None)
+        } else {
+            T::preserve_decode(r, context, amount_read).map(Some)
+        }
+    }
 }
 
 impl<'de, T> Decode<'de> for Vec<T>
@@ -312,6 +366,26 @@ where
         for i in 0..n {
             res.push(
                 T::decode(r, context).map_err(|err| {
+                    DecodeError::new::<Self>(err).with_part(format!("element {i}"))
+                })?,
+            );
+        }
+        Ok(res)
+    }
+
+    #[inline]
+    fn preserve_decode(
+        r: &mut &'de [u8],
+        context: &Context,
+        amount_read: &mut usize,
+    ) -> Result<Self, DecodeError> {
+        let (n, bytes_to_skip_forward) =
+            msgpack::preserve_read_array_len::<Self>(r).map_err(DecodeError::new::<Self>)?;
+        let mut res = Vec::with_capacity(n);
+        *r = &r[bytes_to_skip_forward..];
+        for i in 0..n {
+            res.push(
+                T::preserve_decode(r, context, amount_read).map_err(|err| {
                     DecodeError::new::<Self>(err).with_part(format!("element {i}"))
                 })?,
             );
@@ -335,6 +409,24 @@ where
         }
         Ok(res)
     }
+
+    #[inline]
+    fn preserve_decode(
+        r: &mut &'de [u8],
+        context: &Context,
+        amount_read: &mut usize,
+    ) -> Result<Self, DecodeError> {
+        let (n, bytes_to_skip_forward) =
+            msgpack::preserve_read_array_len::<Self>(r).map_err(DecodeError::new::<Self>)?;
+        let mut res = HashSet::with_capacity(n);
+        for i in 0..n {
+            let v = T::preserve_decode(r, context, amount_read)
+                .map_err(|err| DecodeError::new::<Self>(err).with_part(format!("element {i}")))?;
+            res.insert(v);
+        }
+        *r = &r[bytes_to_skip_forward..];
+        Ok(res)
+    }
 }
 
 impl<'de, T> Decode<'de> for BTreeSet<T>
@@ -350,6 +442,24 @@ where
                 .map_err(|err| DecodeError::new::<Self>(err).with_part(format!("element {i}")))?;
             res.insert(v);
         }
+        Ok(res)
+    }
+
+    #[inline]
+    fn preserve_decode(
+        r: &mut &'de [u8],
+        context: &Context,
+        amount_read: &mut usize,
+    ) -> Result<Self, DecodeError> {
+        let (n, bytes_to_skip_forward) =
+            msgpack::preserve_read_array_len::<Self>(r).map_err(DecodeError::new::<Self>)?;
+        let mut res = BTreeSet::new();
+        for i in 0..n {
+            let v = T::preserve_decode(r, context, amount_read)
+                .map_err(|err| DecodeError::new::<Self>(err).with_part(format!("element {i}")))?;
+            res.insert(v);
+        }
+        *r = &r[bytes_to_skip_forward..];
         Ok(res)
     }
 }
@@ -396,6 +506,51 @@ where
         // SAFETY: safe, we've assigned every single element.
         return Ok(unsafe { res.assume_init() });
     }
+
+    fn preserve_decode(
+        r: &mut &'de [u8],
+        context: &Context,
+        amount_read: &mut usize,
+    ) -> Result<Self, DecodeError> {
+        let (n, bytes_to_skip_forward) =
+            msgpack::preserve_read_array_len::<Self>(r).map_err(DecodeError::new::<Self>)?;
+        if n != N {
+            return Err(DecodeError::new::<Self>(format!(
+                "expected array count {N}, got {n}"
+            )));
+        }
+
+        let mut res = std::mem::MaybeUninit::uninit();
+        let ptr = &mut res as *mut _ as *mut [T; N] as *mut T;
+        let mut num_assigned = 0;
+
+        for i in 0..N {
+            match T::preserve_decode(r, context, amount_read) {
+                Ok(v) => {
+                    // SAFETY: safe, because MaybeUninit<[T; N]> has the same
+                    // memory representation as [T; N], and we're writing into
+                    // the array's elements.
+                    unsafe { std::ptr::write(ptr.add(i), v) }
+                    num_assigned += 1;
+                }
+                Err(e) => {
+                    for i in 0..num_assigned {
+                        // SAFETY: safe, because we assigned all of these elements
+                        // a valid value of type T.
+                        unsafe { std::ptr::drop_in_place(ptr.add(i)) }
+                    }
+
+                    return Err(DecodeError::new::<Self>(e).with_part(format!("element {i}")));
+                }
+            }
+        }
+
+        debug_assert_eq!(num_assigned, N);
+
+        // SAFETY: safe, we've assigned every single element.
+        *r = &r[bytes_to_skip_forward..];
+        return Ok(unsafe { res.assume_init() });
+    }
 }
 
 impl<'a, 'de, T> Decode<'de> for Cow<'a, T>
@@ -412,6 +567,21 @@ where
                 .to_owned(),
         ))
     }
+
+    // Clippy doesn't notice the type difference
+    #[allow(clippy::redundant_clone)]
+    #[inline(always)]
+    fn preserve_decode(
+        r: &mut &'de [u8],
+        context: &Context,
+        amount_read: &mut usize,
+    ) -> Result<Self, DecodeError> {
+        Ok(Cow::Owned(
+            <T as Decode>::preserve_decode(r, context, amount_read)
+                .map_err(DecodeError::new::<Self>)?
+                .to_owned(),
+        ))
+    }
 }
 
 impl<'de> Decode<'de> for String {
@@ -422,6 +592,21 @@ impl<'de> Decode<'de> for String {
         r.read_exact(&mut buf).map_err(DecodeError::new::<Self>)?;
         String::from_utf8(buf).map_err(DecodeError::new::<Self>)
     }
+
+    #[inline]
+    fn preserve_decode(
+        r: &mut &'de [u8],
+        _context: &Context,
+        amount_read: &mut usize,
+    ) -> Result<Self, DecodeError> {
+        let (size, bytes_to_skip_forward) =
+            msgpack::preserve_read_str_len::<Self>(r).map_err(DecodeError::new::<Self>)?;
+        let res = String::from_utf8(r[bytes_to_skip_forward + 1..].to_vec())
+            .map_err(DecodeError::new::<Self>)?;
+        *r = &r[bytes_to_skip_forward + 1 + size..];
+        *amount_read += bytes_to_skip_forward + 1 + size;
+        Ok(res)
+    }
 }
 
 impl<'de> Decode<'de> for &'de str {
@@ -430,6 +615,21 @@ impl<'de> Decode<'de> for &'de str {
         let (res, bound) =
             rmp::decode::read_str_from_slice(*r).map_err(DecodeError::new::<Self>)?;
         *r = bound;
+        Ok(res)
+    }
+
+    #[inline]
+    fn preserve_decode(
+        r: &mut &'de [u8],
+        _context: &Context,
+        amount_read: &mut usize,
+    ) -> Result<Self, DecodeError> {
+        let (size, bytes_to_skip_forward) =
+            msgpack::preserve_read_str_len::<Self>(r).map_err(DecodeError::new::<Self>)?;
+        let (res, _) = rmp::decode::read_str_from_slice(&r[bytes_to_skip_forward + 1..])
+            .map_err(DecodeError::new::<Self>)?;
+        *r = &r[bytes_to_skip_forward + 1 + size..];
+        *amount_read += bytes_to_skip_forward + 1 + size;
         Ok(res)
     }
 }
@@ -452,6 +652,26 @@ where
         }
         Ok(res)
     }
+
+    fn preserve_decode(
+        r: &mut &'de [u8],
+        context: &Context,
+        amount_read: &mut usize,
+    ) -> Result<Self, DecodeError> {
+        let (n, bytes_to_skip_forward) =
+            msgpack::preserve_read_map_len::<Self>(r).map_err(DecodeError::new::<Self>)?;
+        let mut res = BTreeMap::new();
+        for i in 0..n {
+            let k = K::decode(r, context)
+                .map_err(|err| DecodeError::new::<Self>(err).with_part(format!("{i}th key")))?;
+            let v = V::decode(r, context)
+                .map_err(|err| DecodeError::new::<Self>(err).with_part(format!("{i}th value")))?;
+            res.insert(k, v);
+        }
+        *r = &r[bytes_to_skip_forward..];
+        *amount_read += bytes_to_skip_forward;
+        Ok(res)
+    }
 }
 
 impl<'de, K, V> Decode<'de> for HashMap<K, V>
@@ -470,6 +690,27 @@ where
                 .map_err(|err| DecodeError::new::<Self>(err).with_part(format!("{i}th value")))?;
             res.insert(k, v);
         }
+        Ok(res)
+    }
+
+    #[inline]
+    fn preserve_decode(
+        r: &mut &'de [u8],
+        context: &Context,
+        amount_read: &mut usize,
+    ) -> Result<Self, DecodeError> {
+        let (n, bytes_to_skip_forward) =
+            msgpack::preserve_read_map_len::<Self>(r).map_err(DecodeError::new::<Self>)?;
+        let mut res = HashMap::with_capacity(n);
+        for i in 0..n {
+            let k = K::decode(r, context)
+                .map_err(|err| DecodeError::new::<Self>(err).with_part(format!("{i}th key")))?;
+            let v = V::decode(r, context)
+                .map_err(|err| DecodeError::new::<Self>(err).with_part(format!("{i}th value")))?;
+            res.insert(k, v);
+        }
+        *r = &r[bytes_to_skip_forward..];
+        *amount_read += bytes_to_skip_forward;
         Ok(res)
     }
 }
@@ -502,6 +743,43 @@ impl<'de> Decode<'de> for char {
                 .expect("just checked that there is 1 element"))
         }
     }
+
+    #[inline(always)]
+    fn preserve_decode(
+        r: &mut &'de [u8],
+        _context: &Context,
+        amount_read: &mut usize,
+    ) -> Result<Self, DecodeError> {
+        let (n, bytes_to_skip_forward) =
+            msgpack::preserve_read_str_len::<Self>(r).map_err(DecodeError::new::<Self>)?;
+        if n == 0 {
+            return Err(DecodeError::new::<char>(
+                "expected a msgpack non-empty string, got string length 0",
+            ));
+        }
+        if n > 4 {
+            return Err(DecodeError::new::<char>(format!(
+                "expected a msgpack string not longer than 4 characters, got length {n}"
+            )));
+        }
+        let mut buf = [0; 4];
+        let buf = &mut buf[0..n];
+        r.read_exact(buf).map_err(DecodeError::new::<Self>)?;
+        let s = std::str::from_utf8(buf).map_err(DecodeError::new::<Self>)?;
+        if s.chars().count() != 1 {
+            return Err(DecodeError::new::<char>(format!(
+                "expected a single unicode character, got sequence of length {n}"
+            )));
+        } else {
+            let res = s
+                .chars()
+                .next()
+                .expect("just checked that there is 1 element");
+            *r = &r[bytes_to_skip_forward..];
+            *amount_read += bytes_to_skip_forward;
+            Ok(res)
+        }
+    }
 }
 
 macro_rules! impl_simple_int_decode {
@@ -512,6 +790,29 @@ macro_rules! impl_simple_int_decode {
                 fn decode(r: &mut &'de [u8], _context: &Context) -> Result<Self, DecodeError> {
                     let value = rmp::decode::$f(r)
                         .map_err(DecodeError::from_nvre::<Self>)?;
+                    Ok(value)
+                }
+
+                #[inline(always)]
+                fn preserve_decode(r: &mut &'de [u8], _context: &Context, amount_read: &mut usize) -> Result<Self, DecodeError> {
+                    println!("decode int before: {r:?}");
+                    let len = msgpack::preserve_read_int_len(r).map_err(DecodeError::new::<Self>)?;
+                    let value: Self;
+                    if len == 0 {
+                        println!("decode int zero start: {r:?}");
+                        value = rmp::decode::$f(&mut [r[0]].as_slice())
+                            .map_err(DecodeError::from_nvre::<Self>)?;
+                        *r = &r[1..];
+                        *amount_read += 1;
+                        println!("decode int zero end: {r:?}");
+                    } else {
+                        println!("decode int non-zero start: {r:?}");
+                        value = rmp::decode::$f(&mut &r[1..len])
+                            .map_err(DecodeError::from_nvre::<Self>)?;
+                        *r = &r[len..];
+                        *amount_read += len;
+                        println!("decode int non-zero end: {r:?}");
+                    }
                     Ok(value)
                 }
             }
@@ -527,6 +828,28 @@ macro_rules! impl_simple_decode {
                 fn decode(r: &mut &'de [u8], _context: &Context) -> Result<Self, DecodeError> {
                     let value = rmp::decode::$f(r)
                         .map_err(DecodeError::from_vre::<Self>)?;
+                    Ok(value)
+                }
+
+                #[inline(always)]
+                fn preserve_decode(r: &mut &'de [u8], _context: &Context, amount_read: &mut usize) -> Result<Self, DecodeError> {
+                    println!("at decode bool start: {r:?}");
+                    let len = msgpack::preserve_read_float_or_bool_len(r)
+                        .map_err(DecodeError::new::<Self>)?;
+                    let value: Self;
+                    if len == 1 {
+                        value = rmp::decode::$f(&mut &r[..len])
+                            .map_err(DecodeError::from_vre::<Self>)?;
+                        *r = &r[len..];
+                        *amount_read += len;
+                        println!("at decode bool end: {r:?}");
+                        } else {
+                        value = rmp::decode::$f(&mut &r[1..len])
+                            .map_err(DecodeError::from_vre::<Self>)?;
+                        *r = &r[len + 1..];
+                        *amount_read += len + 1;
+                        println!("at decode bool end: {r:?}");
+                    }
                     Ok(value)
                 }
             }
@@ -1859,6 +2182,65 @@ mod tests {
         );
         let decoded: Foo = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn encode_enum_untagged() {
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate", untagged)]
+        enum Foo {
+            BarTuple1(bool),
+            BarStruct2 { bar1: bool, bar2: String },
+            BarTupleN(usize, [u8; 3], Box<Foo>),
+        }
+
+        // single field unnamed variant - encode (ok), decode as array (ok), decode as map (ok)
+        let original = Foo::BarTuple1(true);
+        let bytes = encode(&original);
+        assert_value(&bytes, Value::Array(vec![Value::from(true)]));
+        let decoded_arr = Foo::decode(&mut bytes.as_slice(), ARR_CTX).unwrap();
+        assert_eq!(decoded_arr, original);
+        let decoded_map = Foo::decode(&mut bytes.as_slice(), MAP_CTX).unwrap();
+        assert_eq!(decoded_map, original);
+
+        // multi field named variant - encode (ok), decode as array (ok), decode as map (ok)
+        let original = Foo::BarStruct2 {
+            bar1: false,
+            bar2: "welcome".to_owned(),
+        };
+        let bytes = encode(&original);
+        assert_value(
+            &bytes,
+            Value::Array(vec![Value::from(false), Value::from("welcome")]),
+        );
+        let decoded_arr = Foo::decode(&mut bytes.as_slice(), ARR_CTX).unwrap();
+        assert_eq!(decoded_arr, original);
+        let decoded_map = Foo::decode(&mut bytes.as_slice(), MAP_CTX).unwrap();
+        assert_eq!(decoded_map, original);
+
+        // complex self-referencing multi field variant - encode (ok), decode as array (ok), decode as map (ok)
+        let original = Foo::BarTupleN(52, [37, 13, 42], Box::new(Foo::BarTuple1(true)));
+        let bytes = encode(&original);
+        assert_value(
+            &bytes,
+            Value::Array(vec![
+                Value::from(52),
+                Value::Array(vec![Value::from(37), Value::from(13), Value::from(42)]),
+                Value::Array(vec![Value::from(true)]),
+            ]),
+        );
+        let decoded_arr = Foo::decode(&mut bytes.as_slice(), ARR_CTX).unwrap();
+        assert_eq!(decoded_arr, original);
+        let decoded_map = Foo::decode(&mut bytes.as_slice(), MAP_CTX).unwrap();
+        assert_eq!(decoded_map, original);
+
+        // variant mismatch from valid msgpack bytes - decode as array (err), decode as map (err)
+        let mut bytes = Vec::new();
+        rmp::encode::write_str(&mut bytes, "0xDEADBEEF").unwrap();
+        let err = Foo::decode(&mut bytes.as_slice(), ARR_CTX).unwrap_err();
+        assert_eq!(err.to_string(), "failed decoding tarantool::msgpack::encode::tests::encode_enum_untagged::Foo: received stream didn't match any enum variant");
+        let err = Foo::decode(&mut bytes.as_slice(), MAP_CTX).unwrap_err();
+        assert_eq!(err.to_string(), "failed decoding tarantool::msgpack::encode::tests::encode_enum_untagged::Foo: received stream didn't match any enum variant");
     }
 
     #[test]

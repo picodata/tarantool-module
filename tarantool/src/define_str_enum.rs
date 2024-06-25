@@ -328,6 +328,29 @@ macro_rules! define_str_enum {
                 *r = &r[len as usize..];
                 res
             }
+
+            fn preserve_decode(r: &mut &[u8], _context: &$crate::msgpack::Context, amount_read: &mut usize) -> std::result::Result<Self, $crate::msgpack::DecodeError> {
+                let (_, bytes_to_skip_forward) = $crate::msgpack::preserve_read_str_len::<Self>(r)
+                    .map_err(|err| $crate::msgpack::DecodeError::new::<Self>(err))?;
+                let decoded_variant = r.get(0..(bytes_to_skip_forward))
+                    .ok_or_else(|| $crate::msgpack::DecodeError::new::<Self>("not enough data"))?;
+                let decoded_variant_str = std::str::from_utf8(decoded_variant)
+                    .map_err(|err| $crate::msgpack::DecodeError::new::<Self>(err))?;
+                let res = match decoded_variant_str {
+                    $(
+                        $display => Ok(Self::$variant),
+                    )+
+                    v => Err({
+                        $crate::msgpack::DecodeError::new::<$enum>(
+                            format!("unknown enum variant `{}`, expected on of {:?}", v, Self::values())
+                        )
+                    })?,
+                };
+                // consume string on success
+                *r = &r[bytes_to_skip_forward..];
+                *amount_read += bytes_to_skip_forward;
+                res
+            }
         }
     };
 

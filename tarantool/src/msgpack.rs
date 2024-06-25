@@ -5,7 +5,7 @@ use std::io::{Cursor, Read, Seek, SeekFrom};
 
 pub mod encode;
 pub use encode::*;
-pub use rmp;
+pub use rmp::{self, Marker};
 
 /// Msgpack encoding of `null`.
 pub const MARKER_NULL: u8 = 0xc0;
@@ -58,8 +58,6 @@ pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
 }
 
 fn skip_value_inner(cur: &mut (impl Read + Seek)) -> Result<()> {
-    use rmp::Marker;
-
     match rmp::decode::read_marker(cur)? {
         Marker::FixPos(_) | Marker::FixNeg(_) | Marker::Null | Marker::True | Marker::False => {}
         Marker::U8 | Marker::I8 => {
@@ -172,8 +170,6 @@ fn skip_value_inner(cur: &mut (impl Read + Seek)) -> Result<()> {
 /// Reads appropriate amount of bytes according to marker from raw bytes
 /// of MessagePack, returning those bytes back in a `Vec<u8>` format.
 pub fn preserve_read(from: &mut &[u8]) -> Result<Vec<u8>> {
-    use rmp::Marker;
-
     let mut into = Vec::new();
     match Marker::from_u8(from[0]) {
         Marker::FixPos(_) | Marker::FixNeg(_) | Marker::Null | Marker::True | Marker::False => {
@@ -310,8 +306,6 @@ pub fn preserve_read(from: &mut &[u8]) -> Result<Vec<u8>> {
 /// Reads from a slice of valid MessagePack stream values a string, preserving read bytes.
 /// Returns a pair of bytes indicating the beginning and end of a string.
 pub fn str_bounds(mut stream: &[u8]) -> Result<(usize, usize)> {
-    use rmp::Marker;
-
     match Marker::from_u8(stream[0]) {
         Marker::FixStr(len) => Ok((1, len as usize + 1)),
         Marker::Str8 => Ok((2, rmp::decode::read_str_len(&mut stream)? as usize + 2)),
@@ -340,6 +334,115 @@ pub fn write_array_len(
 ) -> std::result::Result<(), rmp::encode::ValueWriteError> {
     rmp::encode::write_array_len(w, len)?;
     Ok(())
+}
+
+/// Reads length of msgpack array, skipping through the read marker
+/// returning size of an array and size of marker data
+#[inline]
+pub fn preserve_read_array_len<T>(r: &mut &[u8]) -> Result<(usize, usize)> {
+    match rmp::decode::read_marker(&mut [r[0]].as_slice()) {
+        Ok(Marker::FixArray(size)) => {
+            *r = &r[1..];
+            Ok((size as usize, 0))
+        }
+        Ok(Marker::Array16) => {
+            let res = Ok((
+                rmp::decode::read_u16(&mut &r[1..3]).map_err(DecodeError::new::<T>)? as usize,
+                2,
+            ));
+            *r = &r[3..];
+            res
+        }
+        Ok(Marker::Array32) => {
+            let res = Ok((
+                rmp::decode::read_u32(&mut &r[1..5]).map_err(DecodeError::new::<T>)? as usize,
+                4,
+            ));
+            *r = &r[5..];
+            res
+        }
+        Ok(marker) => Err(rmp::decode::ValueReadError::TypeMismatch(marker))?,
+        Err(err) => Err(err.into()),
+    }
+}
+
+/// Reads length of msgpack string, without skipping through the read marker
+/// returning size of a string and size of marker data
+#[inline]
+pub fn preserve_read_str_len<T>(r: &mut &[u8]) -> Result<(usize, usize)> {
+    match rmp::decode::read_marker(&mut [r[0]].as_slice()) {
+        Ok(Marker::FixStr(size)) => Ok((size as usize, 0)),
+        Ok(Marker::Str8) => Ok((
+            rmp::decode::read_u8(&mut [r[1]].as_slice()).map_err(DecodeError::new::<T>)? as usize,
+            1,
+        )),
+        Ok(Marker::Str16) => Ok((
+            rmp::decode::read_u16(&mut &r[1..3]).map_err(DecodeError::new::<T>)? as usize,
+            2,
+        )),
+        Ok(Marker::Str32) => Ok((
+            rmp::decode::read_u32(&mut &r[1..5]).map_err(DecodeError::new::<T>)? as usize,
+            4,
+        )),
+        Ok(marker) => Err(rmp::decode::ValueReadError::TypeMismatch(marker))?,
+        Err(err) => Err(err.into()),
+    }
+}
+
+/// Reads length of msgpack map, without skipping through the read marker
+/// returning size of a map and size of marker data
+#[inline]
+pub fn preserve_read_map_len<T>(r: &mut &[u8]) -> Result<(usize, usize)> {
+    Ok((
+        rmp::decode::read_map_len(&mut [r[0]].as_slice())? as usize,
+        1,
+    ))
+}
+
+/// Reads length of msgpack integer, skipping through the read marker
+/// returning size of an integer and size of marker data
+#[inline]
+pub fn preserve_read_int_len(r: &mut &[u8]) -> Result<usize> {
+    let res = match rmp::decode::read_marker(&mut [r[0]].as_slice())? {
+        rmp::Marker::FixPos(_) | rmp::Marker::FixNeg(_) => Ok(0),
+        rmp::Marker::U8 | rmp::Marker::I8 => {
+            *r = &r[1..];
+            Ok(1)
+        }
+        rmp::Marker::U16 | rmp::Marker::I16 => {
+            *r = &r[1..];
+            Ok(2)
+        }
+        rmp::Marker::U32 | rmp::Marker::I32 => {
+            *r = &r[1..];
+            Ok(4)
+        }
+        rmp::Marker::U64 | rmp::Marker::I64 => {
+            *r = &r[1..];
+            Ok(8)
+        }
+        marker => Err(rmp::decode::NumValueReadError::TypeMismatch(marker))?,
+    };
+    res
+}
+
+/// Reads length of msgpack float or boolean, skipping through the read marker
+/// returning size of a float or a boolean and size of marker data
+#[inline]
+pub fn preserve_read_float_or_bool_len(r: &mut &[u8]) -> Result<usize> {
+    let res = match rmp::decode::read_marker(&mut [r[0]].as_slice())? {
+        rmp::Marker::True | rmp::Marker::False => Ok(1),
+        rmp::Marker::F32 => {
+            *r = &r[1..];
+            Ok(4)
+        }
+        rmp::Marker::F64 => {
+            *r = &r[1..];
+            Ok(8)
+        }
+        marker => Err(rmp::decode::NumValueReadError::TypeMismatch(marker))?,
+    };
+    res
 }
 
 ////////////////////////////////////////////////////////////////////////////////
