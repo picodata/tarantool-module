@@ -164,28 +164,92 @@ macro_rules! unwrap_ok_or {
 // DisplayAsHexBytes
 ////////////////////////////////////////////////////////////////////////////////
 
-/// A wrapper for displaying byte slices as hexadecimal byte slice literals.
-/// ```no_run
-/// # use tarantool::util::DisplayAsHexBytes;
-/// let s = format!("{}", DisplayAsHexBytes(&[1, 2, 3]));
-/// assert_eq!(s, r#"b"\x01\x02\x03""#);
+/// A wrapper for displaying byte slices as human-readable byte slice literals.
+/// This will print the non-ascii (or non-printable ascii) as hex-literals.
+///
 /// ```
-pub struct DisplayAsHexBytes<'a>(pub &'a [u8]);
+/// # use tarantool::util::DisplayAsHexBytes;
+/// let s = format!("{}", DisplayAsHexBytes(&[1, 2, 3, 97, 98, 99]));
+/// assert_eq!(s, r#"b"\x01\x02\x03abc""#);
+/// ```
+///
+/// For performance reasons this will truncate the output in case the slice is
+/// longer than 512 bytes replacing the trailing bytes with the `'…'` character.
+///
+/// You can use the [`DisplayAsHexBytes::with_truncation`] contructor
+/// to override the truncation threshold (for example to `usize::MAX`)
+/// if you don't care how long the program will take to execute and just want to see all of the data.
+pub struct DisplayAsHexBytes<'a> {
+    pub bytes: &'a [u8],
+    pub truncate_after: usize,
+}
+
+/// A wrapper for displaying byte slices as human-readable byte slice literals.
+/// This will print the non-ascii (or non-printable ascii) as hex-literals.
+///
+/// ```
+/// # use tarantool::util::DisplayAsHexBytes;
+/// let s = format!("{}", DisplayAsHexBytes(&[1, 2, 3, 97, 98, 99]));
+/// assert_eq!(s, r#"b"\x01\x02\x03abc""#);
+/// ```
+///
+/// For performance reasons this will truncate the output in case the slice is
+/// longer than 512 bytes replacing the trailing bytes with the `'…'` character.
+///
+/// You can use the [`DisplayAsHexBytes::with_truncation`] contructor
+/// to override the truncation threshold (for example to `usize::MAX`)
+/// if you don't care how long the program will take to execute and just want to see all of the data.
+#[inline(always)]
+#[allow(non_snake_case)]
+pub fn DisplayAsHexBytes<'a>(bytes: &'a [u8]) -> DisplayAsHexBytes<'a> {
+    DisplayAsHexBytes {
+        bytes,
+        truncate_after: 512,
+    }
+}
+
+impl<'a> DisplayAsHexBytes<'a> {
+    /// Constructs the wrapper overriding the default truncation threshold to
+    /// the one provided.
+    ///
+    /// You can pass `usize::MAX` is you don't care how long your program takes
+    /// to execute and just want to see all of the data (inadvisable).
+    ///
+    /// ```
+    /// # use tarantool::util::DisplayAsHexBytes;
+    /// let s = format!("{}", DisplayAsHexBytes::with_truncation(b"foobar", 4));
+    /// assert_eq!(s, r#"b"foob…""#);
+    /// ```
+    #[inline(always)]
+    pub fn with_truncation(bytes: &'a [u8], truncate_after: usize) -> Self {
+        Self {
+            bytes,
+            truncate_after,
+        }
+    }
+}
 
 impl std::fmt::Display for DisplayAsHexBytes<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "b\"")?;
-        for byte in self.0 {
+        f.write_str("b\"")?;
+        let mut bytes = self.bytes;
+        if self.bytes.len() > self.truncate_after {
+            bytes = &self.bytes[0..self.truncate_after];
+        }
+        for byte in bytes {
             if matches!(byte, b' '..=b'~') {
                 if matches!(byte, b'\\' | b'"') {
-                    write!(f, "\\")?;
+                    f.write_str("\\")?;
                 }
                 write!(f, "{}", *byte as char)?;
             } else {
                 write!(f, "\\x{byte:02x}")?;
             }
         }
-        write!(f, "\"")?;
+        if self.bytes.len() > self.truncate_after {
+            f.write_str("…")?;
+        }
+        f.write_str("\"")?;
         Ok(())
     }
 }
@@ -287,6 +351,19 @@ mod test {
         assert_eq!(s, r###"
 b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\x7f\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8d\x8e\x8f\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9a\x9b\x9c\x9d\x9e\x9f\xa0\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xab\xac\xad\xae\xaf\xb0\xb1\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc\xbd\xbe\xbf\xc0\xc1\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xcb\xcc\xcd\xce\xcf\xd0\xd1\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xdb\xdc\xdd\xde\xdf\xe0\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xeb\xec\xed\xee\xef\xf0\xf1\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xfb\xfc\xfd\xfe\xff"
         "###.trim());
+
+        // Check truncation works
+        let s = format!("{}", DisplayAsHexBytes::with_truncation(&[1, 2, 3], 3));
+        assert_eq!(s, r#"b"\x01\x02\x03""#);
+
+        let s = format!("{}", DisplayAsHexBytes::with_truncation(&[1, 2, 3], 2));
+        assert_eq!(s, r#"b"\x01\x02…""#);
+
+        let s = format!("{}", DisplayAsHexBytes::with_truncation(&[1, 2, 3], 1));
+        assert_eq!(s, r#"b"\x01…""#);
+
+        let s = format!("{}", DisplayAsHexBytes::with_truncation(&[1, 2, 3], 0));
+        assert_eq!(s, r#"b"…""#);
     }
 
     #[rustfmt::skip]
