@@ -209,6 +209,13 @@ pub fn DisplayAsHexBytes<'a>(bytes: &'a [u8]) -> DisplayAsHexBytes<'a> {
 }
 
 impl<'a> DisplayAsHexBytes<'a> {
+    pub fn new<'a>(bytes: &'a [u8]) -> Self<'a> {
+        Self {
+            bytes,
+            truncate_after: 512,
+        }
+    }
+
     /// Constructs the wrapper overriding the default truncation threshold to
     /// the one provided.
     ///
