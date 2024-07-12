@@ -13,6 +13,7 @@ extern "C" {
 
     fn obuf_create(obuf: *mut Obuf, slab_cache: *const SlabCache, start_cap: size_t);
     fn obuf_destroy(obuf: *mut Obuf);
+    pub fn ibuf_reinit(ibuf: *mut Ibuf);
 
     pub(crate) fn sql_prepare_ext(sql: *const u8, len: u32, stmt_id: *mut u32) -> c_int;
     pub(crate) fn sql_execute_prepared_ext(
@@ -35,6 +36,19 @@ extern "C" {
 #[repr(C)]
 struct SlabCache {
     _unused: [u8; 0],
+}
+
+#[repr(C)]
+pub struct Ibuf {
+    _slab_cache: *const c_void,
+    pub buf: *const u8,
+    /** Start of input. */
+    pub rpos: *const u8,
+    /** End of useful input */
+    pub wpos: *const u8,
+    /** End of ibuf. */
+    pub epos: *const u8,
+    start_capacity: usize,
 }
 
 pub(crate) struct ObufWrapper {
