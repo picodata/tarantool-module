@@ -444,7 +444,7 @@ unsafe fn error_get_file_line(ptr: *const ffi::BoxError) -> Option<(String, u32)
     if FIELD_OFFSETS.is_none() {
         let lua = crate::lua_state();
         let res = lua.eval::<(u32, u32)>(
-            "ffi = require 'ffi'
+            "local ffi = require 'ffi'
             return
                 ffi.offsetof('struct error', '_file'),
                 ffi.offsetof('struct error', '_line')",

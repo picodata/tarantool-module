@@ -416,14 +416,32 @@ pub use tarantool_proc::test;
 /// **WARNING:** using global lua state is error prone, especially when writing
 /// code that will be executed in multiple fibers. Consider using [`lua_state`]
 /// instead. Use with caution if necessary.
+#[inline(always)]
 fn global_lua() -> tlua::StaticLua {
     unsafe { tlua::Lua::from_static(ffi::tarantool::luaT_state()) }
 }
 
 /// Create a new lua state with an isolated stack. The new state has access to
 /// all the global and tarantool data (Lua variables, tables, modules, etc.).
+///
+/// **WARNING:** it's not safe to reuse this lua state between fibers. In
+/// general you should never store this struct in any static or long-lived
+/// variables. Just call `lua_state` each time you want to call into lua, it's
+/// not going to be expensive.
+#[inline]
+#[deprecated = "use `with_lua_state` instead"]
 pub fn lua_state() -> tlua::LuaThread {
     global_lua().new_thread()
+}
+
+#[inline]
+pub fn with_lua_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&tlua::LuaThread) -> R,
+{
+    let globa_lua = global_lua();
+    let lua = globa_lua.new_thread();
+    f(&lua)
 }
 
 pub use error::Result;
