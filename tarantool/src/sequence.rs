@@ -22,6 +22,11 @@ impl Sequence {
         })
     }
 
+    /// Get sequence id.
+    pub fn id(&self) -> u32 {
+        self.seq_id
+    }
+
     #[allow(clippy::should_implement_trait)]
     /// Generate the next value and return it.
     ///

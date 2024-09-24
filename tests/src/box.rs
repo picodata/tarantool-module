@@ -754,6 +754,14 @@ pub fn sequence_set() {
     assert_eq!(seq.next().unwrap(), 100);
 }
 
+pub fn sequence_drop() {
+    let mut seq = Sequence::find("test_drop_seq").unwrap().unwrap();
+    assert_eq!(seq.next().unwrap(), 1);
+
+    tarantool::schema::sequence::drop_sequence(seq.id()).unwrap();
+    assert!(Sequence::find("test_drop_seq").unwrap().is_none())
+}
+
 pub fn space_create_opt_default() {
     let opts = SpaceCreateOptions::default();
 
