@@ -36,11 +36,6 @@ restricting time connection establishment.
 ### Deprecated
 - tlua::LuaTable::get_or_create_metatable is deprecated now in favor of tlua::LuaTable::metatable.
 
-### Breaking changes
-- Use `extern "C-unwind"` instead of `extern "C"` for all trampolines which take `*mut ffi::lua_State`
-  (checked with `rg 'extern "C".*lua_State'`). `tlua::error!` throws an exception to unwind the stack,
-  hence we need to use a proper ABI to fix UB in picodata.
-
 ### Breaking changes (picodata)
 - Add session ID to the argument list of the `sql_prepare_ext`.
 - Replace `sql_unprepare` with `sql_unprepare_ext` (contains an additional session ID argument).
