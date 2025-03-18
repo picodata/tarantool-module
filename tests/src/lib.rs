@@ -430,6 +430,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 r#box::sequence_get_by_name,
                 r#box::sequence_iterate,
                 r#box::sequence_set,
+                r#box::sequence_drop,
                 r#box::space_create_opt_default,
                 r#box::space_create_opt_if_not_exists,
                 r#box::space_create_id_increment,

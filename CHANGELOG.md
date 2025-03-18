@@ -81,6 +81,7 @@ restricting time connection establishment.
 - Incorrect, off-spec MP Ext type: caused runtime errors on some platforms.
 - Panic in coio test starting from 1.80 Rust.
 - Impossible to use procedural macros(like `tarantool::proc`, `tarantool::test`) through reexporting tarantool.
+- Error deleting sequence after calling next().
 
 ### Deprecated
 - tlua::LuaTable::get_or_create_metatable is deprecated now in favor of tlua::LuaTable::metatable.

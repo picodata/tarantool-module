@@ -33,6 +33,7 @@ box.once('bootstrap_tests', function()
     box.schema.user.grant('test_user', 'read,write,execute,create,drop', 'universe')
 
     box.schema.sequence.create('test_seq')
+    box.schema.sequence.create('test_drop_seq')
 
     box.schema.func.create('test_stored_proc')
     box.schema.func.create('test_schema_update')
