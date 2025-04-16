@@ -6,7 +6,7 @@
 - `AuthMethod::DEFAULT` represents the default value of `AuthMethod`, but is available in constant contexts.
 
 ### Changed
-- MSRV is now 1.81 instead of 1.71.1 as it was.
+- 1.82 is now MSRV.
 
 ### Fixed
 - `network::protocol::codec::Header::encode` will not truncate to `u8` an
