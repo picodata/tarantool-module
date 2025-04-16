@@ -38,7 +38,7 @@
 
 # Change Log
 
-# [?.?.?] Unreleased
+# [7.0.0] Apr 17 2025
 
 ### Added
 - `AuthMethod::DEFAULT` represents the default value of `AuthMethod`, but is available in constant contexts.
