@@ -1576,30 +1576,12 @@ impl std::borrow::Borrow<RawBytes> for RawByteBuf {
 #[cfg(feature = "picodata")]
 mod picodata {
     use super::*;
-    use crate::say_warn;
-    use crate::Result;
 
     ////////////////////////////////////////////////////////////////////////////
     // Tuple picodata extensions
     ////////////////////////////////////////////////////////////////////////////
 
     impl Tuple {
-        /// NO LONGER SUPPORTED!
-        ///
-        /// Returns messagepack encoded tuple with named fields (messagepack map).
-        ///
-        /// Returned map has only numeric keys if tuple has default tuple format (see [TupleFormat](struct.TupleFormat.html)),
-        /// for example when tuple dont belongs to any space. If tuple has greater fields than named
-        /// fields in tuple format - then additional fields are  presents in the map with numeric keys.
-        ///
-        /// This function is useful if there is no information about tuple fields in program runtime.
-        #[inline(always)]
-        pub fn as_named_buffer(&self) -> Result<Vec<u8>> {
-            Err(crate::error::Error::other(
-                "Tuple::as_named_buffer is no longer supported",
-            ))
-        }
-
         /// Returns a slice of data contained in the tuple.
         #[inline]
         pub fn data(&self) -> &[u8] {
@@ -1663,22 +1645,6 @@ mod picodata {
                 }
             }
             unsafe { SINGLETON.as_ref().expect("just made sure it's there") }
-        }
-
-        /// NO LONGER SUPPORTED.
-        ///
-        /// Return tuple field names count.
-        pub fn name_count(&self) -> u32 {
-            say_warn!("TupleFormat::name_count is no longer supported");
-            0
-        }
-
-        /// NO LONGER SUPPORTED.
-        ///
-        /// Return tuple field names.
-        pub fn names(&self) -> impl Iterator<Item = &str> {
-            say_warn!("TupleFormat::names is no longer supported");
-            std::iter::empty()
         }
     }
 }

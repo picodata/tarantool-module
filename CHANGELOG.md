@@ -26,10 +26,9 @@
 
 ### Breaking changes (picodata)
 - `AuthMethod::default()` is now `Md5`, not `ChapSha1`.
+- `tarantool::tuple::Tuple::{as_named_buffer, names, name_count}` did not find their use, so they were removed.
 
 ### Deprecated (picodata)
-
-- `Tuple::as_named_buffer` is now deprecated without any alternative, same as `TupleFormat::{names, name_count}`.
 
 
 # [6.1.0] Dec 10 2024
