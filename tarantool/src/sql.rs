@@ -55,7 +55,6 @@ where
 /// already existing statement within the same session does not increase the
 /// instance cache counter. However, calling prepare on the statement in a
 /// different session without the statement does increase the counter.
-
 pub fn prepare(query: String) -> crate::Result<Statement> {
     let mut stmt_id: u32 = 0;
     let mut session_id: u64 = 0;
