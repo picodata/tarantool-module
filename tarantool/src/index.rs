@@ -88,8 +88,14 @@ pub enum IteratorType {
     /// key overlaps x
     Overlaps = 10,
 
-    /// tuples in distance ascending order from specified point
+    /// tuples as they move away from x point
     Neighbor = 11,
+
+    /// next prefix, ASC order
+    NP = 12,
+
+    /// previous prefix, DESC order
+    PP = 13,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
