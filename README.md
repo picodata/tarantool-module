@@ -1,3 +1,10 @@
+# ⚠️  The project has been moved! ⚠️
+
+> The project was moved to [https://github.com/picodata/picodata](https://github.com/picodata/picodata/tree/master/tarantool)
+>
+> This repository is no longer maintained.
+
+
 # Tarantool Rust SDK
 
 [![Latest Version]][crates.io] [![Docs badge]][docs.rs]
